@@ -1074,6 +1074,33 @@
     if(e.pointerType==='pen') penSeen=performance.now();
     if(drawing) return;                  // a stroke already owns the canvas — ignore extra contacts (palm)
     if(!allow(e))return;
+    // Constellation modal: taps drop anchors, doesn't paint a normal stroke.
+    if(constellationOn){
+      e.preventDefault();
+      const c = toC(e);
+      const now = performance.now();
+      // Double-tap within 350 ms closes the shape back to the first anchor.
+      const isDoubleTap = (now - constLastTap) < 350;
+      constLastTap = now;
+      if(isDoubleTap && constAnchors.length >= 3){
+        paintConstellation(true);
+        commitConstellation();
+        flash('Constellation closed');
+        return;
+      }
+      // Snap this anchor to the nearest existing anchor if very close, so a
+      // near-double-tap doesn't add a duplicate.
+      const SNAP = Math.max(6, size * 0.4);
+      let snapped = false;
+      for(const a of constAnchors){
+        if(Math.hypot(a.x-c.x, a.y-c.y) < SNAP){ snapped = true; break; }
+      }
+      if(!snapped){
+        constAnchors.push({ x:c.x, y:c.y });
+        paintConstellation(false);
+      }
+      return;
+    }
     e.preventDefault();drawing=true;drawPid=e.pointerId;drawPidType=e.pointerType;pend=snap();
     const c=toC(e);
     // ---- Pressure seat-in ----
@@ -1691,6 +1718,13 @@
     size = (typeof bp.size==='number') ? bp.size : b.size;
     opacity = (typeof bp.op==='number') ? bp.op : b.op;
     refreshBp();
+    // Picking a brush leaves Constellation mode -- otherwise brush taps
+    // would drop anchors instead of drawing.
+    if(typeof constellationOn !== 'undefined' && constellationOn){
+      constellationOn = false;
+      if(typeof kConst !== 'undefined') kConst.classList.remove('on');
+      commitConstellation();
+    }
     const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
     if(sd) sd.textContent=Math.round(size);
     if(od) od.textContent=Math.round(opacity*100);
@@ -1913,6 +1947,84 @@
   kQS.classList.toggle('on',qsEnabled);
   kQS.addEventListener('click',e=>{e.stopPropagation();qsEnabled=!qsEnabled;kQS.classList.toggle('on',qsEnabled);savePrefs();flash(qsEnabled?'QuickShape ON · hold still to snap':'QuickShape off');});
   nLine._kids.appendChild(kQS);
+
+  // Constellation modal tool.
+  // When ON, taps on the canvas drop anchor stars and connect them with a
+  // faint line -- like joining dots in a star chart. Double-tap to close
+  // the shape back to the first anchor. Toggling OFF (or selecting another
+  // brush) commits + resets.
+  let constellationOn = false;
+  let constAnchors = [];          // [{x,y}] in canvas-doc space
+  let constLastTap = 0;           // ms timestamp for the double-tap-to-close gesture
+  const kConst = kidEl({glyph:'@conste', sub:'Constellation'});
+  function commitConstellation(){
+    if(constAnchors.length >= 2){
+      pushU(snap()); bumpFrame(frames[cur]); refreshCurrentThumb && refreshCurrentThumb();
+    }
+    constAnchors = []; render();
+  }
+  kConst.addEventListener('click', e=>{
+    e.stopPropagation();
+    constellationOn = !constellationOn;
+    kConst.classList.toggle('on', constellationOn);
+    if(!constellationOn) commitConstellation();
+    flash(constellationOn ? 'Constellation ON · tap to place stars, double-tap to close'
+                          : 'Constellation off');
+  });
+  nLine._kids.appendChild(kConst);
+  // Draw the constellation from anchors onto both fctx and ctx. Called after
+  // each new anchor so the artist sees the shape build up in real time.
+  function paintConstellation(closed){
+    const g = fctx, v = ctx;
+    if(!g || !v || constAnchors.length < 1) return;
+    // A helper stamps a small star at (x,y) so the vertices read.
+    function stamp(g, x, y){
+      const r = Math.max(6, size * 0.6);
+      g.save(); g.globalCompositeOperation = 'lighter';
+      const cg = g.createRadialGradient(x, y, 0, x, y, r);
+      cg.addColorStop(0, hexA('#ffffff', opacity));
+      cg.addColorStop(0.4, hexA(color, opacity*0.85));
+      cg.addColorStop(1, hexA(color, 0));
+      g.fillStyle = cg; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+      // 4-point cross flare
+      for(const ang of [0, Math.PI/2]){
+        g.save(); g.translate(x,y); g.rotate(ang);
+        const grad = g.createLinearGradient(-r*1.8, 0, r*1.8, 0);
+        grad.addColorStop(0, hexA(color, 0));
+        grad.addColorStop(0.5, hexA('#ffffff', opacity));
+        grad.addColorStop(1, hexA(color, 0));
+        g.fillStyle = grad;
+        g.beginPath(); g.ellipse(0, 0, r*1.8, r*0.10, 0, 0, 7); g.fill();
+        g.restore();
+      }
+      g.restore();
+    }
+    // Connect anchors with a faint line (thin core + soft halo) in additive.
+    function line(g, a, b){
+      g.save(); g.globalCompositeOperation = 'lighter';
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      // Halo pass (wide, low alpha)
+      g.strokeStyle = hexA(color, opacity * 0.28);
+      g.lineWidth = Math.max(3, size * 0.9);
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+      // Core pass (thin, bright)
+      g.strokeStyle = hexA('#ffffff', Math.min(1, opacity * 0.85));
+      g.lineWidth = Math.max(1, size * 0.20);
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+      g.restore();
+    }
+    // Repaint from scratch: clear the frame's live overlay effect then redraw
+    // the whole constellation. Cheaper than trying to be incremental.
+    // (We paint to fctx = active layer; render() will pick it up.)
+    for(let i=1; i<constAnchors.length; i++){
+      line(g, constAnchors[i-1], constAnchors[i]);
+    }
+    if(closed && constAnchors.length >= 3){
+      line(g, constAnchors[constAnchors.length-1], constAnchors[0]);
+    }
+    for(const a of constAnchors) stamp(g, a.x, a.y);
+    bumpFrame(frames[cur]); render();
+  }
 
   // ---- COLOR node ----
   const nColor=makeNode({glyph:'@color',label:'Color',x:0,y:96}); nColor.dataset.right='1';
