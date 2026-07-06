@@ -140,7 +140,7 @@
   #studio{ position:fixed; inset:0; z-index:45; display:none; align-items:center; justify-content:center; padding:30px;
     background:rgba(10,0,10,.55); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
   #studio.show{ display:flex; }
-  #studio .card{ max-width:520px; width:100%; padding:32px 34px; border-radius:24px;
+  #studio .card{ max-width:660px; width:100%; max-height:calc(100vh - 42px); overflow:auto; padding:32px 34px; border-radius:24px;
     background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(20,0,14,.55));
     border:1px solid rgba(247,202,201,.30);
     box-shadow:0 24px 60px rgba(10,0,10,.55), inset 0 1px 0 rgba(255,240,243,.35);
@@ -156,10 +156,23 @@
   #studio .credits{ font-size:12px; line-height:1.9; color:var(--dim); letter-spacing:.04em; }
   #studio .credits a{ color:var(--text); text-decoration:none; border-bottom:1px dashed var(--rim); }
   #studio .credits b{ color:var(--text); font-weight:600; letter-spacing:.06em; }
-  #studio .close{ margin-top:22px; font:inherit; color:var(--text); background:transparent;
-    border:1px solid var(--rim); padding:8px 20px; border-radius:14px; cursor:pointer;
-    letter-spacing:.14em; text-transform:uppercase; font-size:11px; opacity:.85; }
-  #studio .close:hover{ opacity:1; background:rgba(247,202,201,.08); }
+  #studio .metaGrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin:14px 0;
+    text-align:left; }
+  #studio .metaGrid div{ padding:9px 10px; border-radius:14px; background:rgba(20,0,14,.24);
+    border:1px solid rgba(247,202,201,.18); color:var(--dim); font-size:11px; line-height:1.45; }
+  #studio .metaGrid b{ display:block; color:var(--text); font-size:12px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:2px; }
+  #studio .backup{ margin:14px 0; padding:11px 12px; border-radius:16px; text-align:left;
+    background:linear-gradient(160deg, rgba(187,0,55,.22), rgba(255,240,243,.07));
+    border:1px solid rgba(247,202,201,.24); color:var(--dim); font-size:12px; line-height:1.55; }
+  #studio details{ text-align:left; margin:8px 0; padding:10px 12px; border-radius:14px;
+    background:rgba(255,240,243,.06); border:1px solid rgba(247,202,201,.16); color:var(--dim); font-size:12px; line-height:1.55; }
+  #studio summary{ color:var(--text); cursor:pointer; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+  #studio .actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:18px; }
+  #studio .actions button, #studio .close{ font:inherit; color:var(--text); background:transparent;
+    border:1px solid var(--rim); padding:8px 14px; border-radius:14px; cursor:pointer;
+    letter-spacing:.12em; text-transform:uppercase; font-size:11px; opacity:.88; }
+  #studio .actions button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); }
+  #studio .actions button:hover, #studio .close:hover{ opacity:1; background:rgba(247,202,201,.08); }
 
   /* Project browser / recovery overlay. Same frosted language as Studio, but
      list-focused: thumbnails on the left, editable names, project actions,
@@ -517,14 +530,26 @@
     <div class="tag">The Glass Horizon · A Calm Studio</div>
     <p><b>InkFrame Studio</b> is a professional drawing &amp; animation studio.</p>
     <p>Free &amp; ad-free. No account. No data collected. No AI in your artwork.</p>
-    <p>Just you, your stylus, and a quiet place to create.</p>
+    <div class="metaGrid">
+      <div><b>Version</b>0.1.0 · Web/PWA build</div>
+      <div><b>Runtime</b>Offline-first browser + Android WebView</div>
+      <div><b>Android</b>API 35 target · tablet/stylus focused</div>
+      <div><b>License</b>MIT · free to use, modify, and share</div>
+    </div>
+    <div class="backup" id="studioBackupNote"><b>Backup reminder:</b> export a `.inkframe` archive before clearing browser storage, switching devices, or installing a new APK.</div>
+    <details><summary>Privacy</summary>InkFrame stores artwork, preferences, brush presets, and recovery snapshots locally on this device. The app has no account system, no ads, and no analytics in the bundled offline build.</details>
+    <details><summary>License</summary>Released under the MIT License. You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies, with the copyright/license notice included.</details>
     <div class="divider"></div>
     <div class="credits">
       Made by <b>Steven Owens</b> · <a href="https://x.com/soquarky" target="_blank" rel="noopener">@soquarky</a><br/>
       Built with <b>Arena.ai Agent Mode</b> · <a href="https://arena.ai" target="_blank" rel="noopener">arena.ai</a>
     </div>
-    <button class="close" type="button"
-      onclick="document.getElementById('studio').classList.remove('show')">Close</button>
+    <div class="actions">
+      <button id="studioBackup" class="primary" type="button">Backup archive</button>
+      <button id="studioProjects" type="button">Projects</button>
+      <button id="studioStart" type="button">Start screen</button>
+      <button class="close" type="button" onclick="document.getElementById('studio').classList.remove('show')">Close</button>
+    </div>
   </div>
 </div>
 
@@ -3923,6 +3948,7 @@
 
   const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave'), projectTemplates=$('projectTemplates');
   const startPanel=$('startPanel'), startTemplates=$('startTemplates'), startBlank=$('startBlank'), startImport=$('startImport'), startManage=$('startManage'), startSkip=$('startSkip'), startNever=$('startNever');
+  const studioBackup=$('studioBackup'), studioProjects=$('studioProjects'), studioStart=$('studioStart'), studioBackupNote=$('studioBackupNote');
   const projectClose=$('projectClose'), projectNew=$('projectNew'), projectSave=$('projectSave'), projectClearSave=$('projectClearSave');
   const projectExport=$('projectExport'), projectImport=$('projectImport'), projectImportFile=$('projectImportFile');
 
@@ -4238,20 +4264,23 @@
     if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
     projects.push(newProject()); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
   });
-  projectExport.addEventListener('click',async()=>{
+  async function exportArchiveUi(statusEl, after){
+    const status=statusEl || projectAutosave;
     try{
       const layers=archiveLayerCount();
-      projectAutosave.textContent='Preparing archive…';
+      if(status) status.textContent='Preparing archive…';
       const payload=await buildProjectArchive((done,total)=>{
-        projectAutosave.textContent=`Encoding archive layers · ${done} / ${total}`;
+        if(status) status.textContent=`Encoding archive layers · ${done} / ${total}`;
       });
-      projectAutosave.textContent='Packaging archive…';
+      if(status) status.textContent='Packaging archive…';
       const blob=new Blob([JSON.stringify(payload)], {type:'application/x-inkframe+json'});
       projectDownloadBlob(blob, `inkframe-${projectDateStamp()}.inkframe`);
       renderProjectPanel();
+      if(after) after();
       flash('Project archive exported · '+layers+' layer'+(layers===1?'':'s'));
-    }catch(e){ console.error('[project] export failed', e); renderProjectPanel(); flash('Archive export failed'); }
-  });
+    }catch(e){ console.error('[project] export failed', e); renderProjectPanel(); if(status) status.textContent='Archive export failed'; flash('Archive export failed'); }
+  }
+  projectExport.addEventListener('click',()=>exportArchiveUi(projectAutosave));
   projectImport.addEventListener('click',()=>projectImportFile.click());
   projectImportFile.addEventListener('change',async()=>{
     const file=projectImportFile.files && projectImportFile.files[0];
@@ -4281,6 +4310,11 @@
     if(!confirm('Clear the local recovery copy? Current open projects stay on screen.')) return;
     Promise.resolve(AUTOSAVE.clear && AUTOSAVE.clear()).then(()=>{ renderProjectPanel(); flash('Recovery copy cleared'); });
   });
+  if(studioBackup) studioBackup.addEventListener('click',()=>exportArchiveUi(studioBackupNote,()=>{
+    if(studioBackupNote) studioBackupNote.textContent='Backup archive downloaded. Keep it somewhere safe before clearing browser storage or moving devices.';
+  }));
+  if(studioProjects) studioProjects.addEventListener('click',()=>{ $('studio').classList.remove('show'); openProjectPanel(); });
+  if(studioStart) studioStart.addEventListener('click',()=>{ $('studio').classList.remove('show'); openStartPanel(true); });
 
   // refresh thumbnails each time the gallery opens
   nGallery._orb.addEventListener('click',()=>{ requestAnimationFrame(()=>{ if(nGallery.classList.contains('open')) rebuildGallery(); }); });

@@ -121,6 +121,9 @@ const projectTemplates = d.getElementById('projectTemplates');
 const startPanel = d.getElementById('startPanel');
 const startTemplates = d.getElementById('startTemplates');
 const startImport = d.getElementById('startImport');
+const studioBackup = d.getElementById('studioBackup');
+const studioProjects = d.getElementById('studioProjects');
+const studioStart = d.getElementById('studioStart');
 const stylusPanel = d.getElementById('stylusPanel');
 const textureSlider = d.getElementById('blabTex');
 const brushExport = d.getElementById('blabExport');
@@ -138,6 +141,7 @@ if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
 if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
 if (!projectTemplates) { console.error('❌ #projectTemplates (project templates) missing'); failed++; }
 if (!startPanel || !startTemplates || !startImport) { console.error('❌ first-launch Start panel/import path missing'); failed++; }
+if (!studioBackup || !studioProjects || !studioStart) { console.error('❌ Studio release/backup actions missing'); failed++; }
 if (startTemplateCount < 6) { console.error(`❌ start templates did not render (templates=${startTemplateCount})`); failed++; }
 if (templateCount < 6 || !customTemplate) { console.error(`❌ project templates did not render (templates=${templateCount}, custom=${!!customTemplate})`); failed++; }
 if (!projectButtonLabels.includes('Scale copy') || !projectButtonLabels.includes('Clear')) { console.error('❌ project duplicate/clear controls missing'); failed++; }
