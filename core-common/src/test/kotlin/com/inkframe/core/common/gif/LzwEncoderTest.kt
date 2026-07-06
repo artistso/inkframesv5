@@ -49,12 +49,12 @@ class LzwEncoderTest {
             if (code == clear) { reset(); prev = null; continue }
             val entry: IntArray = when {
                 code < dict.size -> dict[code]
-                prev != null -> prev!! + prev!![0] // KwKwK case
+                prev != null -> prev + prev[0] // KwKwK case
                 else -> error("Bad code")
             }
             for (v in entry) out.add(v.toByte())
             if (prev != null) {
-                dict.add(prev!! + entry[0])
+                dict.add(prev + entry[0])
                 if (dict.size == (1 shl codeSize) && codeSize < 12) codeSize++
             }
             prev = entry

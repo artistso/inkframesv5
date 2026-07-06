@@ -4,14 +4,14 @@ A self-contained web version of InkFrame for **previewing on a tablet** and for
 **building an APK/AAB via aistudioapk.com** (which runs `npm install && npm run build`).
 
 ## Try it right now (no build needed)
-Open `index.html` in any browser — phone, tablet, or desktop. Everything works offline;
+Open `web/index.html` in any browser — phone, tablet, or desktop. Everything works offline;
 it's a single file with no external dependencies.
 
 ## What's here
-- **`index.html`** — the entire app (HTML + CSS + JS in one file).
-- **`package.json`** — the build descriptor the APK builder reads (`npm run build` → Vite).
-- **`vite.config.js`** — relative-path build so assets load inside an APK wrapper.
-- **`metadata.json`** — app name / package id / orientation for the wrapper.
+- **`web/index.html`** — the entire app (HTML + CSS + JS in one file).
+- **`web/package.json`** — the build descriptor the APK builder reads (`npm run build` → Vite).
+- **`web/vite.config.js`** — relative-path build so assets load inside an APK wrapper.
+- **`web/metadata.json`** — app name / package id / orientation for the wrapper.
 
 ## Build it yourself
 ```bash

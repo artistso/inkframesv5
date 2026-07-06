@@ -58,9 +58,8 @@ data class Hsv(
 
     companion object {
         fun wrapHue(h: Float): Float {
-            var x = h % 360f
-            if (x < 0f) x += 360f
-            return x
+            val m = h % 360f
+            return if (m < 0f) m + 360f else m
         }
 
         /**

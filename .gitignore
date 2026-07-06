@@ -1,3 +1,32 @@
-node_modules/
-dist/
+# --- Android / Gradle ---
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+keystore.properties
+play-service-account.json
+*.jks
+*.keystore
+
+# --- Android Studio / IntelliJ ---
+.idea/
+*.ipr
+*.iws
+misc.xml
+deploymentTargetDropDown.xml
+render.experimental.xml
+
+# --- Kotlin / JVM ---
+.kotlin/
+
+# --- Web build (web/) ---
+web/node_modules/
+web/dist/
+
+# --- OS / misc ---
+.DS_Store
+Thumbs.db
 *.log
