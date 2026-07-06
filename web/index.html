@@ -1158,16 +1158,34 @@
     if(drawing) return;                  // a stroke already owns the canvas — ignore extra contacts (palm)
     if(!allow(e))return;
     // Constellation modal: taps drop anchors, doesn't paint a normal stroke.
-    // Selection modal (rectangle or lasso). Drag = build selection, up = commit.
+    // Selection modal (rectangle or lasso). Two paths from a pointerdown:
+    //   (a) drag INSIDE an existing selection  -> lift + move the pixels
+    //   (b) tap outside a selection             -> deselect
+    //   (c) drag on empty canvas                -> draw a new selection
     if(SEL.mode === 'rect' || SEL.mode === 'lasso'){
       e.preventDefault();
       const c = toC(e);
-      // Tap outside the current selection deselects; tap inside starts a
-      // fresh selection (matches Photoshop / Fresco convention).
+      if((SEL.rect || SEL.poly) && selInside(c.x, c.y)){
+        // Path (a): grab the selection for a move / copy.
+        SEL.floating = selLift();
+        if(SEL.floating){
+          SEL.moving = true;
+          SEL.moveOrigin = { x: c.x, y: c.y };
+          // Stop the ants; the outline redraws inside selDrawFloat now.
+          if(SEL.antsRAF){ cancelAnimationFrame(SEL.antsRAF); SEL.antsRAF = 0; }
+          // Repaint immediately so the source area shows as cleared (unless copy).
+          bumpFrame(frames[cur]); render();
+          selDrawFloat();
+          canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+        }
+        return;
+      }
       if((SEL.rect || SEL.poly) && !selInside(c.x, c.y)){
+        // Path (b): tap outside -> deselect.
         selClear();
         return;
       }
+      // Path (c): draw a fresh selection.
       SEL.dragging = true;
       SEL.start = { x: c.x, y: c.y };
       if(SEL.mode === 'lasso') SEL.dragPoly = [{ x:c.x, y:c.y }];
@@ -1238,6 +1256,16 @@
   });
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
+    // Selection-move: user grabbed an existing selection; update the floating
+    // pixels' offset and repaint.
+    if(SEL.moving && SEL.floating){
+      e.preventDefault();
+      const c = toC(e);
+      SEL.floating.dx = c.x - SEL.moveOrigin.x;
+      SEL.floating.dy = c.y - SEL.moveOrigin.y;
+      selDrawFloat();
+      return;
+    }
     // Selection-drag routing (rect or lasso). Paint the live outline to the
     // predicted overlay and short-circuit the normal stroke path.
     if(SEL.dragging && (SEL.mode === 'rect' || SEL.mode === 'lasso')){
@@ -1324,6 +1352,12 @@
       if(moved>3){ qsAnchor={x:penX,y:penY}; qsLastMove=now; clearTimeout(qsTimer);
         qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
   const up=e=>{
+    // Selection-move commit: pixels finish landing at their new location.
+    if(SEL.moving && SEL.floating){
+      SEL.moving = false;
+      selCommitMove();
+      return;
+    }
     // Selection commit: user released after dragging out a rect or lasso.
     if(SEL.dragging && (SEL.mode === 'rect' || SEL.mode === 'lasso')){
       SEL.dragging = false;
@@ -1867,8 +1901,12 @@
     }
     // Same treatment for Select mode -- brushes and selection are exclusive.
     if(typeof SEL !== 'undefined' && SEL.mode){
+      // If there was a floating (mid-move) selection, commit it so we don't
+      // leak pixels into oblivion.
+      if(SEL.moving && SEL.floating){ SEL.moving = false; selCommitMove(); }
       SEL.mode = null; selClear();
-      if(typeof kSelRect !== 'undefined') kSelRect.classList.remove('on');
+      if(typeof kSelRect  !== 'undefined') kSelRect .classList.remove('on');
+      if(typeof kSelLasso !== 'undefined') kSelLasso.classList.remove('on');
     }
     const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
     if(sd) sd.textContent=Math.round(size);
@@ -2146,13 +2184,19 @@
   // undo snap; committing / clearing a selection also deactivates it.
   const SEL = {
     mode: null,        // null | 'rect' | 'lasso'
-    dragging: false,
+    dragging: false,   // true while user is DRAWING a new selection
     start: null,       // {x,y} in doc coords, at pen-down
     rect: null,        // committed rectangle selection: {x,y,w,h} in doc coords
     poly: null,        // committed lasso selection: [{x,y}, ...] in doc coords
     dragPoly: null,    // in-progress lasso path (during dragging)
     antsRAF: 0,        // requestAnimationFrame handle for the marching ants
     antsPhase: 0,      // rolling offset (0..7) for the dash pattern
+    // Transform state -- populated when the user drags INSIDE an existing
+    // selection to move/copy the pixels.
+    floating: null,    // { canvas, ox, oy, dx, dy } -- the lifted pixels + offset
+    moving: false,     // true while transforming (mid-drag)
+    moveOrigin: null,  // {x,y} pointer at grab time
+    copyMode: false,   // if true, "Move" leaves the original pixels behind
   };
   function selInside(px, py){
     // px,py in doc coords -- is the point inside the committed selection?
@@ -2288,6 +2332,106 @@
     if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
     flash('Selection cleared');
   }
+  // Bounding box of the current selection in doc coords. Used to size the
+  // floating canvas when lifting pixels for a move.
+  function selBounds(){
+    if(SEL.rect) return { x:SEL.rect.x, y:SEL.rect.y, w:SEL.rect.w, h:SEL.rect.h };
+    if(SEL.poly && SEL.poly.length){
+      let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+      for(const p of SEL.poly){
+        if(p.x < minx) minx = p.x; if(p.x > maxx) maxx = p.x;
+        if(p.y < miny) miny = p.y; if(p.y > maxy) maxy = p.y;
+      }
+      const x = Math.floor(minx), y = Math.floor(miny);
+      const w = Math.ceil(maxx - x), h = Math.ceil(maxy - y);
+      return { x, y, w, h };
+    }
+    return null;
+  }
+  // Lift the selected pixels off the active layer into a floating canvas.
+  // If copyMode, leaves the source pixels alone; otherwise clears them.
+  // Called at the START of a transform drag. Returns null if no selection.
+  function selLift(){
+    if(!SEL.rect && !SEL.poly) return null;
+    const b = selBounds(); if(!b || b.w < 1 || b.h < 1) return null;
+    const L = frameActive(frames[cur]);
+    const src = L.canvas;
+    // Build the floating canvas: copy the selection region, clipped to the
+    // selection shape (rect is easy, poly needs a clipping path).
+    const flo = mkAt(b.w, b.h);
+    const fg  = flo.getContext('2d');
+    fg.save();
+    fg.beginPath();
+    if(SEL.rect){
+      fg.rect(0, 0, b.w, b.h);
+    } else {
+      fg.moveTo(SEL.poly[0].x - b.x, SEL.poly[0].y - b.y);
+      for(let i=1;i<SEL.poly.length;i++)
+        fg.lineTo(SEL.poly[i].x - b.x, SEL.poly[i].y - b.y);
+      fg.closePath();
+    }
+    fg.clip();
+    fg.drawImage(src, -b.x, -b.y);
+    fg.restore();
+    // Delete the source pixels unless we're in copy mode.
+    if(!SEL.copyMode){
+      const g = src.getContext('2d');
+      g.save();
+      g.beginPath();
+      if(SEL.rect){ g.rect(SEL.rect.x, SEL.rect.y, SEL.rect.w, SEL.rect.h); }
+      else {
+        g.moveTo(SEL.poly[0].x, SEL.poly[0].y);
+        for(let i=1;i<SEL.poly.length;i++) g.lineTo(SEL.poly[i].x, SEL.poly[i].y);
+        g.closePath();
+      }
+      g.clip();
+      g.clearRect(0, 0, src.width, src.height);
+      g.restore();
+    }
+    return { canvas: flo, ox: b.x, oy: b.y, dx: 0, dy: 0 };
+  }
+  // Paint the floating pixels + a ghost outline to the predicted overlay so
+  // the user sees where they'll land.
+  function selDrawFloat(){
+    if(!pctx || !SEL.floating){ return; }
+    const f = SEL.floating;
+    pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
+    pctx.save();
+    pctx.globalAlpha = 0.9;
+    pctx.drawImage(f.canvas, f.ox + f.dx, f.oy + f.dy);
+    pctx.restore();
+    // Overlay the marching-ants outline at the moved position too.
+    pctx.save();
+    pctx.translate(f.dx, f.dy);
+    pctx.lineWidth = 1.5;
+    pctx.setLineDash([6, 4]);
+    pctx.strokeStyle = 'rgba(0,0,0,.85)';
+    pctx.lineDashOffset = -SEL.antsPhase;
+    selTracePath(pctx); pctx.stroke();
+    pctx.strokeStyle = 'rgba(255,255,255,.95)';
+    pctx.lineDashOffset = -SEL.antsPhase + 5;
+    selTracePath(pctx); pctx.stroke();
+    pctx.restore();
+  }
+  // Commit the floating pixels back onto the active layer at their new
+  // position; also translate the SEL.rect / SEL.poly so the marching-ants
+  // outline tracks the pixels afterwards.
+  function selCommitMove(){
+    if(!SEL.floating) return;
+    pushU(snap());
+    const f = SEL.floating;
+    const L = frameActive(frames[cur]);
+    L.canvas.getContext('2d').drawImage(f.canvas, f.ox + f.dx, f.oy + f.dy);
+    // Slide the selection outline to follow the pixels.
+    if(SEL.rect){ SEL.rect.x += f.dx; SEL.rect.y += f.dy; }
+    if(SEL.poly){ for(const p of SEL.poly){ p.x += f.dx; p.y += f.dy; } }
+    SEL.floating = null; SEL.moving = false; SEL.moveOrigin = null;
+    bumpFrame(frames[cur]);
+    render();
+    if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
+    // Restart the ants animation at the new position.
+    if(!SEL.antsRAF) SEL.antsRAF = requestAnimationFrame(selDrawAnts);
+  }
 
   // ---- Select node ----
   // Small orb on the bottom rail (near Frames) so it's always reachable.
@@ -2318,6 +2462,14 @@
   const kSelLasso = selAct('@lasso', 'Lasso', (k)=>{
     setSelMode('lasso', k);
     flash(SEL.mode ? 'Lasso · draw freehand, lift to close' : 'Select off');
+  });
+  // Copy toggle -- when ON, dragging INSIDE a selection duplicates the
+  // pixels instead of moving them. Off by default (matches most editors).
+  const kSelCopy = selAct('@layerDup', 'Copy', (k)=>{
+    SEL.copyMode = !SEL.copyMode;
+    k.classList.toggle('on', SEL.copyMode);
+    flash(SEL.copyMode ? 'Copy on · drag selection to duplicate'
+                       : 'Move mode · drag selection to relocate');
   });
   selAct('@clear',  'Delete',   ()=>selDelete());
   selAct('@qshape', 'Deselect', ()=>{ selClear(); flash('Deselected'); });
