@@ -85,6 +85,23 @@
   #frameGlass{ position:relative; padding:14px; border-radius:30px; }
   canvas#c{ display:block; background:#fff0f3; border-radius:16px; touch-action:none;
     box-shadow:0 0 0 1px rgba(20,0,14,.4), 0 18px 60px rgba(20,0,14,.6); }
+  /* Monopoly-board timeline: frame slots wrap the canvas perimeter and scale
+     with the canvas element. Existing frames are numbered; empty placeholders
+     invite adding frames up to MAX_FRAMES. */
+  #frameBoard{ position:absolute; inset:0; z-index:13; pointer-events:none; overflow:visible; }
+  .frameSlot{ position:absolute; width:18px; height:18px; transform:translate(-50%,-50%); border-radius:5px;
+    display:flex; align-items:center; justify-content:center; pointer-events:auto; touch-action:none;
+    font:800 8px/1 var(--font-ui); color:var(--text); text-shadow:var(--label-shadow);
+    background:rgba(255,240,243,.10); border:1px solid rgba(247,202,201,.26);
+    box-shadow:0 2px 8px rgba(10,0,10,.28), inset 0 1px 0 rgba(255,255,255,.16);
+    transition:transform .12s, background .16s, box-shadow .16s, opacity .16s; }
+  .frameSlot.filled{ background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(187,0,55,.18)); }
+  .frameSlot.empty{ opacity:.42; border-style:dashed; }
+  .frameSlot.next{ opacity:.88; background:rgba(247,202,201,.16); }
+  .frameSlot.cur{ transform:translate(-50%,-50%) scale(1.35); background:linear-gradient(160deg,var(--blush),var(--accent)); color:#fff;
+    box-shadow:0 0 14px var(--accent), inset 0 1px 0 var(--rim); }
+  .frameSlot.sel{ transform:translate(-50%,-50%) scale(1.18); box-shadow:0 0 0 2px #fff, 0 0 14px var(--accent); }
+  .frameSlot.held::after{ content:""; position:absolute; right:-2px; top:-2px; width:6px; height:6px; border-radius:50%; background:var(--rose); box-shadow:0 0 6px var(--accent); }
   body.zen #title{ opacity:0; }
   body.zen #frameGlass{ padding:8px; border-radius:18px; }
 
@@ -554,6 +571,7 @@
 <div id="bg"></div><div id="rays"></div><div id="grain"></div><div id="vignette"></div>
 <div id="title"><h1>InkFrame</h1><div class="sub">The Glass Horizon</div></div>
 <div id="stage"><div id="frameGlass" class="glass">
+  <div id="frameBoard" aria-label="Perimeter frame board"></div>
   <canvas id="c" width="1024" height="768"></canvas>
   <!-- Predicted-stroke overlay. Same size as #c, absolutely stacked on top,
        transparent. On pointermove we paint a fast/lightweight ink trail from
@@ -778,6 +796,7 @@
 
   const W0=1024,H0=768;          // default document size
   let W=W0,H=H0;                  // current document size (mutable: side handles reshape it)
+  let timelineReady=false;         // avoids early perimeter-board builds before timeline state exists
   const canvas=document.getElementById('c'), ctx=canvas.getContext('2d',{willReadFrequently:true});
   // Predicted-stroke overlay -- see the <canvas id="cp"> comment for intent.
   // The overlay's pixel size is kept in lockstep with the main canvas by the
@@ -1082,6 +1101,7 @@
 
   // ===== Gallery: a few independent projects, each with its own layers/timeline/size =====
   const MAX_PROJECTS=4;   // keep it focused; deeper archives live in a future Gallery view
+  const MAX_FRAMES=120;   // hard cap so tablet memory stays bounded; compile longer videos from multiple projects
   // Paper colour is per-project so neon-on-black work lives happily beside
   // classic cream-paper sketches. Default matches the original --blush so
   // existing projects look unchanged after this refactor.
@@ -1098,7 +1118,7 @@
     { id:'neon',    name:'Neon loop',     w:1280, h:720,  fps:12, frames:16, paper:'#0a0a10', desc:'dark paper · 16 frames' },
   ];
   function projectFromTemplate(t){
-    const w=t.w||W0, h=t.h||H0, n=Math.max(1, Math.min(240, t.frames||1));
+    const w=t.w||W0, h=t.h||H0, n=Math.max(1, Math.min(MAX_FRAMES, t.frames||1));
     const frames=Array.from({length:n},()=>newFrame(w,h));
     return { frames, holds:frames.map(()=>1), cur:0, undo:[], redo:[], w, h,
       fps:t.fps||12, name:t.name||'Canvas', paper:t.paper||DEFAULT_PAPER };
@@ -3794,15 +3814,49 @@
     try{ g.drawImage(frameComposite(fr),0,0,t.width,t.height); }catch(_){ }
     fr._thumb=t.toDataURL(); fr._thumbSig=sig; return fr._thumb;
   }
+  function boardSlotCount(){ return Math.min(MAX_FRAMES, Math.max(12, Math.ceil((frames.length+1)/12)*12)); }
+  function buildFrameBoard(){
+    if(!timelineReady) return;
+    const board=document.getElementById('frameBoard'), fg=document.getElementById('frameGlass');
+    if(!board||!fg) return;
+    board.innerHTML='';
+    const w=fg.clientWidth||1, h=fg.clientHeight||1, pad=14;
+    const sideW=Math.max(1,w-pad*2), sideH=Math.max(1,h-pad*2), per=sideW*2+sideH*2;
+    const slots=boardSlotCount();
+    for(let i=0;i<slots;i++){
+      const d=(i+.5)/slots*per; let x,y;
+      if(d<sideW){ x=pad+d; y=h-pad; }
+      else if(d<sideW+sideH){ x=w-pad; y=h-pad-(d-sideW); }
+      else if(d<sideW*2+sideH){ x=w-pad-(d-sideW-sideH); y=pad; }
+      else { x=pad; y=pad+(d-sideW*2-sideH); }
+      const cell=document.createElement('div'); cell.className='frameSlot'; cell.style.left=x+'px'; cell.style.top=y+'px'; cell.dataset.frame=String(i);
+      if(i<frames.length){ cell.classList.add('filled'); if(i===cur)cell.classList.add('cur'); if(selectedFrames.has(i))cell.classList.add('sel'); if(hOf(i)>1)cell.classList.add('held'); cell.textContent=String(i+1); cell.title='Frame '+(i+1)+' · hold '+hOf(i); }
+      else { cell.classList.add('empty'); if(i===frames.length){ cell.classList.add('next'); cell.textContent='+'; } cell.title='Add frame '+(i+1); }
+      let lp=0,longed=false;
+      cell.addEventListener('pointerdown',e=>{ e.stopPropagation(); longed=false; clearTimeout(lp); if(i<frames.length) lp=setTimeout(()=>{longed=true;toggleFrameSelection(i);},520); });
+      ['pointerup','pointercancel','pointerleave'].forEach(t=>cell.addEventListener(t,()=>clearTimeout(lp)));
+      cell.addEventListener('click',e=>{ e.stopPropagation(); if(longed)return; if(i<frames.length){ if(selectedFrames.size) toggleFrameSelection(i); else { setCur(i); render(); refreshFrames(); } } else appendFramesToSlot(i); });
+      board.appendChild(cell);
+    }
+  }
   function refreshCurrentThumb(){
     const k=framesBranch && framesBranch._kids && framesBranch._kids.querySelector(`[data-frame="${cur}"] .frameThumb`);
     if(k) k.style.backgroundImage=`url(${frameThumbData(frames[cur])})`;
   }
+  function frameRoom(){ return Math.max(0, MAX_FRAMES-frames.length); }
+  function capFrameCount(requested, label){
+    const room=frameRoom();
+    if(room<=0){ flash(`Frame cap ${MAX_FRAMES} reached · start another project`); return 0; }
+    if(requested>room) flash(`${label||'Frames'} truncated to ${room} · cap ${MAX_FRAMES}`);
+    return Math.max(0,Math.min(requested,room));
+  }
   function duplicateFrameSequence(){
     const idxs=selectedOrCurrent(); if(!idxs.length) return;
-    const insertAt=idxs[idxs.length-1]+1;
-    const copies=idxs.map(i=>copyFrame(frames[i]));
-    const holdCopies=idxs.map(i=>hOf(i));
+    const count=capFrameCount(idxs.length,'Duplicate'); if(!count) return;
+    const use=idxs.slice(0,count);
+    const insertAt=use[use.length-1]+1;
+    const copies=use.map(i=>copyFrame(frames[i]));
+    const holdCopies=use.map(i=>hOf(i));
     frames.splice(insertAt,0,...copies); holds.splice(insertAt,0,...holdCopies);
     selectedFrames.clear(); copies.forEach((_,j)=>selectedFrames.add(insertAt+j));
     setCur(insertAt); render(); refreshFrames(); flash(`Duplicated ${copies.length} frame${copies.length===1?'':'s'}`);
@@ -3840,20 +3894,28 @@
     return 'timeline';
   }
   function insertBlankFrames(count){
-    count=Math.max(1,Math.min(48,count|0));
+    count=capFrameCount(Math.max(1,Math.min(48,count|0)),'Insert'); if(!count) return;
     selectedFrames.clear();
     const blanks=Array.from({length:count},()=>newFrame(W,H));
     const blankHolds=Array.from({length:count},()=>1);
     frames.splice(cur+1,0,...blanks); holds.splice(cur+1,0,...blankHolds);
     setCur(cur+1); render(); refreshFrames(); flash(`Inserted ${count} blank frame${count===1?'':'s'}`);
   }
+  function appendFramesToSlot(slot){
+    if(slot<frames.length){ setCur(slot); render(); refreshFrames(); return; }
+    const count=capFrameCount(slot-frames.length+1,'Placeholder add'); if(!count) return;
+    const start=frames.length;
+    for(let i=0;i<count;i++){ frames.push(newFrame(W,H)); holds.push(1); }
+    selectedFrames.clear(); setCur(start); render(); refreshFrames(); flash(`Added through frame ${frames.length}`);
+  }
   function pingPongSelection(){
     const seq=selectedFrames.size?selectedSorted():frames.map((_,i)=>i);
     if(seq.length<2){ flash('Need 2+ frames for ping-pong'); return; }
     // Append a reversed interior after the range so the loop reads A-B-C-B-A...
     // without holding the far endpoint twice. For a 2-frame cycle, append A.
-    const tail=(seq.length===2?[seq[0]]:seq.slice(1,-1).reverse());
+    let tail=(seq.length===2?[seq[0]]:seq.slice(1,-1).reverse());
     if(!tail.length){ flash('Nothing to ping-pong'); return; }
+    tail=tail.slice(0,capFrameCount(tail.length,'Ping-pong')); if(!tail.length) return;
     const insertAt=seq[seq.length-1]+1;
     const copies=tail.map(i=>copyFrame(frames[i]));
     const holdCopies=tail.map(i=>hOf(i));
@@ -3903,7 +3965,10 @@
       wrap.appendChild(k); });
     if(framesBranch.classList.contains('open')) framesBranch._relayout();
     if(typeof buildRail==='function') buildRail();
+    if(typeof buildFrameBoard==='function') buildFrameBoard();
     if(typeof refreshHold==='function') refreshHold(); }
+
+  timelineReady=true; buildFrameBoard();
 
   // ---- LAYERS node ----
   // Per-frame layer stack in the Glass Horizon design language. The orb sits
@@ -4442,7 +4507,7 @@
     const restored=[];
     for(const P of list){
       const w=Math.max(1,P.w||W0), h=Math.max(1,P.h||H0);
-      const srcFrames=Array.isArray(P.frames) && P.frames.length ? P.frames : [{active:0,layers:[]}];
+      const srcFrames=(Array.isArray(P.frames) && P.frames.length ? P.frames : [{active:0,layers:[]}]).slice(0,MAX_FRAMES);
       const framesOut=[];
       for(const item of srcFrames){
         const srcLayers=Array.isArray(item.layers) && item.layers.length ? item.layers : [{name:'Layer 1', png:item.png||item.dataUrl||item.data}];
@@ -4530,7 +4595,7 @@
       const inp=document.createElement('input'); inp.type=type; inp.value=value; if(min!=null) inp.min=min; if(max!=null) inp.max=max; l.appendChild(inp); cg.appendChild(l); return inp; };
     const wIn=field('Width','number',W||W0,TEMPLATE_MIN,TEMPLATE_MAX);
     const hIn=field('Height','number',H||H0,TEMPLATE_MIN,TEMPLATE_MAX);
-    const fIn=field('Frames','number',12,1,120);
+    const fIn=field('Frames','number',12,1,MAX_FRAMES);
     const fpsIn=field('FPS','number',fps||12,1,60);
     const pIn=field('Paper','color',paper(),null,null);
     const make=document.createElement('button'); make.type='button'; make.textContent='Create'; make.className='projBtn primary'; make.disabled=projects.length>=MAX_PROJECTS;
@@ -4538,7 +4603,7 @@
       if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
       const w=clampNum(wIn.value,TEMPLATE_MIN,TEMPLATE_MAX,W0), h=clampNum(hIn.value,TEMPLATE_MIN,TEMPLATE_MAX,H0);
       addProjectFromTemplate({ name:`Custom ${w}×${h}`, w, h,
-        frames:clampNum(fIn.value,1,120,1), fps:clampNum(fpsIn.value,1,60,12), paper:pIn.value||DEFAULT_PAPER,
+        frames:clampNum(fIn.value,1,MAX_FRAMES,1), fps:clampNum(fpsIn.value,1,60,12), paper:pIn.value||DEFAULT_PAPER,
         desc:'custom' });
     });
     cg.appendChild(make); projectTemplates.appendChild(custom);
@@ -4798,6 +4863,7 @@
   function clampCanvas(){ const f=fitScale(); cScale=Math.max(f*0.35, Math.min(cScale, f*2.2)); }
   function applyCanvas(){
     canvas.style.width=Math.round(W*cScale)+'px'; canvas.style.height=Math.round(H*cScale)+'px';
+    if(timelineReady && typeof buildFrameBoard==='function') requestAnimationFrame(buildFrameBoard);
   }
   cScale=fitScale(); applyCanvas();
 
