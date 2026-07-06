@@ -15,6 +15,10 @@
 <title>InkFrame · The Glass Horizon</title>
 <style>
   :root{
+    --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-display: "Cinzel", Georgia, "Times New Roman", serif;
+    --font-mono: "SF Mono", "Roboto Mono", ui-monospace, Menlo, Consolas, monospace;
+    --btn-pad-y:9px; --btn-pad-x:14px; --btn-radius:14px; --btn-min-h:36px;
     --accent:#bb0037; --accent-deep:#880057; --rose:#f7cac9; --blush:#fff0f3; --violet:#2a001a;
     --glass: rgba(247,202,201,0.12);
     --glass-strong: rgba(247,202,201,0.20);
@@ -32,8 +36,9 @@
      -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
      -webkit-touch-callout:none; -webkit-user-drag:none; }
   html,body{ margin:0; height:100%; overflow:hidden; touch-action:none; overscroll-behavior:none;
-    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); font-weight:500;
-    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+    font-family:var(--font-ui); color:var(--text); font-weight:520; line-height:1.45;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; font-kerning:normal;
+    font-feature-settings:"kern" 1, "liga" 1, "calt" 1; }
   /* Editable fields (colour picker, any future rename inputs) get selection back. */
   input,textarea,[contenteditable]{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 
@@ -51,11 +56,19 @@
     backdrop-filter:blur(20px) saturate(150%); -webkit-backdrop-filter:blur(20px) saturate(150%);
     border:1px solid var(--stroke); box-shadow:var(--shadow), inset 0 1px 0 var(--rim), inset 0 0 30px rgba(255,240,243,.06); }
 
+  button{ font-family:var(--font-ui); font-weight:750; line-height:1.1; }
+  #studio .actions button, #studio .close, #projectPanel .footer button, .projBtn,
+  #startActions button, #expo button, #blab button, #stylusPanel button, .customTemplate button{
+    min-height:var(--btn-min-h); padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius);
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    letter-spacing:.08em; text-transform:uppercase; white-space:nowrap;
+    touch-action:manipulation; }
+
   #title{ position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:5; text-align:center; pointer-events:none; transition:opacity .4s; }
-  #title h1{ margin:0; font-family:"Cinzel",Georgia,serif; font-weight:600; font-size:20px; letter-spacing:.26em; text-transform:uppercase;
+  #title h1{ margin:0; font-family:var(--font-display); font-weight:700; font-size:20px; letter-spacing:.22em; text-transform:uppercase;
     background:linear-gradient(180deg,#fff,var(--rose) 55%,var(--accent)); -webkit-background-clip:text; background-clip:text; color:transparent;
     text-shadow:0 2px 16px rgba(255,255,255,.25); }
-  #title .sub{ font-size:9px; letter-spacing:.42em; text-transform:uppercase; color:var(--dim); opacity:.75; margin-top:3px; }
+  #title .sub{ font-size:10px; letter-spacing:.28em; text-transform:uppercase; color:var(--dim); opacity:.86; margin-top:3px; font-weight:700; text-shadow:var(--label-shadow); }
 
   /* The Lens — a live glass nib cursor floating at the pen tip */
   #lens{ position:fixed; left:0; top:0; width:0; height:0; z-index:23; pointer-events:none;
@@ -93,9 +106,9 @@
     filter:drop-shadow(0 1px 2px rgba(0,0,0,.55)); vector-effect:non-scaling-stroke; }
   .glyph svg .fill{ fill:#fff; stroke:none; }
   .glyph svg .soft{ opacity:.5; }
-  .orb .lbl{ position:absolute; top:62px; left:50%; transform:translateX(-50%); font-size:9px; letter-spacing:.16em;
+  .orb .lbl{ position:absolute; top:62px; left:50%; transform:translateX(-50%); font-size:10px; letter-spacing:.12em;
     text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; transition:opacity .2s;
-    text-shadow:0 1px 3px rgba(0,0,0,.6); }
+    font-weight:750; text-shadow:var(--label-shadow); }
   .node.open > .orb .lbl{ opacity:0; }
   .node.dragging > .orb, .node.dragging .orb{ box-shadow:var(--shadow), 0 0 26px rgba(255,255,255,.4), inset 0 1px 0 var(--rim); }
   .node.dragging{ --glass:rgba(247,202,201,0.30); --glass-strong:rgba(247,202,201,0.42); }
@@ -115,8 +128,8 @@
     text-shadow:0 1px 3px rgba(0,0,0,.6); }
   .kid.on{ background:linear-gradient(160deg, var(--accent), var(--accent-deep)) !important; border-color:var(--rim) !important;
     box-shadow:0 0 18px rgba(187,0,55,.6), inset 0 1px 0 var(--rim) !important; }
-  .kid .sub{ position:absolute; top:50px; left:50%; transform:translateX(-50%); font-size:8px; letter-spacing:.12em;
-    text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; text-shadow:var(--label-shadow); }
+  .kid .sub{ position:absolute; top:50px; left:50%; transform:translateX(-50%); font-size:9px; letter-spacing:.10em;
+    text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; font-weight:750; text-shadow:var(--label-shadow); }
   .kid.frameKid{ overflow:hidden; border-radius:50%; }
   .kid.frameKid .frameThumb{ position:absolute; inset:3px; border-radius:50%; background-size:cover; background-position:center;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.22); filter:saturate(1.04); }
@@ -195,8 +208,8 @@
   #studio summary{ color:var(--text); cursor:pointer; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
   #studio .actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:18px; }
   #studio .actions button, #studio .close{ font:inherit; color:var(--text); background:transparent;
-    border:1px solid var(--rim); padding:8px 14px; border-radius:14px; cursor:pointer;
-    letter-spacing:.12em; text-transform:uppercase; font-size:11px; opacity:.88; }
+    border:1px solid var(--rim); padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius); cursor:pointer;
+    letter-spacing:.08em; text-transform:uppercase; font-size:12px; opacity:.92; }
   #studio .actions button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); }
   #studio .actions button:hover, #studio .close:hover{ opacity:1; background:rgba(247,202,201,.08); }
 
@@ -223,13 +236,13 @@
   #projectTemplates{ margin-top:12px; padding-top:10px; border-top:1px solid rgba(247,202,201,.18); }
   #projectTemplates .templateHdr{ color:var(--dim); font-size:10px; letter-spacing:.18em; text-transform:uppercase; margin:0 0 8px; }
   #projectTemplates .templateGrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; }
-  .templateBtn{ text-align:left; min-height:64px; border-radius:14px; padding:8px 10px;
+  .templateBtn{ text-align:left; min-height:66px; border-radius:16px; padding:10px 12px;
     border:1px solid rgba(247,202,201,.22); background:rgba(255,240,243,.06); color:var(--text);
     cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,240,243,.10);
-    display:grid; grid-template-columns:48px 1fr; gap:9px; align-items:center; }
+    display:grid; grid-template-columns:48px 1fr; gap:10px; align-items:center; }
   .templateBtn:hover{ background:rgba(247,202,201,.12); border-color:var(--rim); }
-  .templateBtn b{ display:block; font-size:12px; letter-spacing:.08em; margin-bottom:3px; }
-  .templateBtn span{ display:block; color:var(--dim); font-size:10px; line-height:1.35; }
+  .templateBtn b{ display:block; font-size:13px; letter-spacing:.055em; margin-bottom:3px; font-weight:800; }
+  .templateBtn span{ display:block; color:var(--dim); font-size:11px; line-height:1.4; font-weight:620; }
   .tplPreview{ width:44px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:10px;
     background:rgba(10,0,10,.28); border:1px solid rgba(247,202,201,.18); position:relative; overflow:hidden; }
   .tplCanvas{ border-radius:5px; box-shadow:0 0 0 1px rgba(20,0,14,.45), inset 0 1px 0 rgba(255,255,255,.22); }
@@ -238,10 +251,10 @@
   .customTemplate{ margin-top:10px; padding:10px; border-radius:16px; background:rgba(20,0,14,.20); border:1px solid rgba(247,202,201,.18); }
   .customTemplate .customGrid{ display:grid; grid-template-columns:repeat(5, minmax(72px, 1fr)) auto; gap:8px; align-items:end; }
   .customTemplate label{ display:grid; gap:4px; color:var(--dim); font-size:10px; letter-spacing:.10em; text-transform:uppercase; }
-  .customTemplate input{ width:100%; height:32px; border-radius:10px; border:1px solid rgba(247,202,201,.24);
-    background:rgba(10,0,10,.30); color:var(--text); padding:0 8px; font:inherit; outline:none; }
+  .customTemplate input{ width:100%; min-height:36px; border-radius:10px; border:1px solid rgba(247,202,201,.24);
+    background:rgba(10,0,10,.30); color:var(--text); padding:0 10px; font:inherit; font-weight:650; outline:none; }
   .customTemplate input[type=color]{ padding:2px; }
-  .customTemplate button{ height:32px; white-space:nowrap; }
+  .customTemplate button{ min-height:36px; white-space:nowrap; }
 
   /* First-launch Start overlay. It reuses the same template cards as Gallery
      Manage, but replaces the initial blank canvas instead of consuming a slot. */
@@ -260,8 +273,8 @@
   #startTemplates{ display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:9px; }
   #startActions{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:16px; }
   #startActions button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06);
-    border:1px solid rgba(247,202,201,.30); padding:9px 12px; border-radius:13px; cursor:pointer;
-    font-size:11px; letter-spacing:.10em; text-transform:uppercase; }
+    border:1px solid rgba(247,202,201,.30); padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius); cursor:pointer;
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
   #startActions button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); border-color:var(--rim); }
   .projRow{ display:grid; grid-template-columns:76px 1fr auto; gap:12px; align-items:center;
     padding:10px; border-radius:18px; background:rgba(255,240,243,.07);
@@ -271,14 +284,14 @@
   .projThumb{ width:70px; height:52px; border-radius:12px; background-size:cover; background-position:center;
     border:1px solid rgba(247,202,201,.28); box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 5px 16px rgba(10,0,10,.35); }
   .projMain{ min-width:0; }
-  .projMain input{ width:100%; height:32px; border-radius:11px; border:1px solid rgba(247,202,201,.26);
-    background:rgba(10,0,10,.30); color:var(--text); padding:0 10px; font:inherit; font-size:14px; outline:none; }
+  .projMain input{ width:100%; min-height:38px; border-radius:12px; border:1px solid rgba(247,202,201,.26);
+    background:rgba(10,0,10,.30); color:var(--text); padding:0 12px; font:inherit; font-size:14px; font-weight:680; outline:none; }
   .projMain input:focus{ border-color:var(--rim); box-shadow:0 0 0 2px rgba(247,202,201,.12); }
   .projStats{ margin-top:5px; color:var(--dim); font-size:11px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .projBtns{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:340px; }
   .projBtn, #projectPanel .footer button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06);
-    border:1px solid rgba(247,202,201,.30); padding:7px 10px; border-radius:12px; cursor:pointer;
-    opacity:.88; font-size:11px; letter-spacing:.10em; text-transform:uppercase; }
+    border:1px solid rgba(247,202,201,.30); padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius); cursor:pointer;
+    opacity:.92; font-size:12px; letter-spacing:.075em; text-transform:uppercase; }
   .projBtn:hover, #projectPanel .footer button:hover{ opacity:1; background:rgba(247,202,201,.12); }
   .projBtn.danger{ border-color:rgba(255,120,160,.42); color:#ffd9e2; }
   #projectPanel .footer{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:16px; }
@@ -311,7 +324,9 @@
     #blab .row{ margin:12px 0; }
     #blab input[type=range]{ height:18px; }
     #blab input[type=range]::-webkit-slider-thumb{ width:26px; height:26px; }
-    .projBtn, #projectPanel .footer button, .templateBtn, #startActions button{ padding:10px 12px; font-size:12px; }
+    .projBtn, #projectPanel .footer button, .templateBtn, #startActions button, #studio .actions button, #studio .close, #blab button{
+      min-height:42px; padding:11px 14px; font-size:12.5px; }
+    .projMain input, .customTemplate input{ min-height:42px; }
   }
 
   /* Stylus diagnostics panel — small, live, and deliberately boring: artists
@@ -325,7 +340,7 @@
   #stylusPanel .hdr{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
   #stylusPanel b{ letter-spacing:.14em; text-transform:uppercase; font-size:12px; color:var(--blush); }
   #stylusPanel button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06); border:1px solid rgba(247,202,201,.30);
-    padding:6px 10px; border-radius:11px; cursor:pointer; font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+    padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius); cursor:pointer; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
   #stylusReadout{ font-size:12px; line-height:1.65; color:var(--dim); font-variant-numeric:tabular-nums; }
   #stylusReadout span{ color:var(--text); }
 
@@ -459,7 +474,7 @@
   #expo .fill{ position:absolute; inset:0 auto 0 0; width:0%; border-radius:6px;
     background:linear-gradient(90deg, var(--rose), var(--accent)); transition:width .18s ease; }
   #expo button{ font:inherit; color:#fff; background:transparent; border:1px solid var(--stroke);
-    padding:6px 14px; border-radius:14px; cursor:pointer; opacity:.85; }
+    padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius); cursor:pointer; opacity:.9; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
   #expo button:hover{ opacity:1; }
 
   /* Brush Lab -- floating panel opened via long-press on a brush kid. */
@@ -506,8 +521,8 @@
   .brushPreset .mini{ display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
   #blab .btns{ display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap; }
   #blab button{ font:inherit; color:#fff; background:transparent; border:1px solid var(--stroke);
-    padding:6px 14px; border-radius:12px; cursor:pointer; opacity:.85; font-size:12px;
-    letter-spacing:.08em; text-transform:uppercase; }
+    padding:var(--btn-pad-y) var(--btn-pad-x); border-radius:var(--btn-radius); cursor:pointer; opacity:.9; font-size:12px;
+    letter-spacing:.075em; text-transform:uppercase; }
   #blab button:hover{ opacity:1; }
   #blab button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent));
     border-color:var(--rim); }

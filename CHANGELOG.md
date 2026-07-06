@@ -8,7 +8,7 @@ semantic versioning once it reaches a public release.
 
 ### Web build — tablet, stylus, brush texture, and gallery perf
 - **Tablet-first coarse-pointer polish.** Touch devices get larger orbs, kid buttons, rail controls, slider thumbs, project buttons, and a wider Brush Lab without changing desktop density.
-- **Readable text mode.** Actions ▸ Text toggles high-contrast label capsules, stronger shadows, heavier weights, and brighter secondary text for glare/low-vision tablet use; the preference persists.
+- **Readable text mode + typography pass.** Actions ▸ Text toggles high-contrast label capsules, stronger shadows, heavier weights, and brighter secondary text for glare/low-vision tablet use; the base UI font stack, label weights, letter spacing, button padding, touch targets, and input heights were tuned for better tablet readability.
 - **Frost glass brush.** A new frosted-glass brush paints a milky translucent body, icy rim highlights, tint wash, and crystalline scratch texture; Brush Lab texture controls how heavy the ice grain feels.
 - **Timeline power pass.** The frame List branch now shows live thumbnails, supports long-press multi-select, highlights selected ranges on the physical rail, and adds batch actions for duplicate sequence, delete, clear, reverse, ping-pong loop generation, insert +4 blanks, hold +/−, on-twos, selected/loop GIF + video export, select all, and clear selection.
 - **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor/frost ship with toothy defaults; neon/star/glow stay smooth.
