@@ -605,8 +605,13 @@
       bumpFrame(fr); refreshFctx();
     }
   }
-  const pushU=s=>{undoStack.push(s);if(undoStack.length>40)undoStack.shift();redoStack.length=0;refreshActions();};
-  const setCur=i=>{cur=i;projects[pi].cur=i;refreshFctx();
+  // NOTE: `let` (not `const`) because hookAutosave() below wraps these with a
+  // debounced-save shim after boot. `const` here throws under "use strict"
+  // (TypeError: assignment to constant variable) and bricks the whole IIFE,
+  // which was presenting as a blank pink screen on cold boot -- diagnosed
+  // 2026-07 after the module extraction happened to surface it.
+  let pushU=s=>{undoStack.push(s);if(undoStack.length>40)undoStack.shift();redoStack.length=0;refreshActions();};
+  let setCur=i=>{cur=i;projects[pi].cur=i;refreshFctx();
     if(typeof refreshLayers==='function') refreshLayers();
   };
   const hOf=i=>Math.max(1,Math.round((holds&&holds[i])||1));   // per-frame hold (ticks); declared early to avoid TDZ
@@ -2681,14 +2686,20 @@
   });
 
   // Wire the autosave debounce into every place a project actually mutates.
-  // These wrappers preserve the original callers' return values.
-  (function hookAutosave(){
+  // Both wrappers preserve the original callers' return values. `pushU` and
+  // `setCur` MUST be declared with `let` upstream -- if either was `const`
+  // this block would throw and brick the app IIFE (blank pink screen).
+  // Guard with a try/catch so a similar mistake in the future degrades to
+  // "autosave-on-stroke stops working" instead of "app never boots".
+  try {
     const origPushU=pushU, origSetCur=setCur;
-    // pushU fires at the tail of every accepted stroke, undo/redo, and clear — perfect trigger.
     pushU = function(s){ const r=origPushU(s); AUTOSAVE.schedule(); return r; };
-    // setCur runs on frame-change and prev/next scrubs; cheap and worth persisting.
     setCur = function(i){ const r=origSetCur(i); AUTOSAVE.schedule(); return r; };
-  })();
+  } catch(e){
+    console.warn('[autosave] cannot wrap pushU/setCur -- stroke-triggered saves disabled', e);
+    // The visibilitychange / pagehide / beforeunload flushes still work, so we
+    // lose per-stroke autosave but not autosave itself. App boots fine.
+  }
 
   // ---- Restore any saved session, THEN take the normal boot render path ----
   (async ()=>{
