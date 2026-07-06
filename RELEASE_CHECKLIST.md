@@ -81,11 +81,17 @@ node tools/update-release-notes.mjs --check
 
 CI runs the same release-notes check before building the APK.
 
-Then tag:
+Finally, run the release tag helper:
 
 ```bash
-git tag v0.1.0
-git push origin main --tags
+node tools/prepare-release.mjs
+```
+
+It verifies a clean/synced git state, aligned metadata/release notes, and no existing tag, then prints the exact tag/push commands for the metadata version. If it says the tag already exists, bump `web/metadata.json` and `web/package.json` before releasing again. Example output:
+
+```bash
+git tag -a v0.1.0 -m "InkFrame Studio 0.1.0"
+git push origin main v0.1.0
 ```
 
 Release workflow:

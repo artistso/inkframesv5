@@ -19,6 +19,7 @@ semantic versioning once it reaches a public release.
 - **Studio release/about panel.** The Studio overlay now shows version/runtime/license/privacy/release-smoke notes plus direct Backup archive, Projects, and Start screen actions.
 - **Release helper docs.** Added `RELEASE_CHECKLIST.md` for tablet/APK smoke testing and generated `RELEASE_NOTES.md` for tester-facing release summaries.
 - **Release-notes generator.** `tools/update-release-notes.mjs` rebuilds `RELEASE_NOTES.md` from `CHANGELOG.md` `[Unreleased]` + `web/metadata.json`, and CI checks the file is current.
+- **Release tag helper.** `tools/prepare-release.mjs` verifies clean/synced git state, metadata/release notes alignment, tag availability, then prints the exact `git tag -a vX.Y.Z` and `git push origin main vX.Y.Z` commands.
 - **Single-source version metadata.** `web/metadata.json` now drives the in-app Studio version/package/SDK display and the Android Gradle `versionName`/SDK values; CI runs a no-dependency version smoke check to prevent drift.
 - **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
 - **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
