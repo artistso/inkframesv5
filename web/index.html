@@ -678,6 +678,8 @@
     <div id="blabLibList"><div class="empty">No saved presets for this brush yet.</div></div>
   </div>
   <div class="row"><span class="lbl">Size</span><input type="range" id="blabSize" min="1" max="120" step="1"><span class="val" id="blabSizeV">0</span></div>
+  <div class="row"><span class="lbl">Min size</span><input type="range" id="blabMin" min="0" max="100" step="1"><span class="val" id="blabMinV">0</span></div>
+  <div class="row"><span class="lbl">Stabilize</span><input type="range" id="blabStab" min="0" max="100" step="1"><span class="val" id="blabStabV">0</span></div>
   <div class="row"><span class="lbl">Opacity</span><input type="range" id="blabOp" min="1" max="100" step="1"><span class="val" id="blabOpV">0</span></div>
   <div class="row"><span class="lbl">Hardness</span><input type="range" id="blabHard" min="0" max="100" step="1"><span class="val" id="blabHardV">0</span></div>
   <div class="row"><span class="lbl">Spacing</span><input type="range" id="blabSp" min="2" max="50" step="1"><span class="val" id="blabSpV">0</span></div>
@@ -898,6 +900,8 @@
   // Per-brush prefs. Each brush has a mutable "profile" the user can tune:
   //   size     -- diameter in px
   //   op       -- 0..1 opacity multiplier
+  //   minSize  -- 0..1 minimum pressure width fraction (ink/pencil; low = hairline)
+  //   stabilize -- 0..1 per-brush StreamLine amount (0 = raw/1:1, 1 = very smooth)
   //   hard     -- 0..1 nib hardness (1 = solid disc, 0 = soft feather)
   //   spacing  -- 0.02..0.5 fraction of size between dabs (lower = denser)
   //   jitter   -- 0..1 random position offset per dab, scaled by size
@@ -911,30 +915,33 @@
   //               1 = grain strongly gates pigment / dry-media bite.
   const brushPrefs={};
   const brushLibrary=[];   // user-saved named presets; persisted with prefs
-  // Sensible defaults per brush. Ink keeps its calligraphic personality (entry
-  // + exit pools ON) so it still feels like a real pen; every other brush
-  // ships with pools OFF so a normal sketch stroke never blobs. Response is
-  // the pressure->width shaper: -1 exponential (charcoal), 0 linear, +1 S-curve.
+  // Sensible defaults per brush. Ink is tuned for low-latency, CSP-vector-like
+  // pen feel: no entry/exit pooling, a real hairline minimum, tighter spacing,
+  // and only light stabilization so the stroke stays 1:1 under a tablet pen.
+  // Response is the pressure->width shaper: -1 exponential (hairline-friendly),
+  // 0 linear, +1 S-curve.
   const DEFAULT_PROFILE={
-    pencil:  { spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0,    exitPool:0,    texture:0.65, response:-0.3 },
-    ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55, texture:0.18, response: 0.15},
-    marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0,    texture:0.35, response: 0    },
-    water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0,    texture:0.50, response:-0.5 },
-    frost:   { spacing:0.11, jitter:0.06, taperIn:10, taperOut:10, entryPool:0,    exitPool:0,    texture:0.70, response: 0    },
-    smudge:  { spacing:0.07, jitter:0,    taperIn:4,  taperOut:4,  entryPool:0,    exitPool:0,    texture:0.35, response: 0    },
-    glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
+    pencil:  { minSize:0.18, stabilize:0.25, spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0, exitPool:0, texture:0.65, response:-0.3 },
+    ink:     { minSize:0.08, stabilize:0.08, spacing:0.055,jitter:0,    taperIn:12, taperOut:16, entryPool:0, exitPool:0, texture:0.10, response:-0.20},
+    marker:  { minSize:0.50, stabilize:0.32, spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0, exitPool:0, texture:0.35, response: 0    },
+    water:   { minSize:0.35, stabilize:0.38, spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0, exitPool:0, texture:0.50, response:-0.5 },
+    frost:   { minSize:0.40, stabilize:0.30, spacing:0.11, jitter:0.06, taperIn:10, taperOut:10, entryPool:0, exitPool:0, texture:0.70, response: 0    },
+    smudge:  { minSize:0.45, stabilize:0.18, spacing:0.07, jitter:0,    taperIn:4,  taperOut:4,  entryPool:0, exitPool:0, texture:0.35, response: 0    },
+    glow:    { minSize:0.70, stabilize:0.32, spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
     // Neon paints a bright core over a wide halo, so tighter spacing +
     // slight taper make the line read as one continuous glowing wire. Zero
     // jitter (jitter breaks the coherent halo).
-    neon:    { spacing:0.06, jitter:0,    taperIn:8,  taperOut:8,  entryPool:0,    exitPool:0,    texture:0,    response: 0.1 },
+    neon:    { minSize:0.55, stabilize:0.16, spacing:0.06, jitter:0,    taperIn:8,  taperOut:8,  entryPool:0, exitPool:0, texture:0,    response: 0.1 },
     // Star wants wide spacing so a stroke drops a trail of stars instead of
     // a smear. Small jitter so the stars don't line up in a rigid row.
-    star:    { spacing:1.40, jitter:0.15, taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
-    eraser:  { spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
+    star:    { minSize:1.00, stabilize:0.08, spacing:1.40, jitter:0.15, taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
+    eraser:  { minSize:1.00, stabilize:0.10, spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
   };
   brushes.forEach(b=>{ const d=DEFAULT_PROFILE[b.id]||{};
     brushPrefs[b.id]={
       size:b.size, op:b.op, hard:b.hard,
+      minSize:  (typeof d.minSize==='number')  ? d.minSize  : 0.4,
+      stabilize:(typeof d.stabilize==='number')? d.stabilize: 0.45,
       spacing:  (typeof d.spacing==='number')  ? d.spacing  : 0.14,
       jitter:   (typeof d.jitter==='number')   ? d.jitter   : 0,
       taperIn:  (typeof d.taperIn==='number')  ? d.taperIn  : 6,
@@ -947,9 +954,11 @@
   });
   // Current-brush accessors used by the paint engine. Cheaper than reading
   // brushPrefs[brush.id].x every dab, and safe against `brush` swaps.
-  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpTex=0, _bpR=0;
+  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpTex=0, _bpR=0, _bpMin=0.4, _bpStabilize=0.45;
   function refreshBp(){ const p=brushPrefs[brush.id]||{}, d=DEFAULT_PROFILE[brush.id]||{};
     _bpH   = (typeof p.hard==='number')      ? p.hard      : (brush.hard!=null?brush.hard:0.9);
+    _bpMin = (typeof p.minSize==='number')   ? p.minSize   : ((typeof d.minSize==='number') ? d.minSize : 0.4);
+    _bpStabilize = (typeof p.stabilize==='number') ? p.stabilize : ((typeof d.stabilize==='number') ? d.stabilize : streamline);
     _bpS   = (typeof p.spacing==='number')   ? p.spacing   : 0.14;
     _bpJ   = (typeof p.jitter==='number')    ? p.jitter    : 0;
     _bpTin = (typeof p.taperIn==='number')   ? p.taperIn   : 6;
@@ -958,6 +967,20 @@
     _bpXP  = (typeof p.exitPool==='number')  ? p.exitPool : 0;
     _bpTex = (typeof p.texture==='number')   ? p.texture  : ((typeof d.texture==='number') ? d.texture : 0);
     _bpR   = (typeof p.response==='number')  ? p.response  : ((typeof d.response==='number') ? d.response : 0);
+  }
+  const PEN_ENGINE_VERSION=2;
+  function migratePenProfile(v){
+    const ink=brushPrefs.ink; if(!ink) return;
+    // One-time terminal cleanup for existing installs that still carry the
+    // old calligraphic entry/exit pools. Preserve user's size/opacity/hardness;
+    // modernize only the pen-feel controls that caused blobs/lag.
+    if(v < PEN_ENGINE_VERSION){
+      Object.assign(ink, {
+        minSize:0.08, stabilize:0.08, spacing:0.055,
+        taperIn:Math.max(ink.taperIn||0,12), taperOut:Math.max(ink.taperOut||0,16),
+        entryPool:0, exitPool:0, texture:Math.min(ink.texture||0.10,0.10), response:-0.20,
+      });
+    }
   }
   function loadPrefs(){
     try{ const raw=localStorage.getItem(PREF_KEY); if(!raw) return;
@@ -978,6 +1001,7 @@
       if(p.onionFront) onionFront=p.onionFront;
       if(typeof p.qsEnabled==='boolean') qsEnabled=p.qsEnabled;
       if(p.brushPrefs) Object.assign(brushPrefs, p.brushPrefs);
+      migratePenProfile(p.penEngineVersion||0);
       if(Array.isArray(p.brushLibrary)){
         brushLibrary.length=0;
         p.brushLibrary.forEach(item=>{
@@ -995,7 +1019,7 @@
   let savePrefsT=0;
   function savePrefs(){ clearTimeout(savePrefsT); savePrefsT=setTimeout(()=>{
     try{ localStorage.setItem(PREF_KEY, JSON.stringify({
-      color, streamline, stylusOnly, palmReject, readableText, barrelMode, onion,
+      color, streamline, stylusOnly, palmReject, readableText, barrelMode, penEngineVersion:PEN_ENGINE_VERSION, onion,
       onionDepth, onionPastOpacity, onionFutureOpacity, onionTint, onionLayerOnly, onionBack, onionFront,
       qsEnabled, brushId:brush.id, brushPrefs, brushLibrary,
     })); }catch(_){}
@@ -1401,9 +1425,16 @@
   }
   function targetWidth(pr,spd){
     const p = shapePressure(pr);
-    let pf=(brush.id==='pencil'||brush.id==='ink')?(.4+.6*p):1;
-    if(brush.id==='ink') pf*=1-Math.min(.6,(spd||0)*0.030);   // faster pen -> thinner (real velocity)
-    return Math.max(.6,size*pf);
+    let pf=1;
+    if(brush.id==='pencil'||brush.id==='ink'){
+      const min=Math.max(0,Math.min(1,_bpMin));
+      pf=min+(1-min)*p;                         // true pressure hairline support
+      if(brush.id==='ink'){
+        const thin=Math.min(.68,(spd||0)*0.030); // faster pen -> thinner, but never below min
+        pf=min+(pf-min)*(1-thin);
+      }
+    }
+    return Math.max(.35,size*pf);
   }
   // dOverride: momentum-eased diameter (Nolan).  reveal: 0..1 fade-in envelope (Spielberg).
   // nAng: eased nib orientation.  flat: tilt flatness 0..1.
@@ -1805,8 +1836,10 @@
   // "string", and pressure is eased — killing the jitter that makes lines look nervous.
   // StreamLine (Procreate-style): an adjustable smoothing amount drives the position lag.
   let streamline=0.45;          // 0 = raw, ~0.9 = heavy smoothing
-  let stab=0.55, PSTAB=0.3;     // stab = per-sample position lerp (derived from streamline)
-  function applyStream(){ stab=Math.max(0.08, 1-streamline*0.92); }
+  let stab=0.55, PSTAB=0.3;     // global fallback; ink/pencil can override via Brush Lab Stabilize
+  function stabFromAmount(v){ return Math.max(0.08, 1-Math.max(0,Math.min(1,v))*0.92); }
+  function applyStream(){ stab=stabFromAmount(streamline); }
+  function brushStab(){ return stabFromAmount((typeof _bpStabilize==='number') ? _bpStabilize : streamline); }
   applyStream();
   // QuickShape: hold the pen still at the end of a stroke and it snaps to a clean line/ellipse.
   let qsEnabled=true, qsActive=false, qsShape=null, qsTimer=0, qsLastMove=0, qsAnchor={x:0,y:0};
@@ -1920,8 +1953,8 @@
     // first PSEAT_N samples so the first dab is always a hairline. Real active
     // pens with true pressure just fold in immediately.
     pSeat = 0;
-    const seatSeed = 0.15;         // hairline start; grows to real pressure over ~4 samples
-    smoothP = seatSeed * 0.6 + c.p * 0.4;
+    const seatSeed = brush.id==='ink' ? 0.03 : 0.15;  // ink starts as a true hairline; grows to real pressure over ~4 samples
+    smoothP = seatSeed * 0.7 + c.p * 0.3;
     // Reset Living-Line + reveal state.
     strokeLen = 0;
     nibW  = targetWidth(smoothP, 0);
@@ -2003,7 +2036,8 @@
         smoothP += (c.p - smoothP) * PSTAB;
       }
       const ox=penX,oy=penY;
-      penX+=(c.x-penX)*stab; penY+=(c.y-penY)*stab;   // StreamLine: stabilized (trailing) point
+      const posStab=brushStab();
+      penX+=(c.x-penX)*posStab; penY+=(c.y-penY)*posStab;   // per-brush StreamLine: ink stays near 1:1
       const step=Math.hypot(penX-ox,penY-oy);
       // Time-based velocity in px/ms — stable across devices with wildly different
       // pointer report rates (60 Hz phone vs 240 Hz active pen). Multiplied by 16 to
@@ -2652,6 +2686,8 @@
     const el     = document.getElementById('blab');
     const nameEl = document.getElementById('blabName');
     const sSize  = document.getElementById('blabSize'), vSize=document.getElementById('blabSizeV');
+    const sMin   = document.getElementById('blabMin'),  vMin =document.getElementById('blabMinV');
+    const sStab  = document.getElementById('blabStab'), vStab=document.getElementById('blabStabV');
     const sOp    = document.getElementById('blabOp'),   vOp  =document.getElementById('blabOpV');
     const sHard  = document.getElementById('blabHard'), vHard=document.getElementById('blabHardV');
     const sSp    = document.getElementById('blabSp'),   vSp  =document.getElementById('blabSpV');
@@ -2728,6 +2764,8 @@
       nameEl.textContent = b.id;
       const bp = brushPrefs[b.id] || {};
       sSize.value = Math.round(bp.size || size);
+      sMin.value  = Math.round(((typeof bp.minSize==='number')?bp.minSize:((DEFAULT_PROFILE[b.id]||{}).minSize||0.4))*100);
+      sStab.value = Math.round(((typeof bp.stabilize==='number')?bp.stabilize:((DEFAULT_PROFILE[b.id]||{}).stabilize||streamline))*100);
       sOp.value   = Math.round((typeof bp.op==='number'?bp.op:opacity)*100);
       sHard.value = Math.round(((typeof bp.hard==='number')?bp.hard:(b.hard||0.9))*100);
       sSp.value   = Math.round(((typeof bp.spacing==='number')?bp.spacing:0.14)*100);
@@ -2748,6 +2786,9 @@
       const textured = !b.erase && !['neon','star','glow'].includes(b.id);
       sTex.disabled = !textured;
       sTex.parentElement.style.opacity = textured ? '1' : '0.4';
+      const pressureWidth = (b.id==='ink'||b.id==='pencil');
+      sMin.disabled = !pressureWidth;
+      sMin.parentElement.style.opacity = pressureWidth ? '1' : '0.4';
       syncLabels(); renderLibrary(); el.classList.add('show');
       // Position: top-centre-ish so the tools node underneath stays visible.
       el.style.left = Math.max(12, (window.innerWidth - el.offsetWidth)/2) + 'px';
@@ -2758,6 +2799,8 @@
     function close(){ el.classList.remove('show'); }
     function syncLabels(){
       vSize.textContent = sSize.value;
+      vMin.textContent  = sMin.value;
+      vStab.textContent = sStab.value;
       vOp.textContent   = sOp.value;
       vHard.textContent = sHard.value;
       vSp.textContent   = sSp.value;
@@ -2775,6 +2818,8 @@
       opacity = (+sOp.value)/100;
       bp.size    = size;
       bp.op      = opacity;
+      bp.minSize = (+sMin.value)/100;
+      bp.stabilize = (+sStab.value)/100;
       bp.hard    = (+sHard.value)/100;
       bp.spacing = Math.max(0.02, (+sSp.value)/100);
       bp.jitter  = (+sJit.value)/100;
@@ -2793,12 +2838,12 @@
       syncLabels();
       paintPreview();
     }
-    [sSize,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sTex,sResp].forEach(s=>{
+    [sSize,sMin,sStab,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sTex,sResp].forEach(s=>{
       s.addEventListener('input', commit);
       // Slider drags shouldn't propagate to the canvas' pointer listeners.
       s.addEventListener('pointerdown', e=>e.stopPropagation());
     });
-    const brushProfileKeys=['size','op','hard','spacing','jitter','taperIn','taperOut','entryPool','exitPool','texture','response'];
+    const brushProfileKeys=['size','op','minSize','stabilize','hard','spacing','jitter','taperIn','taperOut','entryPool','exitPool','texture','response'];
     function profileDownload(blob,name){
       const url=URL.createObjectURL(blob); const a=document.createElement('a');
       a.href=url; a.download=name; document.body.appendChild(a); a.click();
@@ -2813,7 +2858,7 @@
       if(out.hard!=null) out.hard=Math.max(0, Math.min(1, out.hard));
       if(out.op!=null) out.op=Math.max(0.01, Math.min(1, out.op));
       if(out.size!=null) out.size=Math.max(1, Math.min(120, out.size));
-      ['entryPool','exitPool','texture'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(1, out[k])); });
+      ['entryPool','exitPool','texture','minSize','stabilize'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(1, out[k])); });
       if(out.response!=null) out.response=Math.max(-1, Math.min(1, out.response));
       ['taperIn','taperOut'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(60, out[k])); });
       return out;
@@ -2904,6 +2949,8 @@
       const shipped = DEFAULT_PROFILE[b.id] || {};
       brushPrefs[b.id] = {
         size:def.size, op:def.op, hard:def.hard,
+        minSize:  (typeof shipped.minSize==='number')  ? shipped.minSize  : 0.4,
+        stabilize:(typeof shipped.stabilize==='number')? shipped.stabilize: streamline,
         spacing:  (typeof shipped.spacing==='number')  ? shipped.spacing  : 0.14,
         jitter:   (typeof shipped.jitter==='number')   ? shipped.jitter   : 0,
         taperIn:  (typeof shipped.taperIn==='number')  ? shipped.taperIn  : 6,

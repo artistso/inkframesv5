@@ -131,6 +131,8 @@ const stylusPanel = d.getElementById('stylusPanel');
 const helpPanel = d.getElementById('helpPanel');
 const helpBackup = d.getElementById('helpBackup');
 const textureSlider = d.getElementById('blabTex');
+const minSizeSlider = d.getElementById('blabMin');
+const stabilizeSlider = d.getElementById('blabStab');
 const brushExport = d.getElementById('blabExport');
 const brushImport = d.getElementById('blabImport');
 const brushSavePreset = d.getElementById('blabSavePreset');
@@ -158,6 +160,7 @@ if (!projectButtonLabels.includes('Scale copy') || !projectButtonLabels.includes
 if (!stylusPanel) { console.error('❌ #stylusPanel (stylus diagnostics) missing'); failed++; }
 if (!helpPanel || !helpBackup || !frameActionLabels.includes('Help')) { console.error('❌ Quick Help overlay/action missing'); failed++; }
 if (!textureSlider) { console.error('❌ #blabTex (texture slider) missing'); failed++; }
+if (!minSizeSlider || !stabilizeSlider) { console.error('❌ pen refinement sliders missing'); failed++; }
 if (!brushExport || !brushImport) { console.error('❌ Brush Lab import/export controls missing'); failed++; }
 if (!brushSavePreset || !brushLibrary) { console.error('❌ Brush library controls missing'); failed++; }
 if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control) missing'); failed++; }
