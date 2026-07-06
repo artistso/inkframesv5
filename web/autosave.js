@@ -201,14 +201,16 @@ function createAutosave(env) {
   // ---- Debounced flush + visibility hooks ---------------------------------
   let scheduled = 0, savingNow = false, lastSavedAt = 0, lastError = null;
   async function flush() {
-    if (savingNow) return;
+    if (savingNow) return false;
     savingNow = true;
     try {
       const payload = await serialize();
       await idbPut(payload);
       lastSavedAt = payload.savedAt; lastError = null;
+      return true;
     } catch (e) {
       lastError = e; console.warn('[autosave] failed', e);
+      return false;
     } finally {
       savingNow = false;
     }
@@ -219,7 +221,7 @@ function createAutosave(env) {
   }
   function flushNow() {
     if (scheduled) { clearTimeout(scheduled); scheduled = 0; }
-    flush();
+    return flush();
   }
 
   // Hide/unload hooks -- both events for maximum coverage across browsers

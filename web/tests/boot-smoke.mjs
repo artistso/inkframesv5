@@ -116,7 +116,9 @@ if (errors.length) {
 const d = dom.window.document;
 const nodeCount = d.querySelectorAll('.node').length;
 const canvasEl = d.getElementById('c');
+const projectPanel = d.getElementById('projectPanel');
 if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
+if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }
 
 if (failed) {

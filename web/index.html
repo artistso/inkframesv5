@@ -161,6 +161,49 @@
     letter-spacing:.14em; text-transform:uppercase; font-size:11px; opacity:.85; }
   #studio .close:hover{ opacity:1; background:rgba(247,202,201,.08); }
 
+  /* Project browser / recovery overlay. Same frosted language as Studio, but
+     list-focused: thumbnails on the left, editable names, project actions,
+     and a small autosave health strip. */
+  #projectPanel{ position:fixed; inset:0; z-index:46; display:none; align-items:center; justify-content:center; padding:26px;
+    background:rgba(10,0,10,.58); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  #projectPanel.show{ display:flex; }
+  #projectPanel .card{ width:min(760px, calc(100vw - 28px)); max-height:calc(100vh - 42px); overflow:hidden;
+    padding:26px; border-radius:26px; color:var(--text);
+    background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(20,0,14,.62));
+    border:1px solid rgba(247,202,201,.30);
+    box-shadow:0 24px 60px rgba(10,0,10,.58), inset 0 1px 0 rgba(255,240,243,.35);
+    animation:studioIn .28s cubic-bezier(.2,.9,.3,1); }
+  #projectPanel h2{ font-family:"Cinzel",Georgia,serif; letter-spacing:.16em; font-size:23px; margin:0 0 4px;
+    background:linear-gradient(180deg,#fff,var(--rose)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #projectPanel .tag{ font-size:10px; letter-spacing:.24em; text-transform:uppercase; color:var(--dim); margin-bottom:14px; }
+  #projectAutosave{ margin:10px 0 14px; padding:9px 12px; border-radius:14px;
+    background:rgba(20,0,14,.26); border:1px solid rgba(247,202,201,.20);
+    font-size:12px; line-height:1.5; color:var(--dim); }
+  #projectAutosave b{ color:var(--text); font-weight:600; }
+  #projectList{ display:grid; gap:10px; max-height:min(48vh, 430px); overflow:auto; padding-right:4px; }
+  .projRow{ display:grid; grid-template-columns:76px 1fr auto; gap:12px; align-items:center;
+    padding:10px; border-radius:18px; background:rgba(255,240,243,.07);
+    border:1px solid rgba(247,202,201,.18); }
+  .projRow.on{ background:linear-gradient(160deg, rgba(187,0,55,.30), rgba(247,202,201,.10));
+    border-color:var(--rim); box-shadow:0 0 18px rgba(187,0,55,.25); }
+  .projThumb{ width:70px; height:52px; border-radius:12px; background-size:cover; background-position:center;
+    border:1px solid rgba(247,202,201,.28); box-shadow:inset 0 1px 0 rgba(255,255,255,.20), 0 5px 16px rgba(10,0,10,.35); }
+  .projMain{ min-width:0; }
+  .projMain input{ width:100%; height:32px; border-radius:11px; border:1px solid rgba(247,202,201,.26);
+    background:rgba(10,0,10,.30); color:var(--text); padding:0 10px; font:inherit; font-size:14px; outline:none; }
+  .projMain input:focus{ border-color:var(--rim); box-shadow:0 0 0 2px rgba(247,202,201,.12); }
+  .projStats{ margin-top:5px; color:var(--dim); font-size:11px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .projBtns{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:230px; }
+  .projBtn, #projectPanel .footer button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06);
+    border:1px solid rgba(247,202,201,.30); padding:7px 10px; border-radius:12px; cursor:pointer;
+    opacity:.88; font-size:11px; letter-spacing:.10em; text-transform:uppercase; }
+  .projBtn:hover, #projectPanel .footer button:hover{ opacity:1; background:rgba(247,202,201,.12); }
+  .projBtn.danger{ border-color:rgba(255,120,160,.42); color:#ffd9e2; }
+  #projectPanel .footer{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:16px; }
+  #projectPanel .footer button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); border-color:var(--rim); }
+  @media (max-width:640px){ .projRow{ grid-template-columns:64px 1fr; } .projBtns{ grid-column:1 / -1; justify-content:flex-start; max-width:none; }
+    .projThumb{ width:60px; height:46px; } #projectPanel .card{ padding:20px; } }
+
   /* ===== Node-graph connector wires ===== */
   #wires{ position:fixed; inset:0; z-index:18; pointer-events:none; width:100%; height:100%; }
   #wires path.glow{ stroke:var(--rose); stroke-width:6; fill:none; stroke-linecap:round; opacity:.16; filter:blur(3px); }
@@ -384,6 +427,22 @@
     </div>
     <button class="close" type="button"
       onclick="document.getElementById('studio').classList.remove('show')">Close</button>
+  </div>
+</div>
+
+<!-- Project browser + local recovery controls. Open from Gallery ▸ Manage. -->
+<div id="projectPanel" role="dialog" aria-label="Project browser">
+  <div class="card">
+    <h2>Projects</h2>
+    <div class="tag">Gallery · Autosave · Recovery</div>
+    <div id="projectAutosave">Autosave status unavailable.</div>
+    <div id="projectList"></div>
+    <div class="footer">
+      <button id="projectNew" type="button" class="primary">New canvas</button>
+      <button id="projectSave" type="button">Save now</button>
+      <button id="projectClearSave" type="button">Clear recovery</button>
+      <button id="projectClose" type="button">Close</button>
+    </div>
   </div>
 </div>
 
@@ -701,6 +760,23 @@
   function newProject(w,h){ w=w||W0; h=h||H0; return {
     frames:[newFrame(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12,
     name:'Canvas', paper:DEFAULT_PAPER }; }
+  function cloneProject(P, name){
+    const w=P.w||W0, h=P.h||H0;
+    const framesCopy=(P.frames&&P.frames.length?P.frames:[newFrame(w,h)]).map(fr0=>{
+      const fr=upgradeFrame(fr0,w,h);
+      const layers=fr.layers.map(L=>{
+        const c=mkAt(w,h); c.getContext('2d').drawImage(L.canvas,0,0);
+        return { id:__lid++, name:L.name, visible:L.visible!==false,
+          opacity:typeof L.opacity==='number'?L.opacity:1,
+          blend:L.blend||'source-over', canvas:c };
+      });
+      return { layers, active:Math.min(fr.active|0, layers.length-1), _comp:null, _compV:-1, _v:fr._v||0 };
+    });
+    const holdsCopy=framesCopy.map((_,i)=>Math.max(1,Math.round((P.holds&&P.holds[i])||1)));
+    return { frames:framesCopy, holds:holdsCopy,
+      cur:Math.min(Math.max(0,P.cur|0),framesCopy.length-1), undo:[], redo:[], w, h,
+      fps:P.fps||12, name:name || ((P.name||'Canvas')+' copy'), paper:P.paper||DEFAULT_PAPER };
+  }
   // Fast getter used by every render / composite / export path so we don't
   // read `projects[pi]` inside hot loops.
   function paper(){ const P=projects[pi]; return (P && P.paper) || DEFAULT_PAPER; }
@@ -3390,12 +3466,26 @@
   // override: studio has no kids; tapping shows overlay instead of toggling
   nStudio._orb.addEventListener('click',()=>{ if(!nStudio._dragged) $('studio').classList.add('show'); });
 
-  // ===== GALLERY node — up to 10 canvases, each its own project; tap = fluid switch =====
+  // ===== GALLERY node — up to 4 canvases, each its own project; tap = fluid switch =====
   const nGallery=makeNode({glyph:'@gallery',label:'Gallery',x:140,y:0}); nGallery.dataset.bottom='1';
   function thumbOf(P){ const t=mkAt(64,Math.round(64*P.h/P.w)); const tc=t.getContext('2d');
     tc.fillStyle=(P.paper||'#fff0f3'); tc.fillRect(0,0,t.width,t.height);
     const fr=upgradeFrame(P.frames[P.cur||0], P.w, P.h);
     tc.drawImage(frameComposite(fr), 0,0, t.width, t.height); return t.toDataURL(); }
+  function syncActiveProject(){ const P=projects[pi]; if(P){ P.cur=cur; P.fps=fps; P.w=W; P.h=H; } }
+  function bindProjectDirect(i){
+    pi=Math.max(0,Math.min(i,projects.length-1)); const P=projects[pi];
+    if(!P.holds) P.holds=P.frames.map(()=>1);
+    P.frames=P.frames.map(f=>upgradeFrame(f,P.w,P.h));
+    frames=P.frames; holds=P.holds; cur=P.cur; undoStack=P.undo; redoStack=P.redo; fps=P.fps; W=P.w; H=P.h;
+    if(!P.paper) P.paper=DEFAULT_PAPER;
+    refreshFctx(); applyPaperBg();
+    if(typeof kPaper!=='undefined' && kPaper._syncDot) kPaper._syncDot();
+  }
+  function repaintProjectShell(){
+    canvas.width=W; canvas.height=H; syncPredictedSize(); clampCanvas(); applyCanvas();
+    render(); refreshFrames(); refreshLayers(); refreshActions(); rebuildGallery();
+  }
   function switchProject(i){
     if(i===pi || switchProject._busy) return;
     switchProject._busy=true;
@@ -3407,8 +3497,7 @@
     canvas.style.transform='scale(.86)'; canvas.style.opacity='0'; canvas.style.filter='blur(10px) saturate(1.4)';
     setTimeout(()=>{
       useProject(i);
-      canvas.width=W; canvas.height=H; syncPredictedSize(); clampCanvas(); applyCanvas();
-      render(); refreshFrames(); refreshActions();
+      repaintProjectShell();
       // surface from depth
       canvas.style.transition='none';
       canvas.style.transform='scale(1.10)'; canvas.style.opacity='0'; canvas.style.filter='blur(12px)';
@@ -3430,18 +3519,92 @@
         num.style.cssText='position:relative;z-index:2;font-size:13px'; el.appendChild(num); }});
       k.dataset.i=i; if(i===pi)k.classList.add('on');
       k.addEventListener('click',e=>{e.stopPropagation(); switchProject(i);
-        [...wrap.children].forEach(c=>c.classList.toggle('on',+c.dataset.i===i&&!c.dataset.add)); });
+        [...wrap.children].forEach(c=>c.classList.toggle('on',+c.dataset.i===i&&!c.dataset.add&&!c.dataset.manage)); });
       wrap.appendChild(k);
     });
     if(projects.length<MAX_PROJECTS){
       const add=kidEl({glyph:'@add',sub:'New'}); add.dataset.add='1';
       add.addEventListener('click',e=>{e.stopPropagation();
-        projects.push(newProject()); rebuildGallery(); switchProject(projects.length-1);
+        projects.push(newProject()); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
         requestAnimationFrame(()=>nGallery._relayout()); });
       wrap.appendChild(add);
     }
+    const manage=kidEl({glyph:'@list',sub:'Manage'}); manage.dataset.manage='1';
+    manage.addEventListener('click',e=>{ e.stopPropagation(); openProjectPanel(); });
+    wrap.appendChild(manage);
     if(nGallery.classList.contains('open')) nGallery._relayout();
   }
+
+  const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave');
+  const projectClose=$('projectClose'), projectNew=$('projectNew'), projectSave=$('projectSave'), projectClearSave=$('projectClearSave');
+  const projectAge=ts=>{
+    if(!ts) return 'not saved yet';
+    const s=Math.max(1,Math.round((Date.now()-ts)/1000));
+    if(s<90) return s+' sec ago';
+    const m=Math.round(s/60); if(m<90) return m+' min ago';
+    const h=Math.round(m/60); if(h<36) return h+' hr ago';
+    return Math.round(h/24)+' days ago';
+  };
+  const projectStats=P=>`${(P.frames&&P.frames.length)||0} frame${((P.frames&&P.frames.length)||0)===1?'':'s'} · ${P.w||W0}×${P.h||H0} · ${P.fps||12} fps`;
+  function sanitizeProjectName(v,i){ const s=String(v||'').trim().replace(/[\r\n\u0000]/g,''); return s || ('Canvas '+(i+1)); }
+  function renderProjectPanel(){
+    if(!projectPanel) return;
+    syncActiveProject();
+    const st=AUTOSAVE.status ? AUTOSAVE.status() : {lastSavedAt:0,savingNow:false,lastError:null};
+    projectAutosave.textContent='';
+    const statusBold=document.createElement('b'); statusBold.textContent='Local recovery:'; projectAutosave.appendChild(statusBold);
+    projectAutosave.appendChild(document.createTextNode(' '+(st.savingNow?'saving now…':'last saved '+projectAge(st.lastSavedAt))));
+    if(st.lastError) projectAutosave.appendChild(document.createTextNode(' · error: '+String(st.lastError.message||st.lastError)));
+    projectList.innerHTML='';
+    projects.forEach((P,i)=>{
+      const row=document.createElement('div'); row.className='projRow'+(i===pi?' on':'');
+      const th=document.createElement('div'); th.className='projThumb'; th.style.backgroundImage=`url(${thumbOf(P)})`; row.appendChild(th);
+      const main=document.createElement('div'); main.className='projMain';
+      const inp=document.createElement('input'); inp.value=P.name || ('Canvas '+(i+1)); inp.setAttribute('aria-label','Project name');
+      inp.addEventListener('change',()=>{ P.name=sanitizeProjectName(inp.value,i); inp.value=P.name; rebuildGallery(); AUTOSAVE.schedule(); flash('Renamed · '+P.name); });
+      main.appendChild(inp);
+      const stats=document.createElement('div'); stats.className='projStats'; stats.textContent=projectStats(P)+(i===pi?' · active':''); main.appendChild(stats);
+      row.appendChild(main);
+      const btns=document.createElement('div'); btns.className='projBtns';
+      const bOpen=document.createElement('button'); bOpen.className='projBtn'; bOpen.textContent=i===pi?'Open':'Switch';
+      bOpen.addEventListener('click',()=>{ projectPanel.classList.remove('show'); switchProject(i); }); btns.appendChild(bOpen);
+      const bDup=document.createElement('button'); bDup.className='projBtn'; bDup.textContent='Duplicate';
+      bDup.disabled=projects.length>=MAX_PROJECTS; bDup.style.opacity=bDup.disabled ? .45 : .88;
+      bDup.addEventListener('click',()=>{
+        if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+        syncActiveProject(); projects.splice(i+1,0,cloneProject(projects[i]||newProject(), (projects[i]?.name||'Canvas')+' copy'));
+        if(i<pi) pi++; rebuildGallery(); renderProjectPanel(); AUTOSAVE.schedule(); flash('Project duplicated');
+      }); btns.appendChild(bDup);
+      const bDel=document.createElement('button'); bDel.className='projBtn danger'; bDel.textContent='Delete';
+      bDel.disabled=projects.length<=1; bDel.style.opacity=bDel.disabled ? .45 : .88;
+      bDel.addEventListener('click',()=>{
+        if(projects.length<=1){ flash('Keep at least one canvas'); return; }
+        if(!confirm('Delete '+(P.name||'Canvas')+'? This removes it from the local gallery.')) return;
+        const oldPi=pi; syncActiveProject(); projects.splice(i,1);
+        if(oldPi===i){ bindProjectDirect(Math.min(i,projects.length-1)); repaintProjectShell(); }
+        else if(oldPi>i){ pi=oldPi-1; rebuildGallery(); }
+        else rebuildGallery();
+        renderProjectPanel(); AUTOSAVE.schedule(); flash('Project deleted');
+      }); btns.appendChild(bDel);
+      row.appendChild(btns); projectList.appendChild(row);
+    });
+  }
+  function openProjectPanel(){ renderProjectPanel(); projectPanel.classList.add('show'); }
+  projectClose.addEventListener('click',()=>projectPanel.classList.remove('show'));
+  projectPanel.addEventListener('click',e=>{ if(e.target===projectPanel) projectPanel.classList.remove('show'); });
+  projectNew.addEventListener('click',()=>{
+    if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+    projects.push(newProject()); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
+  });
+  projectSave.addEventListener('click',()=>{
+    syncActiveProject(); const r=AUTOSAVE.flushNow && AUTOSAVE.flushNow();
+    Promise.resolve(r).finally(()=>setTimeout(()=>{ renderProjectPanel(); flash('Recovery copy saved'); },180));
+  });
+  projectClearSave.addEventListener('click',()=>{
+    if(!confirm('Clear the local recovery copy? Current open projects stay on screen.')) return;
+    Promise.resolve(AUTOSAVE.clear && AUTOSAVE.clear()).then(()=>{ renderProjectPanel(); flash('Recovery copy cleared'); });
+  });
+
   // refresh thumbnails each time the gallery opens
   nGallery._orb.addEventListener('click',()=>{ requestAnimationFrame(()=>{ if(nGallery.classList.contains('open')) rebuildGallery(); }); });
   rebuildGallery();
@@ -4131,7 +4294,7 @@
   // downstream (pushU wrap, boot restore) works against this stub too --
   // just nothing persists across reload in that environment.
   const _AUTOSAVE_FACTORY = (window.InkFrameAutosave && window.InkFrameAutosave.createAutosave)
-    || (() => ({ schedule(){}, flushNow(){}, restore(){return Promise.resolve(false);},
+    || (() => ({ schedule(){}, flushNow(){return Promise.resolve(false);}, restore(){return Promise.resolve(false);},
                  loadPayload(){return Promise.resolve(null);}, clear(){return Promise.resolve();},
                  status(){return { lastSavedAt:0, savingNow:false, lastError:null };} }));
   const AUTOSAVE = _AUTOSAVE_FACTORY({
