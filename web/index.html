@@ -374,7 +374,8 @@
   #expo button:hover{ opacity:1; }
 
   /* Brush Lab -- floating panel opened via long-press on a brush kid. */
-  #blab{ position:fixed; z-index:65; display:none; min-width:290px; max-width:340px;
+  #blab{ position:fixed; z-index:65; display:none; min-width:290px; max-width:360px;
+    max-height:calc(100vh - 24px); overflow:auto;
     padding:18px 20px 16px; border-radius:22px; color:var(--text);
     background:rgba(20,0,14,.78); border:1px solid var(--stroke);
     box-shadow:var(--shadow), inset 0 1px 0 var(--rim);
@@ -403,7 +404,18 @@
     background:#fff0f3; border:1px solid rgba(247,202,201,.35);
     box-shadow:inset 0 1px 3px rgba(20,0,14,.15); }
   #blab .preview canvas{ display:block; width:100%; height:100%; }
-  #blab .btns{ display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
+  #blab .lib{ margin-top:12px; padding-top:10px; border-top:1px solid rgba(247,202,201,.18); }
+  #blab .libHdr{ display:flex; align-items:center; justify-content:space-between; gap:8px;
+    margin-bottom:8px; color:var(--dim); font-size:10px; letter-spacing:.14em; text-transform:uppercase; }
+  #blabLibList{ display:grid; gap:7px; max-height:140px; overflow:auto; padding-right:2px; }
+  #blabLibList .empty{ color:var(--dim); font-size:12px; line-height:1.5; opacity:.8; }
+  .brushPreset{ display:grid; grid-template-columns:1fr auto; gap:6px; align-items:center;
+    padding:7px 8px; border-radius:12px; border:1px solid rgba(247,202,201,.18);
+    background:rgba(255,240,243,.06); }
+  .brushPreset .name{ font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .brushPreset .meta{ font-size:10px; color:var(--dim); margin-top:2px; }
+  .brushPreset .mini{ display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
+  #blab .btns{ display:flex; gap:8px; margin-top:12px; justify-content:flex-end; flex-wrap:wrap; }
   #blab button{ font:inherit; color:#fff; background:transparent; border:1px solid var(--stroke);
     padding:6px 14px; border-radius:12px; cursor:pointer; opacity:.85; font-size:12px;
     letter-spacing:.08em; text-transform:uppercase; }
@@ -504,6 +516,10 @@
 <div id="blab" role="dialog" aria-label="Brush lab">
   <div class="hdr"><b id="blabName">brush</b><span id="blabSub">Long-press · adjust</span></div>
   <div class="preview"><canvas id="blabPreview"></canvas></div>
+  <div class="lib">
+    <div class="libHdr"><span>Brush library</span><button id="blabSavePreset" type="button">Save preset</button></div>
+    <div id="blabLibList"><div class="empty">No saved presets for this brush yet.</div></div>
+  </div>
   <div class="row"><span class="lbl">Size</span><input type="range" id="blabSize" min="1" max="120" step="1"><span class="val" id="blabSizeV">0</span></div>
   <div class="row"><span class="lbl">Opacity</span><input type="range" id="blabOp" min="1" max="100" step="1"><span class="val" id="blabOpV">0</span></div>
   <div class="row"><span class="lbl">Hardness</span><input type="range" id="blabHard" min="0" max="100" step="1"><span class="val" id="blabHardV">0</span></div>
@@ -687,6 +703,7 @@
   //   texture  -- 0..1 paper-tooth modulation. 0 = smooth digital stamp,
   //               1 = grain strongly gates pigment / dry-media bite.
   const brushPrefs={};
+  const brushLibrary=[];   // user-saved named presets; persisted with prefs
   // Sensible defaults per brush. Ink keeps its calligraphic personality (entry
   // + exit pools ON) so it still feels like a real pen; every other brush
   // ships with pools OFF so a normal sketch stroke never blobs. Response is
@@ -744,6 +761,16 @@
       if(typeof p.onion==='boolean') onion=p.onion;
       if(typeof p.qsEnabled==='boolean') qsEnabled=p.qsEnabled;
       if(p.brushPrefs) Object.assign(brushPrefs, p.brushPrefs);
+      if(Array.isArray(p.brushLibrary)){
+        brushLibrary.length=0;
+        p.brushLibrary.forEach(item=>{
+          if(item && item.profile && item.brushId) brushLibrary.push({
+            id:item.id || ('p'+Date.now()+Math.random().toString(36).slice(2)),
+            name:String(item.name||'Preset').slice(0,60), brushId:item.brushId,
+            profile:item.profile, createdAt:item.createdAt||Date.now()
+          });
+        });
+      }
       if(p.brushId){ const b=brushes.find(x=>x.id===p.brushId); if(b) brush=b; }
       const bp=brushPrefs[brush.id]; if(bp){ size=bp.size; opacity=bp.op; }
     }catch(_){}
@@ -752,7 +779,7 @@
   function savePrefs(){ clearTimeout(savePrefsT); savePrefsT=setTimeout(()=>{
     try{ localStorage.setItem(PREF_KEY, JSON.stringify({
       color, streamline, stylusOnly, palmReject, barrelMode, onion, qsEnabled,
-      brushId:brush.id, brushPrefs,
+      brushId:brush.id, brushPrefs, brushLibrary,
     })); }catch(_){}
   }, 180); }
   function rememberBrush(){
@@ -2317,6 +2344,8 @@
     const sTex   = document.getElementById('blabTex'),  vTex =document.getElementById('blabTexV');
     const sResp  = document.getElementById('blabResp'), vResp=document.getElementById('blabRespV');
     const prev   = document.getElementById('blabPreview');
+    const libList = document.getElementById('blabLibList');
+    const btnSavePreset = document.getElementById('blabSavePreset');
     const btnClose = document.getElementById('blabClose');
     const btnReset = document.getElementById('blabReset');
     const btnExport = document.getElementById('blabExport');
@@ -2400,7 +2429,7 @@
       const textured = !b.erase && !['neon','star','glow'].includes(b.id);
       sTex.disabled = !textured;
       sTex.parentElement.style.opacity = textured ? '1' : '0.4';
-      syncLabels(); el.classList.add('show');
+      syncLabels(); renderLibrary(); el.classList.add('show');
       // Position: top-centre-ish so the tools node underneath stays visible.
       el.style.left = Math.max(12, (window.innerWidth - el.offsetWidth)/2) + 'px';
       el.style.top  = Math.max(12, Math.min(window.innerHeight - el.offsetHeight - 12, 68)) + 'px';
@@ -2470,12 +2499,62 @@
       ['taperIn','taperOut'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(60, out[k])); });
       return out;
     }
+    function presetId(){ return 'bp'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+    function presetNameBase(){ return brush.id.charAt(0).toUpperCase()+brush.id.slice(1)+' preset'; }
+    function currentProfileSnapshot(){ commit(); return cleanProfile(brushPrefs[brush.id]||{}); }
+    function applyPreset(p){
+      const profile=cleanProfile(p.profile||p);
+      brushPrefs[brush.id]={ ...(brushPrefs[brush.id]||{}), ...profile };
+      if(typeof profile.size==='number') size=profile.size;
+      if(typeof profile.op==='number') opacity=profile.op;
+      refreshBp(); open(); savePrefs(); flash('Preset loaded · '+(p.name||brush.id));
+    }
+    function exportPreset(p){
+      const payload={ v:1, kind:'inkframe-brush-profile', app:'InkFrame Studio',
+        name:p.name||presetNameBase(), brushId:p.brushId||brush.id, savedAt:Date.now(), profile:cleanProfile(p.profile||p) };
+      const safe=String(payload.name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || payload.brushId;
+      profileDownload(new Blob([JSON.stringify(payload,null,2)], {type:'application/json'}), `inkframe-${safe}.inkbrush`);
+    }
+    function renderLibrary(){
+      if(!libList) return;
+      const list=brushLibrary.filter(p=>p.brushId===brush.id);
+      libList.innerHTML='';
+      if(!list.length){ const e=document.createElement('div'); e.className='empty'; e.textContent='No saved presets for this brush yet.'; libList.appendChild(e); return; }
+      list.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).forEach(p=>{
+        const row=document.createElement('div'); row.className='brushPreset';
+        const info=document.createElement('div');
+        const nm=document.createElement('div'); nm.className='name'; nm.textContent=p.name||'Preset'; info.appendChild(nm);
+        const meta=document.createElement('div'); meta.className='meta';
+        const prof=p.profile||{}; meta.textContent=`${Math.round((prof.size||size))}px · ${Math.round((prof.op||opacity)*100)}% · tex ${Math.round((prof.texture||0)*100)}`; info.appendChild(meta);
+        row.appendChild(info);
+        const mini=document.createElement('div'); mini.className='mini';
+        const use=document.createElement('button'); use.type='button'; use.textContent='Use'; use.addEventListener('click',()=>applyPreset(p)); mini.appendChild(use);
+        const exp=document.createElement('button'); exp.type='button'; exp.textContent='Export'; exp.addEventListener('click',()=>exportPreset(p)); mini.appendChild(exp);
+        const del=document.createElement('button'); del.type='button'; del.textContent='Del'; del.addEventListener('click',()=>{
+          if(!confirm('Delete brush preset '+(p.name||'Preset')+'?')) return;
+          const idx=brushLibrary.indexOf(p); if(idx>=0) brushLibrary.splice(idx,1);
+          savePrefs(); renderLibrary(); flash('Preset deleted');
+        }); mini.appendChild(del);
+        row.appendChild(mini); libList.appendChild(row);
+      });
+    }
+    function saveCurrentPreset(){
+      const name=(prompt('Name this brush preset', presetNameBase())||'').trim();
+      if(!name) return;
+      const existing=brushLibrary.find(p=>p.brushId===brush.id && p.name.toLowerCase()===name.toLowerCase());
+      const profile=currentProfileSnapshot();
+      if(existing){ existing.profile=profile; existing.createdAt=Date.now(); flash('Preset updated · '+name); }
+      else { brushLibrary.push({ id:presetId(), name:name.slice(0,60), brushId:brush.id, profile, createdAt:Date.now() }); flash('Preset saved · '+name); }
+      savePrefs(); renderLibrary();
+    }
     const readProfileFile=file=> file.text ? file.text() : new Promise((resolve,reject)=>{
       const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=()=>reject(r.error||new Error('Read failed')); r.readAsText(file);
     });
+    btnSavePreset.addEventListener('click',saveCurrentPreset);
     btnExport.addEventListener('click',()=>{
       commit();
-      const payload={ v:1, kind:'inkframe-brush-profile', app:'InkFrame Studio', brushId:brush.id,
+      const payload={ v:1, kind:'inkframe-brush-profile', app:'InkFrame Studio',
+        name:presetNameBase(), brushId:brush.id,
         savedAt:Date.now(), profile:{...(brushPrefs[brush.id]||{})} };
       const blob=new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
       profileDownload(blob, `inkframe-${brush.id}.inkbrush`);
@@ -2492,6 +2571,10 @@
         brushPrefs[brush.id]={ ...(brushPrefs[brush.id]||{}), ...profile };
         if(typeof profile.size==='number') size=profile.size;
         if(typeof profile.op==='number') opacity=profile.op;
+        const importedName=String(payload.name || file.name.replace(/\.(inkbrush|json)$/i,'') || presetNameBase()).slice(0,60);
+        const existing=brushLibrary.find(p=>p.brushId===brush.id && p.name.toLowerCase()===importedName.toLowerCase());
+        if(existing){ existing.profile=profile; existing.createdAt=Date.now(); }
+        else brushLibrary.push({ id:presetId(), name:importedName, brushId:brush.id, profile, createdAt:Date.now() });
         refreshBp(); open(); savePrefs(); flash('Brush imported · '+brush.id);
       }catch(e){ console.error('[brush] import failed', e); flash('Brush import failed: '+(e.message||e)); }
     });
