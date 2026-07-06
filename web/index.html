@@ -1200,6 +1200,27 @@
       fillAt(c.x, c.y);
       return;
     }
+    // Dropper modal: single tap samples the pixel under it, then auto-exits
+    // so you're immediately ready to paint with the sampled colour.
+    if(dropperMode){
+      e.preventDefault();
+      const c = toC(e);
+      applySampledColor(samplePixel(c.x, c.y));
+      dropperMode = false;
+      if(typeof kDropper !== 'undefined') kDropper.classList.remove('on');
+      return;
+    }
+    // Barrel-button / right-click / pen-eraser-side gesture: sample without
+    // switching tools. e.button === 2 = right/secondary; e.buttons & 2 also
+    // covers Wacom/Apple Pencil barrel buttons on browsers that route them
+    // through Pointer Events. Skipped when a real stroke is in flight so
+    // it can't hijack an ongoing pen drag.
+    if(e.button === 2 || (e.buttons & 2)){
+      e.preventDefault();
+      const c = toC(e);
+      applySampledColor(samplePixel(c.x, c.y));
+      return;
+    }
     if(constellationOn){
       e.preventDefault();
       const c = toC(e);
@@ -1924,6 +1945,11 @@
     if(typeof fillMode !== 'undefined' && fillMode){
       fillMode = false;
       if(typeof kFill !== 'undefined') kFill.classList.remove('on');
+    }
+    // Same for Dropper mode -- swapping brushes cancels a pending sample.
+    if(typeof dropperMode !== 'undefined' && dropperMode){
+      dropperMode = false;
+      if(typeof kDropper !== 'undefined') kDropper.classList.remove('on');
     }
     const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
     if(sd) sd.textContent=Math.round(size);
@@ -2658,6 +2684,57 @@
   const custom=kidEl({glyph:'@custom',sub:'Custom',build(k){const inp=document.createElement('input');inp.type='color';inp.value=color;
     inp.addEventListener('input',e=>{color=e.target.value;refreshSwatches();savePrefs();}); k.appendChild(inp);}});
   nColor._kids.appendChild(custom);
+
+  // ---- Eyedropper (dropperMode + long-press gesture) ----
+  // Two entry points, one shared samplePixel() implementation:
+  //   * Dropper kid: toggle dropperMode. When on, any canvas tap samples the
+  //     pixel under it as the active colour (one-shot -- turns itself off).
+  //   * Long-press gesture: 750 ms hold with < 6 px drift anywhere on the
+  //     canvas samples immediately, no mode change. Works with any brush
+  //     already selected so you dont lose your tool. Wired further down where
+  //     the main pointerdown/move/up handlers live.
+  let dropperMode = false;
+  function samplePixel(x, y){
+    // Read from the FLATTENED composite (frame + paper), not just the active
+    // layer -- so imported reference images and layers-below are pickable.
+    // Round to nearest whole pixel; clamp to bounds.
+    x = Math.round(x); y = Math.round(y);
+    if(x < 0 || y < 0 || x >= W || y >= H) return null;
+    const off = mkAt(1, 1);
+    const g = off.getContext('2d');
+    g.fillStyle = paper();
+    g.fillRect(0, 0, 1, 1);
+    g.drawImage(frameComposite(frames[cur]), -x, -y);
+    const d = g.getImageData(0, 0, 1, 1).data;
+    // Skip fully transparent (would sample paper below, but we already
+    // composited paper in so this cant happen -- keep the guard anyway).
+    if(d[3] === 0) return null;
+    const hex = '#' + ((1 << 24) | (d[0] << 16) | (d[1] << 8) | d[2])
+                        .toString(16).slice(1);
+    return hex;
+  }
+  function applySampledColor(hex){
+    if(!hex) { flash('No pixel to sample'); return; }
+    color = hex;
+    // Sync the visible controls: swatch selection, custom-color picker,
+    // brush lab preview, and the paper-dot indicator (safe to skip).
+    refreshSwatches();
+    if(typeof custom !== 'undefined'){
+      const inp = custom.querySelector('input[type=color]');
+      if(inp) inp.value = hex;
+    }
+    savePrefs();
+    flash('Sampled · ' + hex);
+  }
+  const kDropper = kidEl({glyph:'@dropper', sub:'Dropper'});
+  kDropper.addEventListener('click', e=>{
+    e.stopPropagation();
+    dropperMode = !dropperMode;
+    kDropper.classList.toggle('on', dropperMode);
+    flash(dropperMode ? 'Dropper · tap to sample a colour'
+                      : 'Dropper off');
+  });
+  nColor._kids.appendChild(kDropper);
   // palette swatches (rebuilt on theme change)
   function rebuildSwatches(){ [...nColor._kids.querySelectorAll('.kid.swatch')].forEach(e=>e.remove());
     palette.forEach(p=>{ const k=kidEl({cls:'swatch',build(el){el.style.background=p;}}); k.dataset.c=p;

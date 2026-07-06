@@ -118,6 +118,10 @@ function catmullRom(t, p0, p1, p2, p3) {
 }
 
 // ---- UMD-lite export ------------------------------------------------------
-const _api = { GRAIN_SIZE, buildGrain, sampleGrain, easeAngle, hexWithAlpha, catmullRom };
-if (typeof window !== 'undefined') window.InkFrameBrushMath = _api;
-if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+// Block-scoped so multiple modules inlined into one <script> (e.g. the CI
+// boot smoke test) don't collide on top-level `const _api`.
+{
+  const _api = { GRAIN_SIZE, buildGrain, sampleGrain, easeAngle, hexWithAlpha, catmullRom };
+  if (typeof window !== 'undefined') window.InkFrameBrushMath = _api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+}

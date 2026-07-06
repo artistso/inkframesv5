@@ -141,6 +141,10 @@ function queueRow(argb, width, left, right, y, matches, sx, sy) {
 }
 
 // UMD-lite: expose on window for the WebView, module.exports for Node tests.
-const _api = { floodFill };
-if (typeof window !== 'undefined') window.InkFrameFloodFill = _api;
-if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+// Block-scoped so multiple modules inlined into one <script> (e.g. the boot
+// smoke test) don't collide on top-level `const _api = ...`.
+{
+  const _api = { floodFill };
+  if (typeof window !== 'undefined') window.InkFrameFloodFill = _api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = _api;
+}
