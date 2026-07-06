@@ -284,6 +284,14 @@
 <div id="title"><h1>InkFrame</h1><div class="sub">The Glass Horizon</div></div>
 <div id="stage"><div id="frameGlass" class="glass">
   <canvas id="c" width="1024" height="768"></canvas>
+  <!-- Predicted-stroke overlay. Same size as #c, absolutely stacked on top,
+       transparent. On pointermove we paint a fast/lightweight ink trail from
+       the last confirmed sample to the raw pen tip so the artist sees ink at
+       their tip instead of trailing ~20 ms behind the StreamLine buffer.
+       Cleared on pen-up. Wired up in JS below. -->
+  <canvas id="cp" width="1024" height="768"
+    style="position:absolute; left:0; top:0; pointer-events:none;
+           width:100%; height:100%; mix-blend-mode:normal;"></canvas>
   <div class="chandle tl" data-h="tl"></div><div class="chandle tr" data-h="tr"></div>
   <div class="chandle bl" data-h="bl"></div><div class="chandle br" data-h="br"></div>
   <div class="shandle n"  data-s="n"></div><div class="shandle s" data-s="s"></div>
@@ -326,6 +334,7 @@
   <div class="row"><span class="lbl">Taper out</span><input type="range" id="blabTout" min="0" max="60" step="1"><span class="val" id="blabToutV">0</span></div>
   <div class="row"><span class="lbl">Entry pool</span><input type="range" id="blabEP" min="0" max="100" step="1"><span class="val" id="blabEPV">0</span></div>
   <div class="row"><span class="lbl">Exit pool</span><input type="range" id="blabXP" min="0" max="100" step="1"><span class="val" id="blabXPV">0</span></div>
+  <div class="row"><span class="lbl">Response</span><input type="range" id="blabResp" min="-100" max="100" step="1"><span class="val" id="blabRespV">0</span></div>
   <div class="btns">
     <button id="blabReset" type="button">Reset</button>
     <button id="blabClose" type="button" class="primary">Done</button>
@@ -368,6 +377,18 @@
   const W0=1024,H0=768;          // default document size
   let W=W0,H=H0;                  // current document size (mutable: side handles reshape it)
   const canvas=document.getElementById('c'), ctx=canvas.getContext('2d',{willReadFrequently:true});
+  // Predicted-stroke overlay -- see the <canvas id="cp"> comment for intent.
+  // The overlay's pixel size is kept in lockstep with the main canvas by the
+  // reshape/resize paths (search for `pctx = ` below).
+  const pcanvas = document.getElementById('cp');
+  let pctx = pcanvas ? pcanvas.getContext('2d') : null;
+  function syncPredictedSize(){
+    if(!pcanvas) return;
+    if(pcanvas.width !== canvas.width)  pcanvas.width  = canvas.width;
+    if(pcanvas.height!== canvas.height) pcanvas.height = canvas.height;
+    pctx = pcanvas.getContext('2d');
+  }
+  function clearPredicted(){ if(pctx) pctx.clearRect(0, 0, pcanvas.width, pcanvas.height); }
 
   // ===== Themes (8 color worlds) =====
   const themes=[
@@ -441,14 +462,15 @@
   const brushPrefs={};
   // Sensible defaults per brush. Ink keeps its calligraphic personality (entry
   // + exit pools ON) so it still feels like a real pen; every other brush
-  // ships with pools OFF so a normal sketch stroke never blobs.
+  // ships with pools OFF so a normal sketch stroke never blobs. Response is
+  // the pressure->width shaper: -1 exponential (charcoal), 0 linear, +1 S-curve.
   const DEFAULT_PROFILE={
-    pencil:  { spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0,    exitPool:0    },
-    ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55 },
-    marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0    },
-    water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0    },
-    glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0    },
-    eraser:  { spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0    },
+    pencil:  { spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0,    exitPool:0,    response:-0.3 },
+    ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55, response: 0.15},
+    marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0,    response: 0    },
+    water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0,    response:-0.5 },
+    glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    response: 0    },
+    eraser:  { spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    response: 0    },
   };
   brushes.forEach(b=>{ const d=DEFAULT_PROFILE[b.id]||{};
     brushPrefs[b.id]={
@@ -459,11 +481,12 @@
       taperOut: (typeof d.taperOut==='number') ? d.taperOut : 6,
       entryPool:(typeof d.entryPool==='number')? d.entryPool: 0,
       exitPool: (typeof d.exitPool==='number') ? d.exitPool : 0,
+      response: (typeof d.response==='number') ? d.response : 0,
     };
   });
   // Current-brush accessors used by the paint engine. Cheaper than reading
   // brushPrefs[brush.id].x every dab, and safe against `brush` swaps.
-  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0;
+  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpR=0;
   function refreshBp(){ const p=brushPrefs[brush.id]||{};
     _bpH   = (typeof p.hard==='number')      ? p.hard      : (brush.hard!=null?brush.hard:0.9);
     _bpS   = (typeof p.spacing==='number')   ? p.spacing   : 0.14;
@@ -472,6 +495,7 @@
     _bpTout= (typeof p.taperOut==='number')  ? p.taperOut  : 6;
     _bpEP  = (typeof p.entryPool==='number') ? p.entryPool : 0;
     _bpXP  = (typeof p.exitPool==='number')  ? p.exitPool  : 0;
+    _bpR   = (typeof p.response==='number')  ? p.response  : 0;
   }
   function loadPrefs(){
     try{ const raw=localStorage.getItem(PREF_KEY); if(!raw) return;
@@ -676,9 +700,36 @@
     else if(e.altitudeAngle!=null){ az=(e.azimuthAngle||0); flat=Math.min(1,1-(e.altitudeAngle/(Math.PI/2))); }
     return {x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height),
             p:e.pressure&&e.pressure>0?e.pressure:0.5, az, flat, type:e.pointerType};};
-  // Colour + grain + angle helpers live in web/brush-math.js (pure math, unit-testable).
-  // Bind local shims so the paint-engine call sites stay short and readable.
-  const _BM = window.InkFrameBrushMath;
+  // Colour + grain + angle helpers live in web/brush-math.js (pure math,
+  // unit-testable). Bind local shims so the paint-engine call sites stay
+  // short and readable. If the module didn't load (sandboxed iframe preview,
+  // offline fetch, etc.) fall back to an inline mini-implementation so the
+  // app STILL boots -- this used to be the "pink-screen preview" symptom.
+  const _BM = window.InkFrameBrushMath || (() => {
+    const GRAIN_SIZE=256;
+    function buildGrain(size){ size=size||GRAIN_SIZE; const N=size;
+      const raw=new Float32Array(N*N);
+      for(let i=0;i<raw.length;i++) raw[i]=Math.random();
+      const out=new Float32Array(N*N);
+      for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+        let s=0; for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++)
+          s+=raw[(((y+dy)+N)%N)*N + (((x+dx)+N)%N)];
+        out[y*N+x] = (s/9)*0.6 + raw[y*N+x]*0.4;
+      }
+      return out;
+    }
+    function sampleGrain(g,x,y,size){ const N=size||GRAIN_SIZE;
+      const ix=(((x|0)%N)+N)%N, iy=(((y|0)%N)+N)%N; return g[iy*N+ix]; }
+    function easeAngle(cur,tgt,k){ let dA=((tgt-cur+Math.PI)%(2*Math.PI))-Math.PI; return cur+dA*k; }
+    function hexWithAlpha(h,a){ const n=parseInt(h.slice(1),16);
+      return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+    function catmullRom(t,p0,p1,p2,p3){
+      const tt=t*t, ttt=tt*t;
+      const b0=-0.5*ttt+tt-0.5*t, b1=1.5*ttt-2.5*tt+1, b2=-1.5*ttt+2*tt+0.5*t, b3=0.5*ttt-0.5*tt;
+      return [b0*p0[0]+b1*p1[0]+b2*p2[0]+b3*p3[0], b0*p0[1]+b1*p1[1]+b2*p2[1]+b3*p3[1]];
+    }
+    return { GRAIN_SIZE, buildGrain, sampleGrain, easeAngle, hexWithAlpha, catmullRom };
+  })();
   const hexA = _BM.hexWithAlpha;
   const GW   = _BM.GRAIN_SIZE;
   let grain  = null;
@@ -691,8 +742,28 @@
   // Each brush has its own nib character: graphite tooth biting paper, velocity-tapered
   // ink, a chisel marker that bleeds when pressed slowly, soft glow, clean eraser.
   // Target nib diameter for the CURRENT sample (before momentum is applied).
+  // Reshape raw pressure into a per-brush "response curve" before it becomes
+  // width. `response` is the brush pref in [-1, +1]:
+  //   -1  exponential (pow ~2.6) -- light presses stay hairline, deep presses
+  //       flare fast; feels like real charcoal or a wet nib
+  //    0  linear (unchanged)
+  //   +1  S-curve -- accentuates the mid-pressure band, so a light-to-medium
+  //       press gains width quickly and only the top of the range is fat
+  // Cheap approximation without a proper cubic bezier eval; matches curves in
+  // Procreate / Fresco closely enough for a stylus artist to feel the change.
+  function shapePressure(p){
+    if(_bpR === 0) return p;
+    if(_bpR < 0){
+      const g = 1 - _bpR * 1.6;         // 1 .. 2.6 exponent
+      return Math.pow(Math.max(0, p), g);
+    }
+    // Smoothstep-like S-curve blended with the linear identity by _bpR.
+    const s = p * p * (3 - 2 * p);      // classic smoothstep(0,1,p)
+    return p + (s - p) * _bpR;
+  }
   function targetWidth(pr,spd){
-    let pf=(brush.id==='pencil'||brush.id==='ink')?(.4+.6*pr):1;
+    const p = shapePressure(pr);
+    let pf=(brush.id==='pencil'||brush.id==='ink')?(.4+.6*p):1;
     if(brush.id==='ink') pf*=1-Math.min(.6,(spd||0)*0.030);   // faster pen -> thinner (real velocity)
     return Math.max(.6,size*pf);
   }
@@ -818,7 +889,11 @@
     const y3 = n>=4 ? histY[n-1] : 2*y2 - y1;
     const dx=x2-x1, dy=y2-y1, dist=Math.hypot(dx,dy);
     if(dist<0.001) return;
-    const st=Math.max(1,size*_bpS), steps=Math.max(1,Math.ceil(dist/st));
+    // Velocity-adaptive spacing: at high speed, dabs beaded at the fixed
+    // step distance start to skip. Shrink the step (up to 40 %) as speed
+    // rises so fast strokes stay continuous without over-costing slow ones.
+    const stAdapt = _bpS * (1 - Math.min(0.4, drawVel * 0.02));
+    const st=Math.max(1,size*stAdapt), steps=Math.max(1,Math.ceil(dist/st));
     const livingLine=(brush.id==='ink'||brush.id==='pencil');
     const angTgt=(az!=null)?az:PEN_ANGLE;
     // Centripetal parameterization simplified to uniform — good enough at
@@ -853,7 +928,9 @@
   }
 
   function seg(x0,y0,x1,y1,p,az,flat){const dx=x1-x0,dy=y1-y0,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
-    const st=Math.max(1,size*_bpS),n=Math.max(1,Math.floor(dist/st));
+    // Velocity-adaptive spacing (same intent as segCR; see comment there).
+    const stAdapt = _bpS * (1 - Math.min(0.4, drawVel * 0.02));
+    const st=Math.max(1,size*stAdapt),n=Math.max(1,Math.floor(dist/st));
     const livingLine=(brush.id==='ink'||brush.id==='pencil');   // pen & pencil get momentum + reveal
     // nib orientation target: real tilt heading if the stylus reports it, else the default hold angle
     const angTgt = (az!=null) ? az : PEN_ANGLE;
@@ -974,6 +1051,32 @@
       lx=penX; ly=penY;
       if(strokePath.length<400) strokePath.push({x:penX,y:penY});}
     if(brush.erase){ bumpFrame(frames[cur]); render(); } updateLens(e);
+    // ---- Predicted stroke overlay ----
+    // StreamLine trails the raw pen by ~1-3 samples (~15-30 ms). That's the
+    // "ink lagging behind my tip" feeling. Paint a light stroke from the
+    // last confirmed sample (penX, penY) to the raw pen tip (c.x, c.y) on a
+    // transparent overlay so the artist sees ink AT the tip. Cleared on
+    // pen-up; the real dab() cascade already committed the correct pixels.
+    if(pctx && !brush.erase){
+      const c = toC(e);   // raw current pointer position
+      // Also try the browser's own predicted samples (Pointer Events extension).
+      const preds = (e.getPredictedEvents && e.getPredictedEvents()) || [];
+      pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
+      pctx.save();
+      pctx.strokeStyle = brush.erase ? '#fff0f3' : color;
+      pctx.globalAlpha = opacity * 0.7;   // slightly translucent -- reads as "predicted"
+      pctx.lineWidth = Math.max(1, (nibW || size) * 0.5);
+      pctx.lineCap = 'round'; pctx.lineJoin = 'round';
+      pctx.beginPath();
+      pctx.moveTo(penX, penY);
+      pctx.lineTo(c.x, c.y);
+      for(const pv of preds){
+        const pc = toC(pv);
+        pctx.lineTo(pc.x, pc.y);
+      }
+      pctx.stroke();
+      pctx.restore();
+    }
     // QuickShape: if the pen goes still mid/late-stroke, try to snap to a clean shape
     if(qsEnabled && !brush.erase){ const now=performance.now();
       const moved=Math.hypot(penX-(qsAnchor.x),penY-(qsAnchor.y));
@@ -981,6 +1084,9 @@
         qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
   const up=e=>{if(!drawing)return; if(e&&e.pointerId!=null&&e.pointerId!==drawPid)return;  // ignore a palm lifting
     drawing=false; drawPid=null; hideLens(); clearTimeout(qsTimer);
+    // Predicted-stroke overlay lingers past pen-up until we wipe it -- clear
+    // now so the ghost trail doesn't sit over the freshly-committed stroke.
+    clearPredicted();
     // Stroke terminals -- both are per-brush controls (Brush Lab):
     //   * A SLOW lift + Exit-pool > 0 -> ink pools into a calligraphic terminal
     //     (only meaningful for the ink brush; guarded by inkPool() being defined
@@ -1500,6 +1606,7 @@
     const sTout  = document.getElementById('blabTout'), vTout=document.getElementById('blabToutV');
     const sEP    = document.getElementById('blabEP'),   vEP  =document.getElementById('blabEPV');
     const sXP    = document.getElementById('blabXP'),   vXP  =document.getElementById('blabXPV');
+    const sResp  = document.getElementById('blabResp'), vResp=document.getElementById('blabRespV');
     const prev   = document.getElementById('blabPreview');
     const btnClose = document.getElementById('blabClose');
     const btnReset = document.getElementById('blabReset');
@@ -1569,6 +1676,7 @@
       sTout.value = Math.round((typeof bp.taperOut==='number') ? bp.taperOut : 6);
       sEP.value   = Math.round(((typeof bp.entryPool==='number')?bp.entryPool:0)*100);
       sXP.value   = Math.round(((typeof bp.exitPool==='number') ?bp.exitPool :0)*100);
+      sResp.value = Math.round(((typeof bp.response==='number')  ?bp.response :0)*100);
       // Ink brush is the only one that meaningfully honours entry/exit pools
       // today (they're gated by brush.id==='ink' in pen-down/up), so grey the
       // rows out for other brushes rather than lie to the user.
@@ -1594,6 +1702,7 @@
       vTout.textContent = sTout.value;
       vEP.textContent   = sEP.value;
       vXP.textContent   = sXP.value;
+      vResp.textContent = sResp.value;
     }
     function commit(){
       const b = brush; const bp = brushPrefs[b.id] || (brushPrefs[b.id]={});
@@ -1608,6 +1717,7 @@
       bp.taperOut= Math.max(0, +sTout.value);
       bp.entryPool = (+sEP.value)/100;
       bp.exitPool  = (+sXP.value)/100;
+      bp.response  = (+sResp.value)/100;   // [-1..+1]
       refreshBp();
       // Keep the main Size/Opacity dials in sync.
       const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
@@ -1617,7 +1727,7 @@
       syncLabels();
       paintPreview();
     }
-    [sSize,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP].forEach(s=>{
+    [sSize,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sResp].forEach(s=>{
       s.addEventListener('input', commit);
       // Slider drags shouldn't propagate to the canvas' pointer listeners.
       s.addEventListener('pointerdown', e=>e.stopPropagation());
@@ -1635,6 +1745,7 @@
         taperOut: (typeof shipped.taperOut==='number') ? shipped.taperOut : 6,
         entryPool:(typeof shipped.entryPool==='number')? shipped.entryPool: 0,
         exitPool: (typeof shipped.exitPool==='number') ? shipped.exitPool : 0,
+        response: (typeof shipped.response==='number') ? shipped.response : 0,
       };
       size = def.size; opacity = def.op;
       refreshBp();
@@ -2022,7 +2133,7 @@
     canvas.style.transform='scale(.86)'; canvas.style.opacity='0'; canvas.style.filter='blur(10px) saturate(1.4)';
     setTimeout(()=>{
       useProject(i);
-      canvas.width=W; canvas.height=H; clampCanvas(); applyCanvas();
+      canvas.width=W; canvas.height=H; syncPredictedSize(); clampCanvas(); applyCanvas();
       render(); refreshFrames(); refreshActions();
       // surface from depth
       canvas.style.transition='none';
@@ -2215,7 +2326,7 @@
       return fr;
     });
     frames=projects[pi].frames; W=nw; H=nh; projects[pi].w=W; projects[pi].h=H;
-    canvas.width=W; canvas.height=H; refreshFctx();
+    canvas.width=W; canvas.height=H; syncPredictedSize(); refreshFctx();
     clampCanvas(); applyCanvas(); render(); startWires();
   }
 
@@ -2288,7 +2399,8 @@
     // A 2nd finger cancels a TOUCH stroke (intending a gesture). But if a PEN owns the
     // stroke, an extra touch is a resting palm → keep drawing, ignore the touch entirely.
     if(active.size>=2 && drawing && drawPidType!=='pen'){
-      drawing=false; drawPid=null; if(pend){ restoreSnap(pend); pend=null; render(); }
+      drawing=false; drawPid=null; clearPredicted();
+      if(pend){ restoreSnap(pend); pend=null; render(); }
     }
   }, true);
   canvas.addEventListener('pointermove',e=>{
@@ -2664,14 +2776,23 @@
   // format and back-compat notes). We inject an env object so the module can
   // read/write our live projects[] array and useProject() the restored index
   // without owning any app state itself.
-  const AUTOSAVE = window.InkFrameAutosave.createAutosave({
+  // If web/autosave.js failed to load (sandboxed iframe preview, offline
+  // fetch), fall back to a no-op autosave so the app STILL boots. Everything
+  // downstream (pushU wrap, boot restore) works against this stub too --
+  // just nothing persists across reload in that environment.
+  const _AUTOSAVE_FACTORY = (window.InkFrameAutosave && window.InkFrameAutosave.createAutosave)
+    || (() => ({ schedule(){}, flushNow(){}, restore(){return Promise.resolve(false);},
+                 loadPayload(){return Promise.resolve(null);}, clear(){return Promise.resolve();},
+                 status(){return { lastSavedAt:0, savingNow:false, lastError:null };} }));
+  const AUTOSAVE = _AUTOSAVE_FACTORY({
     getProjects: () => projects,
     getActive:   () => ({ pi, cur, fps, W, H }),
     setActive:   ({ pi:targetPi, W:tw, H:th }) => {
       useProject(targetPi);
       // Resize the on-screen <canvas> to match the restored project so the
-      // first render post-restore doesnt smear pixels.
-      canvas.width = tw; canvas.height = th;
+      // first render post-restore doesnt smear pixels. Predicted-stroke
+      // overlay must match dimensions or its transform mapping breaks.
+      canvas.width = tw; canvas.height = th; syncPredictedSize();
     },
     replaceProjects: (list) => {
       // Keep object identity of the outer projects[] array so every module-
@@ -2723,6 +2844,7 @@
   //   window.INKFRAME_AUTOSAVE.clear()  -> wipe the IDB snapshot (returns Promise)
   window.INKFRAME_AUTOSAVE = AUTOSAVE;
 
+  syncPredictedSize();
   applyTheme(0); render(); refreshFrames(); refreshLayers(); refreshActions(); startWires();
   flash('Tap a circle to spiral open · double-tap canvas to collapse all · ◌ Studio');
 })();

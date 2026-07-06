@@ -6,6 +6,34 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — brush engine part 2 (stroke feel)
+Three long-planned improvements plus two safety nets.
+
+* **Velocity-adaptive spacing.** Dab step distance now shrinks up to 40 %
+  as stroke speed rises so fast curves at large brush sizes stay
+  continuous instead of beading. Applied to both `seg` and `segCR`.
+* **Per-brush pressure Response curve.** New Brush Lab slider (-100 to
+  +100): -1 = exponential (light presses stay hairline, deep presses
+  flare -- charcoal / wet nib), 0 = linear, +1 = smoothstep S-curve
+  (accentuates the mid-pressure band). Shipped defaults: pencil -0.3,
+  ink +0.15, watercolour -0.5, everything else 0.
+* **Predicted stroke overlay.** A second transparent `<canvas>` above
+  the drawing canvas gets a fast light-ink trail from the last confirmed
+  StreamLine sample to the raw pen tip on every pointermove (plus any
+  `getPredictedEvents()` samples the platform offers). Wiped on pen-up.
+  Reads as "ink lives at my tip" even with heavy smoothing.
+
+### Web build — resilient boot (workspace preview never pink-screens)
+* Both sibling-module bindings (`InkFrameBrushMath`, `InkFrameAutosave`)
+  now have inline fallbacks. If either script fails to load (workspace
+  iframe with `sandbox=allow-scripts` but no network, offline serving,
+  file protocol quirks), the app still boots into a fully-usable
+  session. Persistence just becomes a no-op in that environment.
+* New `web/tests/boot-smoke.mjs` -- jsdom-based CI check that catches
+  the "syntax-clean but throws at runtime" bug class that hid the
+  const-reassignment landmine for weeks. Wired into Android CI as a
+  new `web-smoke` job that gates the APK build.
+
 ### Web build — stroke terminals (no more blob-at-start / blob-at-end)
 Real diagnosis of five separate causes shipping a "digital-feeling" stroke,
 each fixed at the smallest possible layer:
