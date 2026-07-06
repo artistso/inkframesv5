@@ -790,7 +790,11 @@ private fun FrameStrip(
 
     Row(
         Modifier
-            .weight(1f)
+            // `weight` is a RowScope/ColumnScope extension and FrameStrip's body is a plain
+            // scope (it is called from inside a Column, not as a direct Row/Column child),
+            // so weight would not resolve here. fillMaxWidth gives the strip the same
+            // "take the remaining width" behaviour without needing a parent scope.
+            .fillMaxWidth()
             .padding(start = 6.dp)
             .pointerInput(frameCount) {
                 detectDragGestures(
