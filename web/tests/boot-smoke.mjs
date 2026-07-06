@@ -121,11 +121,13 @@ const stylusPanel = d.getElementById('stylusPanel');
 const textureSlider = d.getElementById('blabTex');
 const brushExport = d.getElementById('blabExport');
 const brushImport = d.getElementById('blabImport');
+const barrelKid = d.getElementById('barrelModeKid');
 if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
 if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
 if (!stylusPanel) { console.error('❌ #stylusPanel (stylus diagnostics) missing'); failed++; }
 if (!textureSlider) { console.error('❌ #blabTex (texture slider) missing'); failed++; }
 if (!brushExport || !brushImport) { console.error('❌ Brush Lab import/export controls missing'); failed++; }
+if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control) missing'); failed++; }
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }
 
 if (failed) {

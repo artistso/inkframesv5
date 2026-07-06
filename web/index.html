@@ -660,6 +660,11 @@
     {id:'eraser',ic:'@eraser',size:40,op:1,hard:.8,erase:true},
   ];
   let brush=brushes[1], color='#bb0037', size=14, opacity=1, onion=true, playing=false, fps=12, stylusOnly=false;
+  // Pen barrel / secondary button behavior. Android tablets vary: S-Pen side
+  // button may arrive as button=2/buttons&2, or not at all. When it does,
+  // let the artist choose Pick (eyedropper), Erase (temporary eraser), or Off.
+  const BARREL_MODES=['pick','erase','off'];
+  let barrelMode='pick';
 
   // ===== Preferences (persisted per-brush + globals) =====
   // Each brush remembers its own size/opacity, and a handful of app-wide flags
@@ -735,6 +740,7 @@
       if(typeof p.streamline==='number') streamline=p.streamline;
       if(typeof p.stylusOnly==='boolean') stylusOnly=p.stylusOnly;
       if(typeof p.palmReject==='boolean') palmReject=p.palmReject;
+      if(typeof p.barrelMode==='string' && BARREL_MODES.includes(p.barrelMode)) barrelMode=p.barrelMode;
       if(typeof p.onion==='boolean') onion=p.onion;
       if(typeof p.qsEnabled==='boolean') qsEnabled=p.qsEnabled;
       if(p.brushPrefs) Object.assign(brushPrefs, p.brushPrefs);
@@ -745,7 +751,7 @@
   let savePrefsT=0;
   function savePrefs(){ clearTimeout(savePrefsT); savePrefsT=setTimeout(()=>{
     try{ localStorage.setItem(PREF_KEY, JSON.stringify({
-      color, streamline, stylusOnly, palmReject, onion, qsEnabled,
+      color, streamline, stylusOnly, palmReject, barrelMode, onion, qsEnabled,
       brushId:brush.id, brushPrefs,
     })); }catch(_){}
   }, 180); }
@@ -1047,7 +1053,7 @@
       `pressure <span>${fmt(e.pressure || c.p,3)}</span> · buttons <span>${e.buttons||0}</span> · button <span>${e.button}</span><br>`+
       `tiltX/Y <span>${tilt}</span> · altitude <span>${alt}</span> · azimuth <span>${azi}</span><br>`+
       `flatness <span>${fmt(c.flat,2)}</span> · contact <span>${fmt(e.width,0)}×${fmt(e.height,0)}</span><br>`+
-      `canvas <span>${fmt(c.x,1)}, ${fmt(c.y,1)}</span> · mode <span>${stylusOnly?'stylus-only':'pen+touch'}</span>`;
+      `canvas <span>${fmt(c.x,1)}, ${fmt(c.y,1)}</span> · mode <span>${stylusOnly?'stylus-only':'pen+touch'}</span> · barrel <span>${barrelMode}</span>`;
   }
   function openStylusDiag(){ if(stylusPanelEl){ stylusPanelEl.classList.add('show'); flash('Stylus diagnostics'); } }
   if(stylusCloseEl) stylusCloseEl.addEventListener('click',()=>stylusPanelEl.classList.remove('show'));
@@ -1414,6 +1420,47 @@
     if(stylusOnly) return false;         // hard stylus-only mode rejects all non-pen
     return !isPalm(e);                   // otherwise reject only palm-like touches
   }
+  let barrelRestore=null;
+  function isBarrel(e){ return !!(e && (e.button === 2 || (e.buttons & 2))); }
+  function syncBrushReadouts(){
+    const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
+    if(sd) sd.textContent=Math.round(size);
+    if(od) od.textContent=Math.round(opacity*100);
+  }
+  function beginBarrelEraser(){
+    if(barrelRestore) return;
+    rememberBrush();
+    barrelRestore={ brush, size, opacity };
+    const eb=brushes.find(b=>b.id==='eraser') || brush;
+    brush=eb;
+    const bp=brushPrefs[eb.id]||{size:eb.size,op:eb.op};
+    size=(typeof bp.size==='number')?bp.size:eb.size;
+    opacity=(typeof bp.op==='number')?bp.op:eb.op;
+    refreshBp();
+  }
+  function endBarrelEraser(){
+    if(!barrelRestore) return;
+    brush=barrelRestore.brush; size=barrelRestore.size; opacity=barrelRestore.opacity;
+    barrelRestore=null; refreshBp(); syncBrushReadouts();
+  }
+  function handleBarrelDown(e){
+    if(!isBarrel(e)) return 'none';
+    e.preventDefault();
+    const c=toC(e);
+    if(barrelMode==='pick'){
+      applySampledColor(samplePixel(c.x, c.y));
+      flash('Barrel · picked colour');
+      return 'stop';
+    }
+    if(barrelMode==='erase'){
+      beginBarrelEraser();
+      flash('Barrel · temporary eraser');
+      return 'erase';
+    }
+    flash('Barrel button off');
+    return 'stop';
+  }
+
   // Pressure + position stabilization: the drawn point trails the raw stylus on a short
   // "string", and pressure is eased — killing the jitter that makes lines look nervous.
   // StreamLine (Procreate-style): an adjustable smoothing amount drives the position lag.
@@ -1490,18 +1537,14 @@
       if(typeof kDropper !== 'undefined') kDropper.classList.remove('on');
       return;
     }
-    // Barrel-button / right-click / pen-eraser-side gesture: sample without
-    // switching tools. e.button === 2 = right/secondary; e.buttons & 2 also
-    // covers Wacom/Apple Pencil barrel buttons on browsers that route them
-    // through Pointer Events. Skipped when a real stroke is in flight so
-    // it can't hijack an ongoing pen drag.
-    if(e.button === 2 || (e.buttons & 2)){
-      e.preventDefault();
-      const c = toC(e);
-      applySampledColor(samplePixel(c.x, c.y));
-      return;
-    }
-    if(constellationOn){
+    // Barrel-button / right-click / pen-eraser-side gesture. User-selectable:
+    // Pick samples colour, Erase temporarily borrows the eraser brush for this
+    // stroke only, Off swallows the side-button event so it never draws by
+    // accident. e.button === 2 = right/secondary; e.buttons & 2 covers pens
+    // that report barrel state only in the bitfield.
+    const barrelAction = handleBarrelDown(e);
+    if(barrelAction==='stop') return;
+    if(barrelAction!=='erase' && constellationOn){
       e.preventDefault();
       const c = toC(e);
       const now = performance.now();
@@ -1739,6 +1782,7 @@
     if(pend){pushU(pend);pend=null;} render();
     // Spielberg: a catch-light glints once down the freshly-laid stroke (then it's done)
     if((brush.id==='ink'||brush.id==='pencil') && !qsActive && strokePath.length>4) fireGlint(strokePath.slice());
+    endBarrelEraser();
     qsActive=false; qsShape=null; strokePath=[];};
   window.addEventListener('pointerup',up); canvas.addEventListener('pointercancel',up);
 
@@ -3192,6 +3236,21 @@
   actKid('@video','Video',()=>exportVideo());
   const kStylus=actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);savePrefs();flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');}); kStylus.classList.toggle('on',stylusOnly);
   const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);savePrefs();flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
+  function syncBarrelKid(){
+    if(!kBarrel) return;
+    const sub=kBarrel.querySelector('.sub');
+    const label=barrelMode==='pick'?'Pick':barrelMode==='erase'?'Erase':'Off';
+    if(sub) sub.textContent=label;
+    kBarrel.classList.toggle('on', barrelMode!=='off');
+    kBarrel.title='Barrel / side button: '+label;
+  }
+  const kBarrel=actKid('@stylus','Pick',()=>{
+    const i=BARREL_MODES.indexOf(barrelMode);
+    barrelMode=BARREL_MODES[(i+1+BARREL_MODES.length)%BARREL_MODES.length];
+    syncBarrelKid(); savePrefs();
+    flash('Barrel button · '+(barrelMode==='pick'?'eyedropper':barrelMode==='erase'?'temporary eraser':'off'));
+  });
+  kBarrel.id='barrelModeKid'; syncBarrelKid();
   actKid('@stylus','Pen',()=>openStylusDiag());
   const kFull=actKid('@full','Full',k=>{ if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||(()=>{})).call(document.documentElement); document.body.classList.add('zen'); k.classList.add('on'); }
     else { (document.exitFullscreen||document.webkitExitFullscreen||(()=>{})).call(document); document.body.classList.remove('zen'); k.classList.remove('on'); } });
@@ -3912,6 +3971,7 @@
     kOnion.classList.toggle('on', onion);
     kPalm.classList.toggle('on', palmReject);
     kStylus.classList.toggle('on', stylusOnly);
+    syncBarrelKid();
     kQS.classList.toggle('on', qsEnabled);
     refreshSwatches();
     render();

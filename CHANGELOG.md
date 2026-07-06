@@ -11,6 +11,7 @@ semantic versioning once it reaches a public release.
 - **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor ship with toothy defaults; neon/star/glow stay smooth.
 - **Portable brush profiles.** Brush Lab can export/import `.inkbrush` profile JSON for the current brush, making custom brush settings easy to back up and share.
 - **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
+- **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
 - **Cached gallery thumbnails.** Gallery/project-browser thumbnails now reuse a signature cache keyed by project/frame/layer versions, avoiding needless recompositing while browsing projects.
 - **Export memory polish.** GIF export reuses one flattening canvas instead of allocating a new canvas per frame and warns before very large tablet exports; video export now stops capture tracks on recorder setup failure.
 
