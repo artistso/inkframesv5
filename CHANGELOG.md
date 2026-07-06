@@ -12,8 +12,9 @@ semantic versioning once it reaches a public release.
 - **MIME-aware MediaStore saving.** PNG/GIF/WebP/JPEG exports save to `Pictures/InkFrame`; MP4/WebM exports save to `Movies/InkFrame`; future non-media exports route to Downloads.
 - **Added `LICENSE` and `PRIVACY.md`.** README now points to the MIT License and offline/privacy notes for Play Store data-safety preparation.
 
-### Web build — project browser and local recovery UI
+### Web build — project browser, archives, and local recovery UI
 - **Gallery ▸ Manage** opens a frosted project browser with thumbnails, editable project names, frame/size/fps stats, switch, duplicate, delete, and new-canvas actions.
+- **InkFrame archive export/import** from the project browser saves the whole gallery as a portable `.inkframe` JSON package with PNG-encoded layers, then restores it on another browser/device without needing an account or cloud service.
 - **Autosave health controls** show the last local recovery-save time, expose a manual **Save now**, and let the user clear the recovery copy without deleting the projects currently open on screen.
 - `web/autosave.js` `flushNow()` now returns the underlying save promise so UI can update after a manual save completes.
 

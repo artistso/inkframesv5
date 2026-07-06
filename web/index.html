@@ -439,9 +439,12 @@
     <div id="projectList"></div>
     <div class="footer">
       <button id="projectNew" type="button" class="primary">New canvas</button>
+      <button id="projectExport" type="button">Export archive</button>
+      <button id="projectImport" type="button">Import archive</button>
       <button id="projectSave" type="button">Save now</button>
       <button id="projectClearSave" type="button">Clear recovery</button>
       <button id="projectClose" type="button">Close</button>
+      <input id="projectImportFile" type="file" accept=".inkframe,.json,application/json,application/x-inkframe+json" style="display:none" />
     </div>
   </div>
 </div>
@@ -3537,6 +3540,76 @@
 
   const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave');
   const projectClose=$('projectClose'), projectNew=$('projectNew'), projectSave=$('projectSave'), projectClearSave=$('projectClearSave');
+  const projectExport=$('projectExport'), projectImport=$('projectImport'), projectImportFile=$('projectImportFile');
+
+  function projectDownloadBlob(blob, name){
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 800);
+  }
+  function projectDateStamp(){
+    const d=new Date(), pad=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes());
+  }
+  function projectToArchive(P){
+    const w=P.w||W0, h=P.h||H0;
+    const framesSrc=(P.frames&&P.frames.length?P.frames:[newFrame(w,h)]);
+    return { name:P.name||'Canvas', w, h, cur:Math.min(Math.max(0,P.cur|0),framesSrc.length-1),
+      fps:P.fps||12, paper:P.paper||DEFAULT_PAPER,
+      holds:framesSrc.map((_,i)=>Math.max(1,Math.round((P.holds&&P.holds[i])||1))),
+      frames:framesSrc.map(fr0=>{
+        const fr=upgradeFrame(fr0,w,h);
+        return { active:Math.min(fr.active|0,fr.layers.length-1),
+          layers:fr.layers.map(L=>({ name:L.name||'Layer', visible:L.visible!==false,
+            opacity:typeof L.opacity==='number'?L.opacity:1, blend:L.blend||'source-over',
+            png:L.canvas.toDataURL('image/png') })) };
+      }) };
+  }
+  function buildProjectArchive(){
+    syncActiveProject();
+    return { v:3, app:'InkFrame Studio', kind:'inkframe-web-archive', savedAt:Date.now(), active:pi,
+      projects:projects.map(projectToArchive) };
+  }
+  function loadArchiveCanvas(src,w,h){
+    return new Promise(resolve=>{
+      const c=mkAt(w,h);
+      if(!src){ resolve(c); return; }
+      const img=new Image();
+      img.onload=()=>{ c.getContext('2d').drawImage(img,0,0,w,h); resolve(c); };
+      img.onerror=()=>resolve(c);
+      img.src=src;
+    });
+  }
+  async function archiveToProjects(payload){
+    if(!payload || typeof payload!=='object') throw new Error('Invalid archive');
+    const list=Array.isArray(payload.projects) ? payload.projects : (payload.project ? [payload.project] : null);
+    if(!list || !list.length) throw new Error('No projects in archive');
+    const restored=[];
+    for(const P of list){
+      const w=Math.max(1,P.w||W0), h=Math.max(1,P.h||H0);
+      const srcFrames=Array.isArray(P.frames) && P.frames.length ? P.frames : [{active:0,layers:[]}];
+      const framesOut=[];
+      for(const item of srcFrames){
+        const srcLayers=Array.isArray(item.layers) && item.layers.length ? item.layers : [{name:'Layer 1', png:item.png||item.dataUrl||item.data}];
+        const layers=[];
+        for(const L of srcLayers){
+          layers.push({ id:__lid++, name:L.name||'Layer', visible:L.visible!==false,
+            opacity:typeof L.opacity==='number'?L.opacity:1, blend:L.blend||'source-over',
+            canvas:await loadArchiveCanvas(L.png||L.dataUrl||L.data,w,h) });
+        }
+        framesOut.push({ layers, active:Math.min(item.active|0,layers.length-1), _comp:null, _compV:-1, _v:0 });
+      }
+      const holds=framesOut.map((_,i)=>Math.max(1,Math.round((P.holds&&P.holds[i])||1)));
+      restored.push({ frames:framesOut, holds, cur:Math.min(Math.max(0,P.cur|0),framesOut.length-1),
+        undo:[], redo:[], w, h, fps:P.fps||12, name:P.name||'Canvas', paper:P.paper||DEFAULT_PAPER });
+    }
+    return { projects:restored, active:Math.min(Math.max(0,payload.active|0),restored.length-1) };
+  }
+  const readTextFile=file=> file.text ? file.text() : new Promise((resolve,reject)=>{
+    const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=()=>reject(r.error||new Error('Read failed')); r.readAsText(file);
+  });
+
   const projectAge=ts=>{
     if(!ts) return 'not saved yet';
     const s=Math.max(1,Math.round((Date.now()-ts)/1000));
@@ -3595,6 +3668,31 @@
   projectNew.addEventListener('click',()=>{
     if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
     projects.push(newProject()); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
+  });
+  projectExport.addEventListener('click',()=>{
+    try{
+      const payload=buildProjectArchive();
+      const blob=new Blob([JSON.stringify(payload)], {type:'application/x-inkframe+json'});
+      projectDownloadBlob(blob, `inkframe-${projectDateStamp()}.inkframe`);
+      flash('Project archive exported');
+    }catch(e){ console.error('[project] export failed', e); flash('Archive export failed'); }
+  });
+  projectImport.addEventListener('click',()=>projectImportFile.click());
+  projectImportFile.addEventListener('change',async()=>{
+    const file=projectImportFile.files && projectImportFile.files[0];
+    projectImportFile.value='';
+    if(!file) return;
+    if(!confirm('Import this InkFrame archive? It will replace the canvases currently open in the gallery.')) return;
+    try{
+      const text=await readTextFile(file);
+      const payload=JSON.parse(text);
+      const restored=await archiveToProjects(payload);
+      projects.length=0; for(const P of restored.projects.slice(0,MAX_PROJECTS)) projects.push(P);
+      bindProjectDirect(Math.min(restored.active, projects.length-1));
+      repaintProjectShell(); renderProjectPanel();
+      AUTOSAVE.schedule(); Promise.resolve(AUTOSAVE.flushNow && AUTOSAVE.flushNow()).catch(()=>{});
+      flash('Archive imported · '+projects.length+' canvas'+(projects.length===1?'':'es'));
+    }catch(e){ console.error('[project] import failed', e); flash('Archive import failed: '+(e.message||e)); }
   });
   projectSave.addEventListener('click',()=>{
     syncActiveProject(); const r=AUTOSAVE.flushNow && AUTOSAVE.flushNow();
