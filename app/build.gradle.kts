@@ -7,12 +7,8 @@ plugins {
 }
 
 // --- Versioning ------------------------------------------------------------
-// Base marketing version. The integer versionCode that Play requires to increase on
-// every upload is derived automatically: in CI it uses the build/run number (offset by
-// a base so it always climbs), and locally it stays at 1 for convenience. Override the
-// CI number with INKFRAME_VERSION_CODE if you ever need an explicit value.
 val baseVersionName = "0.1.0"
-val versionCodeBase = 1            // bump only for intentional baseline resets
+val versionCodeBase = 1
 val resolvedVersionCode: Int = run {
     System.getenv("INKFRAME_VERSION_CODE")?.toIntOrNull()?.let { return@run it }
     val ci = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
@@ -20,13 +16,6 @@ val resolvedVersionCode: Int = run {
 }
 
 // --- Release signing -------------------------------------------------------
-// Credentials come from one of two places, in priority order:
-//   1. A local `keystore.properties` (git-ignored) next to the project root.
-//   2. Environment variables (used by CI):
-//        INKFRAME_KEYSTORE       absolute path to the .jks
-//        INKFRAME_KEYSTORE_PASSWORD, INKFRAME_KEY_ALIAS, INKFRAME_KEY_PASSWORD
-// If neither is configured, release builds fall back to the debug signing key so
-// they still assemble (handy for unsigned CI artifacts / local smoke tests).
 val keystorePropsFile = rootProject.file("keystore.properties")
 val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
@@ -44,7 +33,7 @@ android {
 
     defaultConfig {
         applicationId = "com.inkframe.studio"
-        minSdk = 26          // Android 8.0 — tablet/stylus-first
+        minSdk = 26
         targetSdk = 34
         versionCode = resolvedVersionCode
         versionName = baseVersionName
@@ -64,14 +53,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true      // drop unused resources for a smaller APK
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-            // Use the real release key when configured; otherwise fall back to debug so
-            // the build still produces an installable (debug-signed) artifact.
+            // The WebView shell has no meaningful Kotlin surface to shrink, and
+            // R8 would strip nothing but risk breaking the JS bridge — keep it off.
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
             } else {
@@ -79,7 +64,7 @@ android {
             }
         }
         debug {
-            isMinifyEnabled = false       // fast iteration; no shrinking on debug
+            isMinifyEnabled = false
             applicationIdSuffix = ".debug"
         }
     }
@@ -90,47 +75,67 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    // Kotlin 1.9.x enables Compose via the compiler extension (the
-    // org.jetbrains.kotlin.plugin.compose plugin only exists for Kotlin 2.x).
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
+    // The web app lives at /web in the repo. We stage just the runtime files
+    // (HTML + any bundled assets) into build/generated/webAssets and add that
+    // to `assets` — so no build-time cruft (package.json, vite config, …)
+    // ends up in the APK.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir(layout.buildDirectory.dir("generated/webAssets"))
+        }
     }
-
-    buildFeatures { compose = true }
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 }
 
-dependencies {
-    implementation(project(":core-common"))
-    implementation(project(":core-model"))
-    implementation(project(":engine-gl"))
-    implementation(project(":feature-canvas"))
-    implementation(project(":feature-layers"))
+// Stage the web build into a clean directory that becomes the APK's asset root.
+// Only runtime files are included — the Vite/npm scaffolding stays behind.
+val stageWebAssets by tasks.registering(Copy::class) {
+    val webDir = rootProject.file("web")
+    from(webDir) {
+        // Everything that the running app actually needs at runtime.
+        include(
+            "index.html",
+            "**/*.js", "**/*.css",
+            "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg",
+            "**/*.mp3", "**/*.wav", "**/*.mp4",
+            "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.otf",
+        )
+        // Explicitly skip build scaffolding that isn't served to the WebView.
+        exclude(
+            "package.json", "package-lock.json", "yarn.lock",
+            "vite.config.js", "metadata.json",
+            "node_modules/**", "dist/**",
+        )
+    }
+    into(layout.buildDirectory.dir("generated/webAssets"))
+}
 
+// Belt-and-braces: hook the copy in front of any asset-touching task, regardless
+// of variant name, so `merge…Assets`, `package…Assets`, and `generate…Assets`
+// always see a populated folder.
+tasks.matching {
+    val n = it.name
+    n.startsWith("merge") && n.endsWith("Assets") ||
+    n.startsWith("package") && n.endsWith("Assets") ||
+    n.startsWith("generate") && n.endsWith("Assets") ||
+    n == "preBuild"
+}.configureEach { dependsOn(stageWebAssets) }
+
+dependencies {
+    // Minimal AndroidX surface — just what the WebView shell needs.
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.ui)
-    implementation(libs.compose.ui.graphics)
-    implementation(libs.compose.ui.tooling.preview)
-    implementation(libs.compose.material3)
-    implementation(libs.compose.material.icons)
-    implementation(libs.coroutines.android)
-    debugImplementation(libs.compose.ui.tooling)
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.activity:activity-ktx:1.9.0")
+    implementation("androidx.webkit:webkit:1.11.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
 }
 
 // --- Google Play publishing (Triple-T Gradle Play Publisher) ----------------
-// Uploads the signed .aab to a Play track via the `publishReleaseBundle` task. The
-// service-account JSON is supplied by CI through PLAY_SERVICE_ACCOUNT_JSON_FILE (a path
-// written by the workflow) or a local `play-service-account.json` (git-ignored). When
-// neither is present the plugin is disabled so ordinary builds are unaffected.
 run {
     val saJson = System.getenv("PLAY_SERVICE_ACCOUNT_JSON_FILE")
         ?: rootProject.file("play-service-account.json").takeIf { it.exists() }?.absolutePath
@@ -138,12 +143,9 @@ run {
         if (saJson != null) {
             serviceAccountCredentials.set(file(saJson))
         } else {
-            // No credentials -> don't wire publishing into this build.
             enabled.set(false)
         }
-        // Default to the internal testing track for fast on-device iteration.
         track.set(System.getenv("PLAY_TRACK") ?: "internal")
-        // Treat uploads as completed releases (use a fraction for staged rollouts).
         releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED)
     }
 }
