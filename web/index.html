@@ -180,7 +180,16 @@
     background:rgba(20,0,14,.26); border:1px solid rgba(247,202,201,.20);
     font-size:12px; line-height:1.5; color:var(--dim); }
   #projectAutosave b{ color:var(--text); font-weight:600; }
-  #projectList{ display:grid; gap:10px; max-height:min(48vh, 430px); overflow:auto; padding-right:4px; }
+  #projectList{ display:grid; gap:10px; max-height:min(40vh, 360px); overflow:auto; padding-right:4px; }
+  #projectTemplates{ margin-top:12px; padding-top:10px; border-top:1px solid rgba(247,202,201,.18); }
+  #projectTemplates .templateHdr{ color:var(--dim); font-size:10px; letter-spacing:.18em; text-transform:uppercase; margin:0 0 8px; }
+  #projectTemplates .templateGrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(132px, 1fr)); gap:8px; }
+  .templateBtn{ text-align:left; min-height:54px; border-radius:14px; padding:9px 10px;
+    border:1px solid rgba(247,202,201,.22); background:rgba(255,240,243,.06); color:var(--text);
+    cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,240,243,.10); }
+  .templateBtn:hover{ background:rgba(247,202,201,.12); border-color:var(--rim); }
+  .templateBtn b{ display:block; font-size:12px; letter-spacing:.08em; margin-bottom:3px; }
+  .templateBtn span{ display:block; color:var(--dim); font-size:10px; line-height:1.35; }
   .projRow{ display:grid; grid-template-columns:76px 1fr auto; gap:12px; align-items:center;
     padding:10px; border-radius:18px; background:rgba(255,240,243,.07);
     border:1px solid rgba(247,202,201,.18); }
@@ -202,7 +211,8 @@
   #projectPanel .footer{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:16px; }
   #projectPanel .footer button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); border-color:var(--rim); }
   @media (max-width:640px){ .projRow{ grid-template-columns:64px 1fr; } .projBtns{ grid-column:1 / -1; justify-content:flex-start; max-width:none; }
-    .projThumb{ width:60px; height:46px; } #projectPanel .card{ padding:20px; } }
+    .projThumb{ width:60px; height:46px; } #projectPanel .card{ padding:20px; }
+    #projectTemplates .templateGrid{ grid-template-columns:1fr; } }
 
   /* Tablet-first touch polish. Pointer-coarse devices get larger orbs, rails,
      slider thumbs, and project buttons without changing desktop density. */
@@ -225,7 +235,7 @@
     #blab .row{ margin:12px 0; }
     #blab input[type=range]{ height:18px; }
     #blab input[type=range]::-webkit-slider-thumb{ width:26px; height:26px; }
-    .projBtn, #projectPanel .footer button{ padding:10px 12px; font-size:12px; }
+    .projBtn, #projectPanel .footer button, .templateBtn{ padding:10px 12px; font-size:12px; }
   }
 
   /* Stylus diagnostics panel — small, live, and deliberately boring: artists
@@ -488,6 +498,7 @@
     <div class="tag">Gallery · Autosave · Recovery</div>
     <div id="projectAutosave">Autosave status unavailable.</div>
     <div id="projectList"></div>
+    <div id="projectTemplates"></div>
     <div class="footer">
       <button id="projectNew" type="button" class="primary">New canvas</button>
       <button id="projectExport" type="button">Export archive</button>
@@ -847,6 +858,20 @@
   function newProject(w,h){ w=w||W0; h=h||H0; return {
     frames:[newFrame(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12,
     name:'Canvas', paper:DEFAULT_PAPER }; }
+  const PROJECT_TEMPLATES=[
+    { id:'classic', name:'Classic sketch', w:1024, h:768,  fps:12, frames:1,  paper:DEFAULT_PAPER, desc:'4:3 cream paper' },
+    { id:'hd',      name:'HD animation',  w:1280, h:720,  fps:12, frames:12, paper:DEFAULT_PAPER, desc:'16:9 · 12 starter frames' },
+    { id:'square',  name:'Square social', w:1080, h:1080, fps:12, frames:1,  paper:DEFAULT_PAPER, desc:'1:1 post / sticker' },
+    { id:'phone',   name:'Phone vertical',w:1080, h:1920, fps:12, frames:1,  paper:DEFAULT_PAPER, desc:'9:16 story / reel' },
+    { id:'pixel',   name:'Pixel art',     w:512,  h:512,  fps:8,  frames:8,  paper:'#f5f5f0', desc:'small canvas · 8 fps' },
+    { id:'neon',    name:'Neon loop',     w:1280, h:720,  fps:12, frames:16, paper:'#0a0a10', desc:'dark paper · 16 frames' },
+  ];
+  function projectFromTemplate(t){
+    const w=t.w||W0, h=t.h||H0, n=Math.max(1, Math.min(240, t.frames||1));
+    const frames=Array.from({length:n},()=>newFrame(w,h));
+    return { frames, holds:frames.map(()=>1), cur:0, undo:[], redo:[], w, h,
+      fps:t.fps||12, name:t.name||'Canvas', paper:t.paper||DEFAULT_PAPER };
+  }
   function cloneProject(P, name){
     const w=P.w||W0, h=P.h||H0;
     const framesCopy=(P.frames&&P.frames.length?P.frames:[newFrame(w,h)]).map(fr0=>{
@@ -3837,7 +3862,7 @@
     if(nGallery.classList.contains('open')) nGallery._relayout();
   }
 
-  const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave');
+  const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave'), projectTemplates=$('projectTemplates');
   const projectClose=$('projectClose'), projectNew=$('projectNew'), projectSave=$('projectSave'), projectClearSave=$('projectClearSave');
   const projectExport=$('projectExport'), projectImport=$('projectImport'), projectImportFile=$('projectImportFile');
 
@@ -3964,6 +3989,26 @@
   };
   const projectStats=P=>`${(P.frames&&P.frames.length)||0} frame${((P.frames&&P.frames.length)||0)===1?'':'s'} · ${P.w||W0}×${P.h||H0} · ${P.fps||12} fps`;
   function sanitizeProjectName(v,i){ const s=String(v||'').trim().replace(/[\r\n\u0000]/g,''); return s || ('Canvas '+(i+1)); }
+  function addProjectFromTemplate(t){
+    if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+    const P=projectFromTemplate(t);
+    projects.push(P); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
+    flash('Template · '+P.name);
+  }
+  function renderTemplates(){
+    if(!projectTemplates) return;
+    projectTemplates.innerHTML='';
+    const hdr=document.createElement('div'); hdr.className='templateHdr'; hdr.textContent='New from template'; projectTemplates.appendChild(hdr);
+    const grid=document.createElement('div'); grid.className='templateGrid'; projectTemplates.appendChild(grid);
+    PROJECT_TEMPLATES.forEach(t=>{
+      const btn=document.createElement('button'); btn.type='button'; btn.className='templateBtn';
+      btn.disabled=projects.length>=MAX_PROJECTS; btn.style.opacity=btn.disabled ? .45 : 1;
+      const title=document.createElement('b'); title.textContent=t.name; btn.appendChild(title);
+      const meta=document.createElement('span'); meta.textContent=`${t.w}×${t.h} · ${t.frames||1} frame${(t.frames||1)===1?'':'s'} · ${t.fps||12} fps`; btn.appendChild(meta);
+      const desc=document.createElement('span'); desc.textContent=t.desc||''; btn.appendChild(desc);
+      btn.addEventListener('click',()=>addProjectFromTemplate(t)); grid.appendChild(btn);
+    });
+  }
   function renderProjectPanel(){
     if(!projectPanel) return;
     syncActiveProject();
@@ -4005,6 +4050,7 @@
       }); btns.appendChild(bDel);
       row.appendChild(btns); projectList.appendChild(row);
     });
+    renderTemplates();
   }
   function openProjectPanel(){ renderProjectPanel(); projectPanel.classList.add('show'); }
   projectClose.addEventListener('click',()=>projectPanel.classList.remove('show'));
