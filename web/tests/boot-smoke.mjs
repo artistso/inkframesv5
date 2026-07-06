@@ -135,6 +135,7 @@ const brushSavePreset = d.getElementById('blabSavePreset');
 const brushLibrary = d.getElementById('blabLibList');
 const barrelKid = d.getElementById('barrelModeKid');
 const readableTextKid = d.getElementById('readableTextKid');
+const frostBrushKid = d.querySelector('[data-id="frost"]');
 const manageKid = d.querySelector('[data-manage="1"]');
 if (manageKid) manageKid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles:true, cancelable:true }));
 const templateCount = projectTemplates ? projectTemplates.querySelectorAll('.templateBtn').length : 0;
@@ -155,6 +156,7 @@ if (!brushExport || !brushImport) { console.error('❌ Brush Lab import/export c
 if (!brushSavePreset || !brushLibrary) { console.error('❌ Brush library controls missing'); failed++; }
 if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control) missing'); failed++; }
 if (!readableTextKid) { console.error('❌ #readableTextKid (readability toggle) missing'); failed++; }
+if (!frostBrushKid) { console.error('❌ frost brush tool missing'); failed++; }
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }
 
 if (failed) {

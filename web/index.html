@@ -799,8 +799,10 @@
     {id:'pencil',ic:'@pencil',size:6,op:1,hard:.95},
     {id:'ink',ic:'@ink',size:14,op:1,hard:.9},
     {id:'marker',ic:'@marker',size:40,op:.85,hard:.7},
-    // NEW: watercolor — wet-edge rim, pigment build-up on repeat passes, subtle bloom
+    // Watercolor — wet-edge rim, pigment build-up on repeat passes, subtle bloom
     {id:'water',ic:'@marker',size:48,op:.32,hard:.05},
+    // Frost glass — milky translucent body, icy rim, crystalline scratches.
+    {id:'frost',ic:'@frost',size:54,op:.58,hard:.12},
     {id:'glow',ic:'@glow',size:64,op:.5,hard:.15},
     // NEON: bright thin core stroke wrapped in a wide additive glow halo.
     // Colour reads at full saturation over dark paper; over light paper the
@@ -849,6 +851,7 @@
     ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55, texture:0.18, response: 0.15},
     marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0,    texture:0.35, response: 0    },
     water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0,    texture:0.50, response:-0.5 },
+    frost:   { spacing:0.11, jitter:0.06, taperIn:10, taperOut:10, entryPool:0,    exitPool:0,    texture:0.70, response: 0    },
     glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
     // Neon paints a bright core over a wide halo, so tighter spacing +
     // slight taper make the line read as one continuous glowing wire. Zero
@@ -1384,6 +1387,42 @@
         bg.addColorStop(0,hexA(color, opacity*0.28));
         bg.addColorStop(1,hexA(color, 0));
         g.fillStyle=bg; g.beginPath();g.arc(0,0,br,0,7);g.fill();
+      }
+    } else if(brush.id==='frost'){           // frost glass: milky translucent stamp + icy rim + crystalline scratches
+      // Canvas can't truly refract what's underneath, so this fakes frosted
+      // glass with a blurred milky body, cold edge highlight, tint wash, and
+      // small ice-grain scratches. Texture controls how crystalline/noisy it is.
+      const tooth=grainAt(x*.72,y*.72), tex=_bpTex||0.55;
+      const r=d*(0.46+0.10*tooth);
+      const blur=Math.max(0.35, Math.min(3.2, d*0.035*(0.65+tex)));
+      const body=g.createRadialGradient(0,0,r*.10,0,0,r*1.08);
+      body.addColorStop(0.00, hexA('#ffffff', 0.62*opacity*rev));
+      body.addColorStop(0.45, hexA('#e7fbff', 0.36*opacity*rev*(0.75+0.45*tooth)));
+      body.addColorStop(0.78, hexA(color,     0.11*opacity*rev));
+      body.addColorStop(1.00, hexA('#ffffff', 0));
+      g.globalCompositeOperation='source-over';
+      g.globalAlpha=1;
+      g.filter='blur('+blur.toFixed(2)+'px)';
+      g.fillStyle=body; g.beginPath(); g.arc(0,0,r*1.08,0,7); g.fill();
+      g.filter='none';
+      // Crisp icy rim and specular crescent: this is what makes the wash read
+      // as glass instead of plain white paint.
+      g.globalAlpha=Math.min(1, opacity*rev*(0.55+0.35*tooth));
+      g.strokeStyle=hexA('#ffffff',0.78); g.lineWidth=Math.max(0.9,d*0.035);
+      g.beginPath(); g.arc(0,0,r*.92,-0.35,Math.PI*1.18); g.stroke();
+      g.strokeStyle=hexA('#bff7ff',0.42); g.lineWidth=Math.max(0.6,d*0.022);
+      g.beginPath(); g.arc(0,0,r*.62,Math.PI*.08,Math.PI*.92); g.stroke();
+      // Frost crystals / hairline scratches. Low alpha + few strokes so it
+      // stays airy, but texture can turn it into heavy ice.
+      const n=Math.max(1,Math.min(7,Math.round(d*0.055*(0.6+tex))));
+      g.globalAlpha=opacity*rev*(0.18+0.26*tex);
+      g.strokeStyle=hexA('#ffffff',0.9); g.lineWidth=Math.max(0.45,d*0.010);
+      for(let i=0;i<n;i++){
+        const a=Math.random()*Math.PI*2, rr=(0.12+Math.random()*0.62)*r;
+        const len=(0.18+Math.random()*0.42)*r;
+        const sx=Math.cos(a)*rr, sy=Math.sin(a)*rr;
+        g.beginPath(); g.moveTo(sx-Math.cos(a+0.9)*len*.35, sy-Math.sin(a+0.9)*len*.35);
+        g.lineTo(sx+Math.cos(a)*len, sy+Math.sin(a)*len); g.stroke();
       }
     } else if(brush.id==='pencil'){          // graphite tooth: jittered specks catching fibres
       setFill(d*.5);
@@ -2275,6 +2314,8 @@
     ink:     S+'<path d="M6 18c0-4 4-7 6-13 2 6 6 9 6 13a6 6 0 01-12 0z"/><path d="M9.5 17.5a2.5 2.5 0 005 0" class="soft"/>'+E,
     marker:  S+'<path d="M5 19l2-5 8-8 3 3-8 8z"/><path d="M13 6l3 3"/><line x1="5" y1="19" x2="9" y2="19" class="soft"/>'+E,
     glow:    S+'<circle cx="12" cy="12" r="3.4" class="fill"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" class="soft"/>'+E,
+    // FROST: ice crystal facets inside a glassy circle.
+    frost:   S+'<circle cx="12" cy="12" r="7.5" class="soft"/><path d="M12 4v16M5.5 8l13 8M18.5 8l-13 8"/><path d="M9 6.5L12 9l3-2.5M9 17.5L12 15l3 2.5" class="soft"/>'+E,
     // NEON: a thick circle with a thin bright core inside -- suggests halo + wire.
     neon:    S+'<circle cx="12" cy="12" r="7" class="soft" stroke-width="3.2"/><circle cx="12" cy="12" r="2.2" class="fill"/>'+E,
     // STAR: 4-point cross flare with a small centre dot.

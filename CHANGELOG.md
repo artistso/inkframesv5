@@ -9,7 +9,8 @@ semantic versioning once it reaches a public release.
 ### Web build — tablet, stylus, brush texture, and gallery perf
 - **Tablet-first coarse-pointer polish.** Touch devices get larger orbs, kid buttons, rail controls, slider thumbs, project buttons, and a wider Brush Lab without changing desktop density.
 - **Readable text mode.** Actions ▸ Text toggles high-contrast label capsules, stronger shadows, heavier weights, and brighter secondary text for glare/low-vision tablet use; the preference persists.
-- **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor ship with toothy defaults; neon/star/glow stay smooth.
+- **Frost glass brush.** A new frosted-glass brush paints a milky translucent body, icy rim highlights, tint wash, and crystalline scratch texture; Brush Lab texture controls how heavy the ice grain feels.
+- **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor/frost ship with toothy defaults; neon/star/glow stay smooth.
 - **Portable brush profiles.** Brush Lab can export/import `.inkbrush` profile JSON for the current brush, making custom brush settings easy to back up and share.
 - **Custom brush library.** Brush Lab now has a per-brush saved preset list: save named presets, tap **Use** to apply them, export a saved preset, or delete old experiments. Imported `.inkbrush` files are added to the library automatically.
 - **Named project templates.** Gallery ▸ Manage now offers one-tap starters: Classic sketch, HD animation, Square social, Phone vertical, Pixel art, and Neon loop, with sensible canvas sizes, frame counts, FPS, and paper colours.
