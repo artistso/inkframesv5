@@ -1158,6 +1158,21 @@
     if(drawing) return;                  // a stroke already owns the canvas — ignore extra contacts (palm)
     if(!allow(e))return;
     // Constellation modal: taps drop anchors, doesn't paint a normal stroke.
+    // Selection modal: rectangle marquee. Drag = draw marquee, up = commit.
+    if(SEL.mode === 'rect'){
+      e.preventDefault();
+      const c = toC(e);
+      // Tap outside the current selection deselects; tap inside starts a new
+      // marquee (matches Photoshop / Fresco convention).
+      if(SEL.rect && !selInside(c.x, c.y)){
+        selClear();
+        return;
+      }
+      SEL.dragging = true;
+      SEL.start = { x: c.x, y: c.y };
+      canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     if(constellationOn){
       e.preventDefault();
       const c = toC(e);
@@ -1222,6 +1237,15 @@
   });
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
+    // Selection-drag routing: while the user is drawing out a marquee, paint
+    // the live outline to the predicted overlay and short-circuit the normal
+    // stroke path.
+    if(SEL.mode === 'rect' && SEL.dragging){
+      e.preventDefault();
+      const c = toC(e);
+      selDrawLive(SEL.start.x, SEL.start.y, c.x, c.y);
+      return;
+    }
     if(!drawing||e.pointerId!==drawPid)return;    // only the owning pointer extends the stroke
     e.preventDefault();
     const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
@@ -1286,7 +1310,16 @@
       const moved=Math.hypot(penX-(qsAnchor.x),penY-(qsAnchor.y));
       if(moved>3){ qsAnchor={x:penX,y:penY}; qsLastMove=now; clearTimeout(qsTimer);
         qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
-  const up=e=>{if(!drawing)return; if(e&&e.pointerId!=null&&e.pointerId!==drawPid)return;  // ignore a palm lifting
+  const up=e=>{
+    // Selection-marquee commit: user released after dragging out a rect.
+    if(SEL.mode === 'rect' && SEL.dragging){
+      SEL.dragging = false;
+      const c = e ? toC(e) : SEL.start;
+      selCommit(SEL.start.x, SEL.start.y, c.x, c.y);
+      SEL.start = null;
+      return;
+    }
+    if(!drawing)return; if(e&&e.pointerId!=null&&e.pointerId!==drawPid)return;  // ignore a palm lifting
     drawing=false; drawPid=null; hideLens(); clearTimeout(qsTimer);
     // Predicted-stroke overlay lingers past pen-up until we wipe it -- clear
     // now so the ghost trail doesn't sit over the freshly-committed stroke.
@@ -1670,6 +1703,10 @@
     chroma:  S+'<circle cx="10" cy="12" r="5" fill="none" stroke="#f66"/><circle cx="12" cy="12" r="5" fill="none" stroke="#6f6"/><circle cx="14" cy="12" r="5" fill="none" stroke="#66f"/>'+E,
     // SYMMETRY: petal shape suggesting radial mirroring around a centre.
     sym:     S+'<circle cx="12" cy="12" r="1.6" class="fill"/><path d="M12 3v6M12 21v-6M3 12h6M21 12h-6M6 6l3 3M18 18l-3-3M18 6l-3 3M6 18l3-3" class="soft"/>'+E,
+    // SELECT: dashed rectangle (marching ants) with tiny corner nubs.
+    select:  S+'<rect x="4" y="5" width="16" height="14" rx="1.6" fill="none" stroke-dasharray="3 2"/><circle cx="4" cy="5" r="1.2" class="fill"/><circle cx="20" cy="5" r="1.2" class="fill"/><circle cx="4" cy="19" r="1.2" class="fill"/><circle cx="20" cy="19" r="1.2" class="fill"/>'+E,
+    // LASSO: freehand loop closed with a knot.
+    lasso:   S+'<path d="M6 12c0-4 3-6 6-6s6 2 6 6-3 6-6 6-6-2-6-6z" fill="none"/><path d="M12 18c-1 2-3 3-4 3" class="soft"/><circle cx="8" cy="21" r="1.4" class="fill"/>'+E,
     // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
     imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
@@ -1809,6 +1846,11 @@
       constellationOn = false;
       if(typeof kConst !== 'undefined') kConst.classList.remove('on');
       commitConstellation();
+    }
+    // Same treatment for Select mode -- brushes and selection are exclusive.
+    if(typeof SEL !== 'undefined' && SEL.mode){
+      SEL.mode = null; selClear();
+      if(typeof kSelRect !== 'undefined') kSelRect.classList.remove('on');
     }
     const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
     if(sd) sd.textContent=Math.round(size);
@@ -2073,6 +2115,116 @@
     flash(symN > 1 ? `Symmetry ×${symN}` : 'Symmetry off');
   });
   nLine._kids.appendChild(kSym);
+
+  // ===== Selection tool (rectangle marquee) =====
+  // Modal input like Constellation. When SEL.mode is set (currently only
+  // 'rect', 'lasso' arrives in a follow-up commit), the canvas' pointerdown
+  // path routes through here instead of painting a stroke:
+  //   * drag  -> marquee rect drawn live on the predicted-stroke overlay
+  //   * up    -> selection commits: SEL.rect stores {x1,y1,x2,y2} in doc coords
+  //   * anywhere else (outside the marquee, in Select mode): deselect
+  // A marching-ants outline animates on the overlay while a selection exists.
+  // "Clear selection" wipes selected pixels on the ACTIVE layer with a proper
+  // undo snap; committing / clearing a selection also deactivates it.
+  const SEL = {
+    mode: null,        // null | 'rect' | 'lasso' (lasso arrives in A1.2)
+    dragging: false,
+    start: null,       // {x,y} in doc coords, at pen-down
+    rect: null,        // committed selection: {x,y,w,h} in doc coords
+    antsRAF: 0,        // requestAnimationFrame handle for the marching ants
+    antsPhase: 0,      // rolling offset (0..7) for the dash pattern
+  };
+  function selInside(px, py){
+    // px,py in doc coords -- is the point inside the committed selection?
+    if(!SEL.rect) return false;
+    const r = SEL.rect;
+    return px >= r.x && py >= r.y && px < r.x + r.w && py < r.y + r.h;
+  }
+  function selClear(){
+    SEL.rect = null; SEL.dragging = false; SEL.start = null;
+    if(SEL.antsRAF){ cancelAnimationFrame(SEL.antsRAF); SEL.antsRAF = 0; }
+    clearPredicted();
+  }
+  // Draw the marching-ants outline of SEL.rect onto the predicted overlay.
+  // Called every animation frame while a selection exists; overlay clears
+  // and repaints on top of any predicted-stroke debris.
+  function selDrawAnts(){
+    if(!pctx || !SEL.rect){ SEL.antsRAF = 0; return; }
+    pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
+    const r = SEL.rect;
+    pctx.save();
+    // Two-pass: dark under, light over, offset dash phase = classic ants.
+    pctx.lineWidth = 1.5;
+    pctx.strokeStyle = 'rgba(0,0,0,.85)';
+    pctx.setLineDash([6, 4]);
+    pctx.lineDashOffset = -SEL.antsPhase;
+    pctx.strokeRect(r.x, r.y, r.w, r.h);
+    pctx.strokeStyle = 'rgba(255,255,255,.95)';
+    pctx.lineDashOffset = -SEL.antsPhase + 5;
+    pctx.strokeRect(r.x, r.y, r.w, r.h);
+    pctx.restore();
+    SEL.antsPhase = (SEL.antsPhase + 0.5) % 10;
+    SEL.antsRAF = requestAnimationFrame(selDrawAnts);
+  }
+  // Draw the LIVE (dragging) marquee. Called on every pointermove while
+  // the user is dragging out a fresh selection.
+  function selDrawLive(x1, y1, x2, y2){
+    if(!pctx) return;
+    pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
+    pctx.save();
+    pctx.lineWidth = 1.5;
+    pctx.strokeStyle = 'rgba(255,255,255,.9)';
+    pctx.setLineDash([5, 3]);
+    // Fill hint so the artist sees the region being selected.
+    pctx.fillStyle = 'rgba(255,255,255,.08)';
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+    pctx.fillRect(x, y, w, h);
+    pctx.strokeRect(x, y, w, h);
+    pctx.restore();
+  }
+  function selCommit(x1, y1, x2, y2){
+    const x = Math.round(Math.min(x1, x2)), y = Math.round(Math.min(y1, y2));
+    const w = Math.round(Math.abs(x2 - x1)), h = Math.round(Math.abs(y2 - y1));
+    if(w < 3 || h < 3){ selClear(); return; }
+    SEL.rect = { x, y, w, h };
+    if(!SEL.antsRAF) SEL.antsRAF = requestAnimationFrame(selDrawAnts);
+  }
+  // Deleting the selection clears those pixels on the ACTIVE layer.
+  function selDelete(){
+    if(!SEL.rect){ flash('No selection'); return; }
+    pushU(snap());
+    const L = frameActive(frames[cur]);
+    L.canvas.getContext('2d').clearRect(SEL.rect.x, SEL.rect.y, SEL.rect.w, SEL.rect.h);
+    bumpFrame(frames[cur]);
+    render();
+    if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
+    flash('Selection cleared');
+  }
+
+  // ---- Select node ----
+  // Small orb on the bottom rail (near Frames) so it's always reachable.
+  // Kids: Rect (marquee), Delete (wipe selected pixels), Deselect.
+  const nSel = makeNode({glyph:'@select', label:'Select', x:640, y:0}); nSel.dataset.bottom='1';
+  function selAct(glyph, label, fn){
+    const k = kidEl({glyph, sub:label});
+    k.addEventListener('click', e=>{ e.stopPropagation(); fn(k); });
+    nSel._kids.appendChild(k);
+    return k;
+  }
+  const kSelRect = selAct('@select', 'Rect', (k)=>{
+    if(SEL.mode === 'rect'){ SEL.mode = null; selClear(); k.classList.remove('on');
+      flash('Select off'); return; }
+    SEL.mode = 'rect'; selClear();
+    k.classList.add('on');
+    // Turn off other modal tools so the input router isn't confused.
+    if(typeof constellationOn !== 'undefined' && constellationOn){
+      constellationOn = false; kConst && kConst.classList.remove('on');
+    }
+    flash('Rectangle select · drag to marquee, tap outside to deselect');
+  });
+  selAct('@clear',  'Delete',   ()=>selDelete());
+  selAct('@qshape', 'Deselect', ()=>{ selClear(); flash('Deselected'); });
 
   // Draw the constellation from anchors onto both fctx and ctx. Called after
   // each new anchor so the artist sees the shape build up in real time.
@@ -2732,6 +2884,9 @@
     nFrames._setPos(Math.max(120,Wd/2-120), Hd-78);
     // Layers orb sits just right of Frames along the bottom rail.
     nLayers._setPos(Math.min(Wd-160, Wd/2+40), Hd-78);
+    // Select orb slots just right of Layers so all the modal tool orbs share
+    // the bottom rail. Clamped so it never wanders off a narrow viewport.
+    nSel._setPos(Math.min(Wd-90, Wd/2+140), Hd-78);
     nStudio._setPos(24, Hd-78);
     nGallery._setPos(96, Hd-78);
   }
