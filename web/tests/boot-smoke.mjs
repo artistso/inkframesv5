@@ -160,7 +160,7 @@ if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control)
 if (!readableTextKid) { console.error('❌ #readableTextKid (readability toggle) missing'); failed++; }
 if (!frostBrushKid) { console.error('❌ frost brush tool missing'); failed++; }
 if (frameKidCount < 1) { console.error('❌ frame thumbnail list did not render'); failed++; }
-for (const label of ['H+','Twos','Rev','All','None']) {
+for (const label of ['+4','H+','Twos','Rev','Ping','All','None']) {
   if (!frameActionLabels.includes(label)) { console.error(`❌ frame batch action missing: ${label}`); failed++; }
 }
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }

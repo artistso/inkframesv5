@@ -3658,9 +3658,32 @@
     refreshFrames(); buildRail(); flash(`Hold ${delta>0?'+':'−'} · ${idxs.length} frame${idxs.length===1?'':'s'}`);
   }
   function setOnTwos(){ const idxs=selectedOrCurrent(); idxs.forEach(i=>holds[i]=2); refreshFrames(); buildRail(); flash(`On twos · ${idxs.length} frame${idxs.length===1?'':'s'}`); }
+  function insertBlankFrames(count){
+    count=Math.max(1,Math.min(48,count|0));
+    selectedFrames.clear();
+    const blanks=Array.from({length:count},()=>newFrame(W,H));
+    const blankHolds=Array.from({length:count},()=>1);
+    frames.splice(cur+1,0,...blanks); holds.splice(cur+1,0,...blankHolds);
+    setCur(cur+1); render(); refreshFrames(); flash(`Inserted ${count} blank frame${count===1?'':'s'}`);
+  }
+  function pingPongSelection(){
+    const seq=selectedFrames.size?selectedSorted():frames.map((_,i)=>i);
+    if(seq.length<2){ flash('Need 2+ frames for ping-pong'); return; }
+    // Append a reversed interior after the range so the loop reads A-B-C-B-A...
+    // without holding the far endpoint twice. For a 2-frame cycle, append A.
+    const tail=(seq.length===2?[seq[0]]:seq.slice(1,-1).reverse());
+    if(!tail.length){ flash('Nothing to ping-pong'); return; }
+    const insertAt=seq[seq.length-1]+1;
+    const copies=tail.map(i=>copyFrame(frames[i]));
+    const holdCopies=tail.map(i=>hOf(i));
+    frames.splice(insertAt,0,...copies); holds.splice(insertAt,0,...holdCopies);
+    selectedFrames.clear(); copies.forEach((_,j)=>selectedFrames.add(insertAt+j));
+    setCur(insertAt); render(); refreshFrames(); flash(`Ping-pong added ${copies.length} frame${copies.length===1?'':'s'}`);
+  }
 
   // Add: blank single-layer frame after the current one.
-  frameAct('@add','Add',()=>{selectedFrames.clear();frames.splice(cur+1,0,newFrame(W,H));holds.splice(cur+1,0,1);setCur(cur+1);render();refreshFrames();});
+  frameAct('@add','Add',()=>insertBlankFrames(1));
+  frameAct('@add','+4',()=>insertBlankFrames(4));
   frameAct('@dup','Dup',()=>duplicateFrameSequence());
   frameAct('@del','Del',()=>deleteFrameSelection());
   const fpsDial=kidEl({cls:'dial',glyph:'12',sub:'FPS',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
@@ -3675,6 +3698,7 @@
   frameAct('@hold','H−',()=>adjustHolds(-1));
   frameAct('@hold','Twos',()=>setOnTwos());
   frameAct('@loop','Rev',()=>reverseFrameSelection());
+  frameAct('@loop','Ping',()=>pingPongSelection());
   frameAct('@clear','Clear',()=>clearFramePixels());
   frameAct('@list','All',()=>{selectedFrames.clear(); frames.forEach((_,i)=>selectedFrames.add(i)); refreshFrames(); flash(`Selected ${frames.length} frames`);});
   frameAct('@clear','None',()=>clearFrameSelection());
@@ -4618,9 +4642,11 @@
   function syncRail(playFrac){
     setPlayheadFrac(playFrac!=null?playFrac:frameCenterFrac(cur));
     [...railTrack.querySelectorAll('.bead')].forEach((b,i)=>b.classList.toggle('on',i===cur));
-    // Counter reflects 1-based frame index and total, matching every other
-    // "frame N" hint in the app.
-    if(railCount) railCount.textContent = (cur+1) + ' / ' + frames.length;
+    // Counter reflects 1-based frame index and total; when multi-select is
+    // active, show selected-count so batch edits feel grounded on tablet.
+    if(railCount) railCount.textContent = selectedFrames && selectedFrames.size
+      ? ((cur+1) + ' / ' + frames.length + ' · ' + selectedFrames.size + ' sel')
+      : ((cur+1) + ' / ' + frames.length);
     syncLoop();
   }
   function buildRail(){
