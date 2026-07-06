@@ -1553,6 +1553,11 @@
     layerAdd:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M18 14v6M15 17h6" stroke-width="1.6"/>'+E,
     // Paper: a small dog-eared sheet with a corner fold, plus a droplet of colour on top.
     paper:   S+'<path d="M6 4h9l3 3v13H6z"/><path d="M15 4v3h3" class="soft"/><circle cx="12" cy="13" r="2.4" class="fill"/>'+E,
+    // FX orb + its actions
+    fx:      S+'<path d="M12 4l1.7 4 4.3.6-3.2 3 .8 4.4L12 14l-3.6 2 .8-4.4-3.2-3 4.3-.6z" class="fill"/>'+E,
+    bloom:   S+'<circle cx="12" cy="12" r="4" class="fill"/><circle cx="12" cy="12" r="8" class="soft" stroke-width="1.4"/><circle cx="12" cy="12" r="11" class="soft" stroke-width="0.8"/>'+E,
+    sparkle: S+'<path d="M6 6l1 3 3 1-3 1-1 3-1-3-3-1 3-1z" class="fill"/><path d="M17 12l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" class="fill"/><path d="M12 18l.7 1.4 1.4.6-1.4.6-.7 1.4-.7-1.4-1.4-.6 1.4-.6z" class="fill"/>'+E,
+    chroma:  S+'<circle cx="10" cy="12" r="5" fill="none" stroke="#f66"/><circle cx="12" cy="12" r="5" fill="none" stroke="#6f6"/><circle cx="14" cy="12" r="5" fill="none" stroke="#66f"/>'+E,
     // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
     imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
@@ -2256,6 +2261,179 @@
     if(nTheme.classList.contains('open')) nTheme._relayout(); }
   rebuildThemes();
 
+  // ---- FX node (per-active-layer post effects) ----
+  // Each effect operates on the currently-active layer, snapshots it for undo,
+  // then commits the result back onto that layer's canvas + bumps the frame
+  // version so the composite / onion / export paths see the change.
+  //
+  // These are the "constellation aesthetic" enablers: Bloom makes bright
+  // strokes glow like real photons; Sparkle stamps light-cross flares on the
+  // hottest pixels for a night-sky feel; Chromatic aberration offsets R/G/B
+  // for the "cinema-signal-fringed" look you see on premium neon posters.
+  const nFx = makeNode({glyph:'@fx', label:'FX', x:0, y:180}); nFx.dataset.right='1';
+  function fxAct(glyph, label, fn){
+    const k = kidEl({glyph, sub:label});
+    k.addEventListener('click', e=>{ e.stopPropagation(); fn(k); });
+    nFx._kids.appendChild(k);
+    return k;
+  }
+
+  // ---- Bloom ----
+  // 1. Extract bright pixels above a threshold into a temp canvas.
+  // 2. Blur it via multiple down/upscale passes (cheap Gaussian-ish).
+  // 3. Draw the blurred bright layer BACK on top of the original in
+  //    additive ('lighter') mode so the strokes glow like real photons.
+  function fxBloom(threshold, intensity, blurPasses){
+    threshold  = threshold  != null ? threshold  : 0.55;
+    intensity  = intensity  != null ? intensity  : 1.4;
+    blurPasses = blurPasses != null ? blurPasses : 3;
+    const fr = frames[cur]; const L = frameActive(fr);
+    if(!L){ flash('No layer'); return; }
+    pushU(snap());
+    const src = L.canvas, w = src.width, h = src.height;
+    const g = src.getContext('2d');
+    // 1. bright-pass: copy src to a temp, then zero any pixel below threshold
+    const bright = document.createElement('canvas'); bright.width = w; bright.height = h;
+    const bg = bright.getContext('2d');
+    bg.drawImage(src, 0, 0);
+    const bi = bg.getImageData(0, 0, w, h);
+    const d = bi.data;
+    for(let i=0;i<d.length;i+=4){
+      // Luminance approximation (Rec.601 weighting)
+      const lum = (d[i]*0.30 + d[i+1]*0.59 + d[i+2]*0.11) / 255;
+      if(lum < threshold){ d[i+3] = 0; }
+      else {
+        // Boost the alpha of remaining pixels so faint hot pixels bloom too.
+        d[i+3] = Math.min(255, d[i+3] * ((lum - threshold) / (1 - threshold) + 1));
+      }
+    }
+    bg.putImageData(bi, 0, 0);
+    // 2. blur: shrink to 1/4, use browser filter blur, then upscale twice.
+    let bw = w, bh = h, current = bright;
+    for(let p=0; p<blurPasses; p++){
+      const nw = Math.max(2, bw >> 1), nh = Math.max(2, bh >> 1);
+      const tmp = document.createElement('canvas'); tmp.width = nw; tmp.height = nh;
+      const tg = tmp.getContext('2d');
+      tg.filter = 'blur(2px)';
+      tg.drawImage(current, 0, 0, nw, nh);
+      current = tmp; bw = nw; bh = nh;
+    }
+    // 3. draw the blurred bright-pass BACK on top of the original in additive.
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = intensity;
+    g.drawImage(current, 0, 0, w, h);
+    g.restore();
+    bumpFrame(fr); render();
+    flash('Bloom');
+  }
+  fxAct('@bloom', 'Bloom', () => fxBloom());
+
+  // ---- Sparkle ----
+  // Find the brightest N% of pixels above a threshold, sample a subset of
+  // them, and stamp a small 4-point light-cross flare on each. Same additive
+  // blend as the Star brush so overlaps burn out realistically.
+  function fxSparkle(threshold, count){
+    threshold = threshold != null ? threshold : 0.75;
+    count     = count     != null ? count     : 24;
+    const fr = frames[cur]; const L = frameActive(fr);
+    if(!L){ flash('No layer'); return; }
+    pushU(snap());
+    const src = L.canvas, w = src.width, h = src.height;
+    const g = src.getContext('2d');
+    const img = g.getImageData(0, 0, w, h);
+    const d = img.data;
+    // Reservoir sample of bright coordinates.
+    const bright = [];
+    for(let y=0; y<h; y += 3){         // stride 3 to keep the scan cheap
+      for(let x=0; x<w; x += 3){
+        const i = (y*w + x) * 4;
+        if(d[i+3] < 40) continue;
+        const lum = (d[i]*0.30 + d[i+1]*0.59 + d[i+2]*0.11) / 255;
+        if(lum >= threshold){
+          bright.push({ x, y, r: d[i], gg: d[i+1], b: d[i+2], lum });
+        }
+      }
+    }
+    if(!bright.length){ flash('No bright pixels found'); return; }
+    // Sort brightest-first, take a stratified sample of up to `count`.
+    bright.sort((a,b)=>b.lum - a.lum);
+    const sample = [];
+    const step = Math.max(1, Math.floor(bright.length / count));
+    for(let i=0; i<bright.length && sample.length<count; i += step){
+      sample.push(bright[i]);
+    }
+    // Stamp a star at each.
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for(const s of sample){
+      const r = 6 + Math.random() * 14 * s.lum;
+      // Spoke gradient (fast: two crossed ellipses)
+      const paintSpoke = (ang, len, wid) => {
+        g.save(); g.translate(s.x, s.y); g.rotate(ang);
+        const grad = g.createLinearGradient(-len, 0, len, 0);
+        grad.addColorStop(0, 'rgba(255,255,255,0)');
+        grad.addColorStop(0.5, 'rgba(255,255,255,'+(0.75*s.lum).toFixed(2)+')');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grad;
+        g.beginPath(); g.ellipse(0, 0, len, wid, 0, 0, 7); g.fill();
+        g.restore();
+      };
+      paintSpoke(0, r*1.6, r*0.10);
+      paintSpoke(Math.PI/2, r*1.6, r*0.10);
+      paintSpoke(Math.PI/4, r*0.9, r*0.06);
+      paintSpoke(3*Math.PI/4, r*0.9, r*0.06);
+      // hot centre
+      const cg = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, r*0.5);
+      cg.addColorStop(0, 'rgba(255,255,255,'+Math.min(1,s.lum*1.2).toFixed(2)+')');
+      cg.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = cg;
+      g.beginPath(); g.arc(s.x, s.y, r*0.5, 0, 7); g.fill();
+    }
+    g.restore();
+    bumpFrame(fr); render();
+    flash('Sparkle · ' + sample.length + ' points');
+  }
+  fxAct('@sparkle', 'Sparkle', () => fxSparkle());
+
+  // ---- Chromatic aberration ----
+  // Split R / G / B into three separate images, offset R and B by a few px
+  // in opposite directions, and re-composite. The G channel stays put so the
+  // image never desaturates -- you just get fringed colour edges.
+  function fxChroma(offset){
+    offset = offset != null ? offset : 3;
+    const fr = frames[cur]; const L = frameActive(fr);
+    if(!L){ flash('No layer'); return; }
+    pushU(snap());
+    const src = L.canvas, w = src.width, h = src.height;
+    const g = src.getContext('2d');
+    const img = g.getImageData(0, 0, w, h);
+    const src_d = img.data;
+    // Build per-channel canvases as full RGBA (each keeping only its channel).
+    const chan = (idx) => {
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const cx = c.getContext('2d');
+      const ci = cx.createImageData(w, h);
+      const cd = ci.data;
+      for(let i=0; i<src_d.length; i+=4){
+        cd[i+idx] = src_d[i+idx];
+        cd[i+3]   = src_d[i+3];
+      }
+      cx.putImageData(ci, 0, 0);
+      return c;
+    };
+    const rC = chan(0), gC = chan(1), bC = chan(2);
+    g.clearRect(0, 0, w, h);
+    g.globalCompositeOperation = 'lighter';
+    g.drawImage(rC, -offset, 0);
+    g.drawImage(gC, 0, 0);
+    g.drawImage(bC, offset, 0);
+    g.globalCompositeOperation = 'source-over';
+    bumpFrame(fr); render();
+    flash('Chromatic · ±' + offset + 'px');
+  }
+  fxAct('@chroma', 'Chroma', () => fxChroma());
+
   // ---- STUDIO node (root leaf -> overlay) ----
   const nStudio=makeNode({glyph:'@studio',label:'Studio',x:24,y:0}); nStudio.dataset.bottom='1';
   // override: studio has no kids; tapping shows overlay instead of toggling
@@ -2334,8 +2512,9 @@
   function placeNodes(){
     const Wd=window.innerWidth, Hd=window.innerHeight;
     nColor._setPos(Wd-78, 96);
-    nAct._setPos(Wd-78, 300);
-    nTheme._setPos(Wd-78, 470);
+    nFx._setPos(Wd-78, 200);
+    nAct._setPos(Wd-78, 340);
+    nTheme._setPos(Wd-78, 490);
     nFrames._setPos(Math.max(120,Wd/2-120), Hd-78);
     // Layers orb sits just right of Frames along the bottom rail.
     nLayers._setPos(Math.min(Wd-160, Wd/2+40), Hd-78);
