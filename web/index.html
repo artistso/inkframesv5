@@ -829,6 +829,8 @@
     {id:'water',ic:'@marker',size:48,op:.32,hard:.05},
     // Frost glass — milky translucent body, icy rim, crystalline scratches.
     {id:'frost',ic:'@frost',size:54,op:.58,hard:.12},
+    // Smudge/blur — pulls active-layer pixels along the stroke with a soft glassy blend.
+    {id:'smudge',ic:'@smudge',size:42,op:.62,hard:.18},
     {id:'glow',ic:'@glow',size:64,op:.5,hard:.15},
     // NEON: bright thin core stroke wrapped in a wide additive glow halo.
     // Colour reads at full saturation over dark paper; over light paper the
@@ -878,6 +880,7 @@
     marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0,    texture:0.35, response: 0    },
     water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0,    texture:0.50, response:-0.5 },
     frost:   { spacing:0.11, jitter:0.06, taperIn:10, taperOut:10, entryPool:0,    exitPool:0,    texture:0.70, response: 0    },
+    smudge:  { spacing:0.07, jitter:0,    taperIn:4,  taperOut:4,  entryPool:0,    exitPool:0,    texture:0.35, response: 0    },
     glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
     // Neon paints a bright core over a wide halo, so tighter spacing +
     // slight taper make the line read as one continuous glowing wire. Zero
@@ -1314,6 +1317,7 @@
     // high values catch more pigment. Clamped so strong texture never vanishes.
     return Math.max(0.25, Math.min(1.25, 1 - _bpTex*0.55 + t*_bpTex*1.05));
   }
+  const smudgeScratch = document.createElement('canvas');
 
   const NIB=-0.7;   // fixed chisel-marker holder angle (radians)
   // Each brush has its own nib character: graphite tooth biting paper, velocity-tapered
@@ -1449,6 +1453,37 @@
         const sx=Math.cos(a)*rr, sy=Math.sin(a)*rr;
         g.beginPath(); g.moveTo(sx-Math.cos(a+0.9)*len*.35, sy-Math.sin(a+0.9)*len*.35);
         g.lineTo(sx+Math.cos(a)*len, sy+Math.sin(a)*len); g.stroke();
+      }
+    } else if(brush.id==='smudge'){          // smudge/blur: pull nearby pixels through a soft circular nib
+      // Pull a patch from slightly behind the stroke direction and lay it down
+      // inside a soft circular clip. Opacity controls strength; Texture adds a
+      // glassier blur and tiny grain jitter so it can read as a wet/glass smear.
+      const rad=Math.max(2,d*.52), pad=Math.ceil(rad*1.15);
+      const pull=Math.max(1, d*(0.16+opacity*0.55));
+      const a=(ang!=null?ang:lastAng)||0;
+      const tex=_bpTex||0;
+      const sx=Math.round(x-pad-Math.cos(a)*pull), sy=Math.round(y-pad-Math.sin(a)*pull);
+      const sw=pad*2, sh=pad*2;
+      if(smudgeScratch.width!==sw||smudgeScratch.height!==sh){ smudgeScratch.width=sw; smudgeScratch.height=sh; }
+      const sg=smudgeScratch.getContext('2d');
+      sg.clearRect(0,0,sw,sh);
+      try{ sg.drawImage(g.canvas, sx, sy, sw, sh, 0, 0, sw, sh); }catch(_){ }
+      g.beginPath(); g.arc(0,0,rad,0,7); g.clip();
+      g.globalCompositeOperation='source-over';
+      g.globalAlpha=Math.min(1, opacity*rev*(0.55+0.45*pr));
+      g.filter='blur('+Math.max(0.25, d*(0.010+tex*0.030)).toFixed(2)+'px)';
+      const jx=(Math.random()-0.5)*tex*d*.05, jy=(Math.random()-0.5)*tex*d*.05;
+      g.drawImage(smudgeScratch, -pad+jx, -pad+jy, sw, sh);
+      g.filter='none';
+      if(tex>0.2){
+        g.globalAlpha=opacity*rev*tex*0.08;
+        g.strokeStyle=hexA('#ffffff',0.8); g.lineWidth=Math.max(0.5,d*.008);
+        for(let i=0;i<Math.min(5,Math.round(d*.04));i++){
+          const aa=a+(Math.random()-0.5)*1.2, rr=Math.random()*rad*.75;
+          const cx=Math.cos(aa+1.57)*rr, cy=Math.sin(aa+1.57)*rr, len=rad*(0.25+Math.random()*0.35);
+          g.beginPath(); g.moveTo(cx-Math.cos(aa)*len*.45, cy-Math.sin(aa)*len*.45);
+          g.lineTo(cx+Math.cos(aa)*len*.55, cy+Math.sin(aa)*len*.55); g.stroke();
+        }
       }
     } else if(brush.id==='pencil'){          // graphite tooth: jittered specks catching fibres
       setFill(d*.5);
@@ -2343,6 +2378,8 @@
     glow:    S+'<circle cx="12" cy="12" r="3.4" class="fill"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" class="soft"/>'+E,
     // FROST: ice crystal facets inside a glassy circle.
     frost:   S+'<circle cx="12" cy="12" r="7.5" class="soft"/><path d="M12 4v16M5.5 8l13 8M18.5 8l-13 8"/><path d="M9 6.5L12 9l3-2.5M9 17.5L12 15l3 2.5" class="soft"/>'+E,
+    // SMUDGE: fingertip swirl pulling pigment.
+    smudge:  S+'<path d="M5 15c2.5 3 8.5 3 11 0 2-2.4.8-5.6-2.3-6.1-3-.5-5.7 1.5-5.2 3.6.4 1.7 2.9 2 4.2.8"/><path d="M7 18c2.5 1.8 7.5 2 10.5-.3" class="soft"/><circle cx="7" cy="14" r="1.2" class="fill"/>'+E,
     // NEON: a thick circle with a thin bright core inside -- suggests halo + wire.
     neon:    S+'<circle cx="12" cy="12" r="7" class="soft" stroke-width="3.2"/><circle cx="12" cy="12" r="2.2" class="fill"/>'+E,
     // STAR: 4-point cross flare with a small centre dot.

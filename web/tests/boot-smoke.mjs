@@ -136,6 +136,7 @@ const brushLibrary = d.getElementById('blabLibList');
 const barrelKid = d.getElementById('barrelModeKid');
 const readableTextKid = d.getElementById('readableTextKid');
 const frostBrushKid = d.querySelector('[data-id="frost"]');
+const smudgeBrushKid = d.querySelector('[data-id="smudge"]');
 const manageKid = d.querySelector('[data-manage="1"]');
 if (manageKid) manageKid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles:true, cancelable:true }));
 const templateCount = projectTemplates ? projectTemplates.querySelectorAll('.templateBtn').length : 0;
@@ -159,6 +160,7 @@ if (!brushSavePreset || !brushLibrary) { console.error('❌ Brush library contro
 if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control) missing'); failed++; }
 if (!readableTextKid) { console.error('❌ #readableTextKid (readability toggle) missing'); failed++; }
 if (!frostBrushKid) { console.error('❌ frost brush tool missing'); failed++; }
+if (!smudgeBrushKid) { console.error('❌ smudge brush tool missing'); failed++; }
 if (frameKidCount < 1) { console.error('❌ frame thumbnail list did not render'); failed++; }
 for (const label of ['+4','H+','Twos','Rev','Ping','All','None']) {
   if (!frameActionLabels.includes(label)) { console.error(`❌ frame batch action missing: ${label}`); failed++; }
