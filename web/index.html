@@ -383,6 +383,7 @@
 <script src="gif-encoder.js"></script>
 <script src="autosave.js"></script>
 <script src="brush-math.js"></script>
+<script src="flood-fill.js"></script>
 
 <script>
 (function(){
@@ -1192,6 +1193,13 @@
       canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
       return;
     }
+    // Fill modal: a single tap fills the connected region under it.
+    if(fillMode){
+      e.preventDefault();
+      const c = toC(e);
+      fillAt(c.x, c.y);
+      return;
+    }
     if(constellationOn){
       e.preventDefault();
       const c = toC(e);
@@ -1759,6 +1767,10 @@
     select:  S+'<rect x="4" y="5" width="16" height="14" rx="1.6" fill="none" stroke-dasharray="3 2"/><circle cx="4" cy="5" r="1.2" class="fill"/><circle cx="20" cy="5" r="1.2" class="fill"/><circle cx="4" cy="19" r="1.2" class="fill"/><circle cx="20" cy="19" r="1.2" class="fill"/>'+E,
     // LASSO: freehand loop closed with a knot.
     lasso:   S+'<path d="M6 12c0-4 3-6 6-6s6 2 6 6-3 6-6 6-6-2-6-6z" fill="none"/><path d="M12 18c-1 2-3 3-4 3" class="soft"/><circle cx="8" cy="21" r="1.4" class="fill"/>'+E,
+    // FILL: paint bucket tipping a drop.
+    fill:    S+'<path d="M4 13l7-7 7 7-7 7z"/><path d="M18 15c1 1.5 2 3 2 4a2 2 0 11-4 0c0-1 1-2.5 2-4z" class="fill"/><path d="M4 13h14" class="soft"/>'+E,
+    // EYEDROPPER: slanted glass tube with a hot drop of colour at the tip.
+    dropper: S+'<path d="M5 19l3-3 6-6 3 3-6 6-3 3z"/><path d="M15 4l3 3-2 2-3-3z" class="fill"/><circle cx="5" cy="20" r="1" class="fill"/>'+E,
     // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
     imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
@@ -1907,6 +1919,11 @@
       SEL.mode = null; selClear();
       if(typeof kSelRect  !== 'undefined') kSelRect .classList.remove('on');
       if(typeof kSelLasso !== 'undefined') kSelLasso.classList.remove('on');
+    }
+    // Fill mode is also modal-exclusive with brushes.
+    if(typeof fillMode !== 'undefined' && fillMode){
+      fillMode = false;
+      if(typeof kFill !== 'undefined') kFill.classList.remove('on');
     }
     const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
     if(sd) sd.textContent=Math.round(size);
@@ -2118,6 +2135,103 @@
     k.addEventListener('pointercancel', ()=>{ clearTimeout(lpT); lpT=0; });
     nTools._kids.appendChild(k);
   });
+
+  // ---- Fill bucket (modal tool on the Tools orb) ----
+  // Not a brush -- toggling it makes canvas TAPS flood-fill the region under
+  // the tap on the active layer with the current colour, using the algorithm
+  // in web/flood-fill.js (a 1:1 JS port of core-common/FloodFill.kt).
+  // Tolerance is per-brush-lab pref (default 8; artist can raise it to bleed
+  // through anti-aliased edges).
+  let fillMode = false;
+  let fillTolerance = 8;
+  // Cheap inline fallback if the sibling module didnt load (workspace preview
+  // sandbox blocks fetching). Same signature; slightly slower closure-matcher.
+  const _FF = (window.InkFrameFloodFill) || (function(){
+    function floodFill(argb, w, h, sx, sy, fill, tol){
+      fill = fill >>> 0;
+      if(sx<0||sy<0||sx>=w||sy>=h) return { changed:false, pixelsFilled:0, minX:0,minY:0,maxX:0,maxY:0 };
+      const target = argb[sy*w+sx];
+      if(target === fill) return { changed:false, pixelsFilled:0, minX:0,minY:0,maxX:0,maxY:0 };
+      const ta=(target>>>24)&0xFF, tr=(target>>>16)&0xFF, tg=(target>>>8)&0xFF, tb=target&0xFF;
+      const matches = tol===0
+        ? c => c!==fill && c===target
+        : c => { if(c===fill) return false;
+          const da=((c>>>24)&0xFF)-ta, dr=((c>>>16)&0xFF)-tr, dg=((c>>>8)&0xFF)-tg, db=(c&0xFF)-tb;
+          return (da<0?-da:da)<=tol && (dr<0?-dr:dr)<=tol && (dg<0?-dg:dg)<=tol && (db<0?-db:db)<=tol; };
+      let minX=sx,minY=sy,maxX=sx,maxY=sy,n=0;
+      const stx=[sx], sty=[sy];
+      while(stx.length){
+        const px=stx.pop(), py=sty.pop(), rb=py*w;
+        if(!matches(argb[rb+px])) continue;
+        let l=px; while(l-1>=0 && matches(argb[rb+l-1])) l--;
+        let r=px; while(r+1<w && matches(argb[rb+r+1])) r++;
+        for(let x=l;x<=r;x++){ argb[rb+x]=fill; n++; }
+        if(l<minX)minX=l; if(r>maxX)maxX=r; if(py<minY)minY=py; if(py>maxY)maxY=py;
+        for(const ny of [py-1, py+1]){
+          if(ny<0||ny>=h) continue;
+          const nb=ny*w;
+          let x=l;
+          while(x<=r){
+            while(x<=r && !matches(argb[nb+x])) x++;
+            if(x>r) break;
+            stx.push(x); sty.push(ny);
+            while(x<=r && matches(argb[nb+x])) x++;
+          }
+        }
+      }
+      return { changed:n>0, minX,minY,maxX,maxY, pixelsFilled:n };
+    }
+    return { floodFill };
+  })();
+  // Pack an RGB hex string as the little-endian ABGR Uint32 an ImageData
+  // Uint32 view sees (browsers are all LE; matches how the fill scans pixels).
+  function packRGBAtoU32(hex, alpha){
+    const n = parseInt(hex.replace('#',''), 16);
+    const r = (n >> 16) & 0xFF, g = (n >> 8) & 0xFF, b = n & 0xFF;
+    const a = Math.round((alpha == null ? 1 : alpha) * 255) & 0xFF;
+    return ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
+  }
+  // Perform a single fill at the canvas-doc coordinate (x, y) on the active layer.
+  function fillAt(x, y){
+    const fr = frames[cur]; const L = frameActive(fr); if(!L) return;
+    const c = L.canvas, w = c.width, h = c.height;
+    const g = c.getContext('2d');
+    const img = g.getImageData(0, 0, w, h);
+    const view = new Uint32Array(img.data.buffer);
+    pushU(snap());
+    const res = _FF.floodFill(view, w, h, Math.floor(x), Math.floor(y),
+                              packRGBAtoU32(color, opacity), fillTolerance);
+    if(res.changed){
+      g.putImageData(img, 0, 0);
+      bumpFrame(fr); render();
+      if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
+      flash(`Filled · ${res.pixelsFilled.toLocaleString()} px`);
+    } else {
+      // Undo snap we just pushed was a no-op; drop it so undo history is clean.
+      undoStack.pop(); refreshActions();
+      flash('Nothing to fill');
+    }
+  }
+  const kFill = kidEl({glyph:'@fill', sub:'Fill'});
+  kFill.addEventListener('click', e=>{
+    e.stopPropagation();
+    fillMode = !fillMode;
+    kFill.classList.toggle('on', fillMode);
+    // Modal tools are exclusive.
+    if(fillMode){
+      if(typeof SEL !== 'undefined' && SEL.mode){
+        SEL.mode = null; selClear();
+        if(typeof kSelRect  !== 'undefined') kSelRect .classList.remove('on');
+        if(typeof kSelLasso !== 'undefined') kSelLasso.classList.remove('on');
+      }
+      if(typeof constellationOn !== 'undefined' && constellationOn){
+        constellationOn = false; if(typeof kConst !== 'undefined') kConst.classList.remove('on');
+      }
+    }
+    flash(fillMode ? 'Fill · tap a region to bucket it'
+                   : 'Fill off');
+  });
+  nTools._kids.appendChild(kFill);
 
   // ---- LINE node (the Living Line: StreamLine smoothing + QuickShape) ----
   const nLine=makeNode({glyph:'@line',label:'Line',x:24,y:230});

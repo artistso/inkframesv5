@@ -36,12 +36,14 @@ const html   = readFileSync(resolve(webDir, 'index.html'), 'utf8');
 const gifSrc = readFileSync(resolve(webDir, 'gif-encoder.js'), 'utf8');
 const asSrc  = readFileSync(resolve(webDir, 'autosave.js'), 'utf8');
 const bmSrc  = readFileSync(resolve(webDir, 'brush-math.js'), 'utf8');
+const ffSrc  = readFileSync(resolve(webDir, 'flood-fill.js'), 'utf8');
 
 // Inline the sibling modules so jsdom doesn't need network access to fetch them.
 const inlined = html
   .replace('<script src="gif-encoder.js"></script>', `<script>${gifSrc}</script>`)
   .replace('<script src="autosave.js"></script>',    `<script>${asSrc}</script>`)
-  .replace('<script src="brush-math.js"></script>',  `<script>${bmSrc}</script>`);
+  .replace('<script src="brush-math.js"></script>',  `<script>${bmSrc}</script>`)
+  .replace('<script src="flood-fill.js"></script>',  `<script>${ffSrc}</script>`);
 
 const errors = [];
 const vc = new VirtualConsole();
