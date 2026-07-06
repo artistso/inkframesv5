@@ -53,7 +53,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -982,7 +982,7 @@ private fun BlendModePicker(
                     Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.White)
                 }
             }
-            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 BlendMode.entries.forEach { mode ->
                     DropdownMenuItem(
                         text = { Text(mode.displayName) },
