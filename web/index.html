@@ -3768,24 +3768,58 @@
     const d=new Date(), pad=n=>String(n).padStart(2,'0');
     return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(d.getHours())+pad(d.getMinutes());
   }
-  function projectToArchive(P){
+  function canvasPngDataUrl(c){
+    return new Promise(resolve=>{
+      if(!c || !c.toBlob){ resolve(c ? c.toDataURL('image/png') : ''); return; }
+      c.toBlob(blob=>{
+        if(!blob){ resolve(c.toDataURL('image/png')); return; }
+        const r=new FileReader();
+        r.onload=()=>resolve(String(r.result||''));
+        r.onerror=()=>resolve(c.toDataURL('image/png'));
+        r.readAsDataURL(blob);
+      }, 'image/png');
+    });
+  }
+  function archiveLayerCount(){
+    syncActiveProject();
+    let n=0;
+    for(const P of projects){
+      const w=P.w||W0, h=P.h||H0;
+      const framesSrc=(P.frames&&P.frames.length?P.frames:[newFrame(w,h)]);
+      for(const fr0 of framesSrc) n += upgradeFrame(fr0,w,h).layers.length;
+    }
+    return Math.max(1,n);
+  }
+  async function projectToArchive(P,onLayer){
     const w=P.w||W0, h=P.h||H0;
     const framesSrc=(P.frames&&P.frames.length?P.frames:[newFrame(w,h)]);
+    const framesOut=[];
+    for(const fr0 of framesSrc){
+      const fr=upgradeFrame(fr0,w,h);
+      const layers=[];
+      for(const L of fr.layers){
+        layers.push({ name:L.name||'Layer', visible:L.visible!==false,
+          opacity:typeof L.opacity==='number'?L.opacity:1, blend:L.blend||'source-over',
+          png:await canvasPngDataUrl(L.canvas) });
+        if(onLayer) onLayer();
+        await new Promise(r=>setTimeout(r,0));
+      }
+      framesOut.push({ active:Math.min(fr.active|0,fr.layers.length-1), layers });
+    }
     return { name:P.name||'Canvas', w, h, cur:Math.min(Math.max(0,P.cur|0),framesSrc.length-1),
       fps:P.fps||12, paper:P.paper||DEFAULT_PAPER,
       holds:framesSrc.map((_,i)=>Math.max(1,Math.round((P.holds&&P.holds[i])||1))),
-      frames:framesSrc.map(fr0=>{
-        const fr=upgradeFrame(fr0,w,h);
-        return { active:Math.min(fr.active|0,fr.layers.length-1),
-          layers:fr.layers.map(L=>({ name:L.name||'Layer', visible:L.visible!==false,
-            opacity:typeof L.opacity==='number'?L.opacity:1, blend:L.blend||'source-over',
-            png:L.canvas.toDataURL('image/png') })) };
-      }) };
+      frames:framesOut };
   }
-  function buildProjectArchive(){
+  async function buildProjectArchive(onProgress){
     syncActiveProject();
+    const total=archiveLayerCount(); let done=0;
+    const out=[];
+    for(const P of projects){
+      out.push(await projectToArchive(P,()=>{ done++; if(onProgress) onProgress(done,total); }));
+    }
     return { v:3, app:'InkFrame Studio', kind:'inkframe-web-archive', savedAt:Date.now(), active:pi,
-      projects:projects.map(projectToArchive) };
+      projects:out };
   }
   function loadArchiveCanvas(src,w,h){
     return new Promise(resolve=>{
@@ -3797,7 +3831,16 @@
       img.src=src;
     });
   }
-  async function archiveToProjects(payload){
+  function archivePayloadLayerCount(payload){
+    const list=Array.isArray(payload&&payload.projects) ? payload.projects : (payload&&payload.project ? [payload.project] : []);
+    let n=0;
+    for(const P of list){
+      const srcFrames=Array.isArray(P.frames) && P.frames.length ? P.frames : [{layers:[]}];
+      for(const item of srcFrames) n += (Array.isArray(item.layers) && item.layers.length) ? item.layers.length : 1;
+    }
+    return Math.max(1,n);
+  }
+  async function archiveToProjects(payload,onLayer){
     if(!payload || typeof payload!=='object') throw new Error('Invalid archive');
     const list=Array.isArray(payload.projects) ? payload.projects : (payload.project ? [payload.project] : null);
     if(!list || !list.length) throw new Error('No projects in archive');
@@ -3813,6 +3856,8 @@
           layers.push({ id:__lid++, name:L.name||'Layer', visible:L.visible!==false,
             opacity:typeof L.opacity==='number'?L.opacity:1, blend:L.blend||'source-over',
             canvas:await loadArchiveCanvas(L.png||L.dataUrl||L.data,w,h) });
+          if(onLayer) onLayer();
+          await new Promise(r=>setTimeout(r,0));
         }
         framesOut.push({ layers, active:Math.min(item.active|0,layers.length-1), _comp:null, _compV:-1, _v:0 });
       }
@@ -3885,13 +3930,19 @@
     if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
     projects.push(newProject()); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
   });
-  projectExport.addEventListener('click',()=>{
+  projectExport.addEventListener('click',async()=>{
     try{
-      const payload=buildProjectArchive();
+      const layers=archiveLayerCount();
+      projectAutosave.textContent='Preparing archive…';
+      const payload=await buildProjectArchive((done,total)=>{
+        projectAutosave.textContent=`Encoding archive layers · ${done} / ${total}`;
+      });
+      projectAutosave.textContent='Packaging archive…';
       const blob=new Blob([JSON.stringify(payload)], {type:'application/x-inkframe+json'});
       projectDownloadBlob(blob, `inkframe-${projectDateStamp()}.inkframe`);
-      flash('Project archive exported');
-    }catch(e){ console.error('[project] export failed', e); flash('Archive export failed'); }
+      renderProjectPanel();
+      flash('Project archive exported · '+layers+' layer'+(layers===1?'':'s'));
+    }catch(e){ console.error('[project] export failed', e); renderProjectPanel(); flash('Archive export failed'); }
   });
   projectImport.addEventListener('click',()=>projectImportFile.click());
   projectImportFile.addEventListener('change',async()=>{
@@ -3900,15 +3951,19 @@
     if(!file) return;
     if(!confirm('Import this InkFrame archive? It will replace the canvases currently open in the gallery.')) return;
     try{
+      projectAutosave.textContent='Reading archive…';
       const text=await readTextFile(file);
       const payload=JSON.parse(text);
-      const restored=await archiveToProjects(payload);
+      const total=archivePayloadLayerCount(payload); let done=0;
+      const restored=await archiveToProjects(payload,()=>{
+        done++; projectAutosave.textContent=`Restoring archive layers · ${done} / ${total}`;
+      });
       projects.length=0; for(const P of restored.projects.slice(0,MAX_PROJECTS)) projects.push(P);
       bindProjectDirect(Math.min(restored.active, projects.length-1));
       repaintProjectShell(); renderProjectPanel();
       AUTOSAVE.schedule(); Promise.resolve(AUTOSAVE.flushNow && AUTOSAVE.flushNow()).catch(()=>{});
       flash('Archive imported · '+projects.length+' canvas'+(projects.length===1?'':'es'));
-    }catch(e){ console.error('[project] import failed', e); flash('Archive import failed: '+(e.message||e)); }
+    }catch(e){ console.error('[project] import failed', e); renderProjectPanel(); flash('Archive import failed: '+(e.message||e)); }
   });
   projectSave.addEventListener('click',()=>{
     syncActiveProject(); const r=AUTOSAVE.flushNow && AUTOSAVE.flushNow();
@@ -4262,6 +4317,7 @@
   const EXPORT = (() => {
     let worker = null;
     let cancelled = false;
+    let cancelWait = null;
     const overlay = document.getElementById('expo');
     const msgEl   = document.getElementById('expoMsg');
     const fillEl  = document.getElementById('expoFill');
@@ -4277,6 +4333,7 @@
 
     cancelBtn.addEventListener('click', () => {
       cancelled = true;
+      if (cancelWait) { try { cancelWait(); } catch(_){} cancelWait = null; }
       if (worker) { try { worker.terminate(); } catch(_){} worker = null; }
       hide();
       flash('Export cancelled');
@@ -4342,70 +4399,87 @@
       await new Promise(r => requestAnimationFrame(r));
       await new Promise(r => setTimeout(r, 0));
 
-      // Build all frame payloads on the main thread (needs DOM/canvas access).
-      const framePayloads = [];
-      for (let i = 0; i < P.frames.length; i++) {
-        if (cancelled) return;
-        const px = flattenFrame(P.frames[i], width, height);
-        const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
-        framePayloads.push({ pixels: px.buffer, delayCs: baseDelayCs * hold });
-        progress(i + 1, P.frames.length, 'Compositing');
-        // Yield every few frames so the progress bar animates.
-        if ((i & 3) === 3) await new Promise(r => setTimeout(r, 0));
-      }
-      if (cancelled) return;
-
-      // Spin up the worker and hand off the frames as transferable buffers.
-      // Skip Worker entirely on file:// (Android WebView blocks it) — the inline
-      // path is fast enough for the timeline sizes users actually export.
+      // Stream frames instead of building a giant raw-frame array. This keeps
+      // memory bounded for long tablet projects: main thread owns one flattened
+      // frame at a time; Worker owns only the compressed GIF chunks.
       const isFileOrigin = location.protocol === 'file:';
-      if (isFileOrigin) {
-        return encodeInline(framePayloads, width, height, opts);
-      }
+      if (isFileOrigin) return encodeInlineStreaming(P, width, height, opts, baseDelayCs);
       try {
         worker = new Worker('gif-encoder.js');
+        return encodeWorkerStreaming(P, width, height, opts, baseDelayCs);
       } catch (e) {
         console.warn('[export] worker unavailable, running inline:', e);
-        return encodeInline(framePayloads, width, height, opts);
+        if (worker) { try { worker.terminate(); } catch(_){} worker = null; }
+        return encodeInlineStreaming(P, width, height, opts, baseDelayCs);
       }
+    }
 
-      worker.onmessage = (ev) => {
-        const m = ev.data;
-        if (m.type === 'progress') progress(m.frame, m.total, 'Encoding');
-        else if (m.type === 'error') {
-          console.error('[export] worker error:', m.message);
-          flash('Export failed: ' + m.message);
-          if (worker) { worker.terminate(); worker = null; }
-          hide();
-        } else if (m.type === 'done') {
-          const blob = new Blob([m.bytes], { type: 'image/gif' });
-          triggerDownload(blob, `inkframe-${Date.now()}.gif`);
-          if (worker) { worker.terminate(); worker = null; }
-          hide(); flash('Exported GIF · ' + humanBytes(m.bytes.byteLength));
-        }
-      };
-      worker.onerror = (e) => {
-        console.error('[export] worker crashed:', e);
-        flash('Export crashed');
-        if (worker) { worker.terminate(); worker = null; }
-        hide();
-      };
-
-      const transferList = framePayloads.map(p => p.pixels);
-      worker.postMessage({
-        cmd: 'encode', width, height,
-        frames: framePayloads,
-        loop: opts.loop !== false,
-        maxColors: opts.maxColors || 256,
-      }, transferList);
+    async function encodeWorkerStreaming(P, width, height, opts, baseDelayCs){
+      return new Promise((resolve, reject) => {
+        let pendingAck = null;
+        let finished = false;
+        const N = P.frames.length;
+        const fail = (msg) => {
+          if(finished) return;
+          finished = true;
+          if(worker){ try{ worker.terminate(); }catch(_){} worker=null; }
+          cancelWait = null;
+          hide(); reject(new Error(msg));
+        };
+        worker.onmessage = (ev) => {
+          const m = ev.data;
+          if(m.type === 'ready'){
+            // no-op; the producer loop below starts after posting start.
+          } else if(m.type === 'progress'){
+            progress(m.frame, m.total, 'Encoding');
+            if(pendingAck){ const r=pendingAck; pendingAck=null; r(); }
+          } else if(m.type === 'error'){
+            console.error('[export] worker error:', m.message);
+            fail(m.message || 'worker error');
+          } else if(m.type === 'done'){
+            finished = true;
+            const blob = new Blob([m.bytes], { type: 'image/gif' });
+            triggerDownload(blob, `inkframe-${Date.now()}.gif`);
+            if(worker){ try{ worker.terminate(); }catch(_){} worker=null; }
+            cancelWait = null;
+            hide(); flash('Exported GIF · ' + humanBytes(m.bytes.byteLength));
+            resolve();
+          }
+        };
+        worker.onerror = (e) => {
+          console.error('[export] worker crashed:', e);
+          fail('Export crashed');
+        };
+        (async()=>{
+          try{
+            worker.postMessage({ cmd:'start', width, height, total:N,
+              loop: opts.loop !== false, maxColors: opts.maxColors || 256 });
+            for(let i=0; i<N; i++){
+              if(cancelled || finished) return resolve();
+              progress(i + 1, N, 'Compositing');
+              const px = flattenFrame(P.frames[i], width, height);
+              const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
+              const ack = new Promise((resolve,reject) => {
+                pendingAck = resolve;
+                cancelWait = () => reject(new Error('cancelled'));
+              });
+              worker.postMessage({ cmd:'frame', index:i, total:N,
+                pixels:px.buffer, delayCs:baseDelayCs*hold }, [px.buffer]);
+              try { await ack; } catch(_) { return resolve(); }
+              cancelWait = null;
+              // backpressure: do not queue the next raw frame yet
+              if((i & 1) === 1) await new Promise(r => setTimeout(r, 0));
+            }
+            if(cancelled || finished) return resolve();
+            worker.postMessage({ cmd:'finish' });
+          }catch(e){ fail(e.message || e); }
+        })();
+      }).catch(e=>{ console.error('[export] streaming encode failed:', e); flash('Export failed: '+e.message); });
     }
 
     // Inline (main-thread) fallback for environments that can't spawn a Worker.
-    // Two paths: prefer the globally-loaded GifEncoder from the boot <script>
-    // tag (works in the file:// WebView where fetch/Worker are both blocked);
-    // fall back to fetching + evaluating the file if we're in a browser that
-    // didn't preload the script for whatever reason.
-    async function encodeInline(framePayloads, width, height, opts) {
+    // Encodes one flattened frame at a time; no giant framePayload array.
+    async function encodeInlineStreaming(P, width, height, opts, baseDelayCs) {
       try {
         let Enc = (typeof window !== 'undefined') && window.GifEncoder;
         if (!Enc) {
@@ -4416,10 +4490,13 @@
         const enc = new Enc(width, height, {
           loop: opts.loop !== false, maxColorsPerFrame: opts.maxColors || 256,
         });
-        for (let i = 0; i < framePayloads.length; i++) {
+        for (let i = 0; i < P.frames.length; i++) {
           if (cancelled) return;
-          enc.addFrame(new Int32Array(framePayloads[i].pixels), framePayloads[i].delayCs);
-          progress(i + 1, framePayloads.length, 'Encoding');
+          progress(i + 1, P.frames.length, 'Compositing');
+          const px = flattenFrame(P.frames[i], width, height);
+          const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
+          enc.addFrame(px, baseDelayCs * hold);
+          progress(i + 1, P.frames.length, 'Encoding');
           if ((i & 1) === 1) await new Promise(r => setTimeout(r, 0));
         }
         const bytes = enc.finish();

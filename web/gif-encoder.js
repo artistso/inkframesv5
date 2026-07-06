@@ -426,16 +426,24 @@ class GifEncoder {
 
 // ============================================================================
 //  Web Worker message protocol
-//  Wraps the encoder for use as a background task. Main thread sends a `start`
-//  message with { width, height, frames:[{pixels:Int32Array, delayCs:number}] }.
-//  Worker responds with `progress` messages and a final `done` carrying the bytes.
+//  Wraps the encoder for use as a background task.
+//
+//  Two protocols are supported:
+//    1. Legacy batch: {cmd:'encode', frames:[...]} for older callers/tests.
+//    2. Streaming: {cmd:'start'} then one {cmd:'frame'} at a time, then
+//       {cmd:'finish'}. The streaming path keeps Android tablet exports from
+//       holding every raw frame buffer in memory at once.
 // ============================================================================
 
 if (typeof self !== 'undefined' && typeof importScripts === 'function') {
+  let streamEnc = null;
+  let streamTotal = 0;
+  let streamDone = 0;
+
   self.addEventListener('message', async (e) => {
     const msg = e.data;
-    if (msg && msg.cmd === 'encode') {
-      try {
+    try {
+      if (msg && msg.cmd === 'encode') {
         const { width, height, frames, loop = true, maxColors = 256 } = msg;
         const enc = new GifEncoder(width, height, { loop, maxColorsPerFrame: maxColors });
         for (let i = 0; i < frames.length; i++) {
@@ -450,9 +458,29 @@ if (typeof self !== 'undefined' && typeof importScripts === 'function') {
         const bytes = enc.finish();
         // Transfer the buffer to avoid a copy back to the main thread.
         self.postMessage({ type: 'done', bytes }, [bytes.buffer]);
-      } catch (err) {
-        self.postMessage({ type: 'error', message: String(err && err.message || err) });
+      } else if (msg && msg.cmd === 'start') {
+        const { width, height, loop = true, maxColors = 256, total = 0 } = msg;
+        streamEnc = new GifEncoder(width, height, { loop, maxColorsPerFrame: maxColors });
+        streamTotal = total | 0;
+        streamDone = 0;
+        self.postMessage({ type: 'ready' });
+      } else if (msg && msg.cmd === 'frame') {
+        if (!streamEnc) throw new Error('GIF stream not started');
+        const px = msg.pixels instanceof ArrayBuffer ? new Int32Array(msg.pixels) : msg.pixels;
+        streamEnc.addFrame(px, msg.delayCs);
+        streamDone++;
+        self.postMessage({ type: 'progress', frame: msg.index != null ? msg.index + 1 : streamDone,
+          total: msg.total || streamTotal || streamDone });
+        await Promise.resolve();
+      } else if (msg && msg.cmd === 'finish') {
+        if (!streamEnc) throw new Error('GIF stream not started');
+        const bytes = streamEnc.finish();
+        streamEnc = null; streamTotal = 0; streamDone = 0;
+        self.postMessage({ type: 'done', bytes }, [bytes.buffer]);
       }
+    } catch (err) {
+      streamEnc = null; streamTotal = 0; streamDone = 0;
+      self.postMessage({ type: 'error', message: String(err && err.message || err) });
     }
   });
 }

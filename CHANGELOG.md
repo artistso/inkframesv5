@@ -13,7 +13,8 @@ semantic versioning once it reaches a public release.
 - **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
 - **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
 - **Cached gallery thumbnails.** Gallery/project-browser thumbnails now reuse a signature cache keyed by project/frame/layer versions, avoiding needless recompositing while browsing projects.
-- **Export memory polish.** GIF export reuses one flattening canvas instead of allocating a new canvas per frame and warns before very large tablet exports; video export now stops capture tracks on recorder setup failure.
+- **Export memory polish.** GIF export now streams one flattened frame at a time to the worker/inline encoder, reuses one flattening canvas, and warns before very large tablet exports; video export now stops capture tracks on recorder setup failure.
+- **Archive performance polish.** `.inkframe` archive import/export encodes and restores layers asynchronously with progress text, yielding between layers so the project browser stays responsive on tablets.
 
 ### Release readiness — Play target SDK, exports, and legal docs
 - **Target SDK bump to Android 15 / API 35.** `compileSdk` and `targetSdk` now target API 35, and CI installs the matching platform/build-tools before assembling APK/AAB artifacts.
