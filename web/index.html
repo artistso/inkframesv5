@@ -846,7 +846,10 @@
     // The stroke wrote to fctx (active layer) -- bump the frame version so
     // the composite cache invalidates before render() reads it.
     bumpFrame(frames[cur]);
-    if(pend){pushU(pend);pend=null;}render();refreshFrames();
+    // Frame count / holds didn't change during a stroke -- skip the O(n) frame
+    // list + rail rebuild that refreshFrames() would trigger. render() alone
+    // is enough to reflect the new pixels.
+    if(pend){pushU(pend);pend=null;} render();
     // Spielberg: a catch-light glints once down the freshly-laid stroke (then it's done)
     if((brush.id==='ink'||brush.id==='pencil') && !qsActive && strokePath.length>4) fireGlint(strokePath.slice());
     qsActive=false; qsShape=null; strokePath=[];};
@@ -1788,14 +1791,32 @@
     clampCanvas(); applyCanvas(); render(); startWires();
   }
 
+  // ===== Buttery resize -- pointermove writes into a rAF frame budget only =====
+  // Both the corner-scale and side-reshape handlers used to run applyCanvas() +
+  // startWires() on every pointermove. On a 120 Hz stylus that meant re-flowing
+  // the DOM twice a frame and rebuilding the whole SVG wire graph 240 times
+  // per second, which pinned the main thread. Now we just cache the pending
+  // scale/dimensions and let a single rAF loop paint at most once per frame.
+  let resizeRAF=0;
+  function scheduleResizePaint(fn){ if(resizeRAF) return;
+    resizeRAF=requestAnimationFrame(()=>{ resizeRAF=0; fn(); });
+  }
+
   // corner-handle drag → proportional scale (display only; aspect preserved)
   frameGlass.querySelectorAll('.chandle').forEach(h=>{
     h.addEventListener('pointerdown',e=>{ e.stopPropagation(); e.preventDefault(); h.setPointerCapture(e.pointerId);
       const start=cScale, sx=e.clientX, sy=e.clientY;
       const sgnX=(h.dataset.h==='br'||h.dataset.h==='tr')?1:-1, sgnY=(h.dataset.h==='br'||h.dataset.h==='bl')?1:-1;
+      const inv=1/((W+H)/2);
       const mv=ev=>{ const dpx=(ev.clientX-sx)*sgnX + (ev.clientY-sy)*sgnY;
-        cScale=Math.max(0.18, start + dpx/((W+H)/2)); clampCanvas(); applyCanvas(); startWires(); };
-      const upp=()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',upp); flash('Canvas '+Math.round(cScale*100)+'%'); };
+        cScale=Math.max(0.18, start + dpx*inv);
+        // Coalesce visual updates into the next animation frame.
+        scheduleResizePaint(()=>{ clampCanvas(); applyCanvas(); startWires(); });
+      };
+      const upp=()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',upp);
+        // Final paint outside rAF in case the last move was already coalesced.
+        clampCanvas(); applyCanvas(); startWires();
+        flash('Canvas '+Math.round(cScale*100)+'%'); };
       window.addEventListener('pointermove',mv); window.addEventListener('pointerup',upp);
     });
   });
@@ -1806,14 +1827,16 @@
       const s=h.dataset.s, sx=e.clientX, sy=e.clientY, w0=W, h0=H;
       let pendW=W, pendH=H;
       const mv=ev=>{
-        // convert screen delta to document px via current display scale
         const ddx=(ev.clientX-sx)/cScale, ddy=(ev.clientY-sy)/cScale;
         if(s==='e') pendW=w0+ddx; else if(s==='w') pendW=w0-ddx;
         else if(s==='s') pendH=h0+ddy; else if(s==='n') pendH=h0-ddy;
-        // live visual preview by stretching the element; commit real pixels on release
-        canvas.style.width=Math.round(Math.max(MINDIM,Math.min(MAXDIM,pendW))*cScale)+'px';
-        canvas.style.height=Math.round(Math.max(MINDIM,Math.min(MAXDIM,pendH))*cScale)+'px';
-        startWires();
+        // Preview by stretching the element only; commit real pixels on release.
+        // rAF-coalesced so the style writes don't happen twice per frame.
+        scheduleResizePaint(()=>{
+          canvas.style.width=Math.round(Math.max(MINDIM,Math.min(MAXDIM,pendW))*cScale)+'px';
+          canvas.style.height=Math.round(Math.max(MINDIM,Math.min(MAXDIM,pendH))*cScale)+'px';
+          startWires();
+        });
       };
       const upp=()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',upp);
         reshapeDocument(pendW,pendH); flash('Document '+W+'×'+H); };

@@ -6,6 +6,18 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — buttery-smooth perf pass
+- **Canvas resize (corner + side handles) is rAF-coalesced**: every pointermove
+  used to run `applyCanvas()` + `startWires()` synchronously, meaning a 120 Hz
+  stylus re-flowed the DOM and rebuilt the entire SVG wire graph 240 times
+  a second. Now the handlers just update the pending scale/dims and let a
+  single requestAnimationFrame loop paint at most once per frame. Corner
+  scaling and side reshaping now stay glassy at any zoom.
+- **Pen-up no longer calls `refreshFrames()`**: a normal stroke doesn't
+  change the frame count / holds / rail segments, so the O(n) list branch
+  rebuild + rail rebuild is skipped. The current-frame `.on` bead stays
+  correctly lit because `cur` didn't move.
+
 ### Web build — layers per frame
 - **Layers orb** joins the bottom rail alongside Frames. Add / duplicate /
   delete / move up / move down, per-layer visibility, opacity dial, and a
