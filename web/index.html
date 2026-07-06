@@ -167,7 +167,7 @@
   #projectPanel{ position:fixed; inset:0; z-index:46; display:none; align-items:center; justify-content:center; padding:26px;
     background:rgba(10,0,10,.58); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
   #projectPanel.show{ display:flex; }
-  #projectPanel .card{ width:min(760px, calc(100vw - 28px)); max-height:calc(100vh - 42px); overflow:hidden;
+  #projectPanel .card{ width:min(820px, calc(100vw - 28px)); max-height:calc(100vh - 42px); overflow:auto;
     padding:26px; border-radius:26px; color:var(--text);
     background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(20,0,14,.62));
     border:1px solid rgba(247,202,201,.30);
@@ -183,13 +183,26 @@
   #projectList{ display:grid; gap:10px; max-height:min(40vh, 360px); overflow:auto; padding-right:4px; }
   #projectTemplates{ margin-top:12px; padding-top:10px; border-top:1px solid rgba(247,202,201,.18); }
   #projectTemplates .templateHdr{ color:var(--dim); font-size:10px; letter-spacing:.18em; text-transform:uppercase; margin:0 0 8px; }
-  #projectTemplates .templateGrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(132px, 1fr)); gap:8px; }
-  .templateBtn{ text-align:left; min-height:54px; border-radius:14px; padding:9px 10px;
+  #projectTemplates .templateGrid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; }
+  .templateBtn{ text-align:left; min-height:64px; border-radius:14px; padding:8px 10px;
     border:1px solid rgba(247,202,201,.22); background:rgba(255,240,243,.06); color:var(--text);
-    cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,240,243,.10); }
+    cursor:pointer; box-shadow:inset 0 1px 0 rgba(255,240,243,.10);
+    display:grid; grid-template-columns:48px 1fr; gap:9px; align-items:center; }
   .templateBtn:hover{ background:rgba(247,202,201,.12); border-color:var(--rim); }
   .templateBtn b{ display:block; font-size:12px; letter-spacing:.08em; margin-bottom:3px; }
   .templateBtn span{ display:block; color:var(--dim); font-size:10px; line-height:1.35; }
+  .tplPreview{ width:44px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:10px;
+    background:rgba(10,0,10,.28); border:1px solid rgba(247,202,201,.18); position:relative; overflow:hidden; }
+  .tplCanvas{ border-radius:5px; box-shadow:0 0 0 1px rgba(20,0,14,.45), inset 0 1px 0 rgba(255,255,255,.22); }
+  .tplBeads{ position:absolute; left:6px; right:6px; bottom:4px; display:flex; gap:2px; justify-content:center; }
+  .tplBeads i{ width:3px; height:3px; border-radius:50%; background:var(--rose); opacity:.8; }
+  .customTemplate{ margin-top:10px; padding:10px; border-radius:16px; background:rgba(20,0,14,.20); border:1px solid rgba(247,202,201,.18); }
+  .customTemplate .customGrid{ display:grid; grid-template-columns:repeat(5, minmax(72px, 1fr)) auto; gap:8px; align-items:end; }
+  .customTemplate label{ display:grid; gap:4px; color:var(--dim); font-size:10px; letter-spacing:.10em; text-transform:uppercase; }
+  .customTemplate input{ width:100%; height:32px; border-radius:10px; border:1px solid rgba(247,202,201,.24);
+    background:rgba(10,0,10,.30); color:var(--text); padding:0 8px; font:inherit; outline:none; }
+  .customTemplate input[type=color]{ padding:2px; }
+  .customTemplate button{ height:32px; white-space:nowrap; }
   .projRow{ display:grid; grid-template-columns:76px 1fr auto; gap:12px; align-items:center;
     padding:10px; border-radius:18px; background:rgba(255,240,243,.07);
     border:1px solid rgba(247,202,201,.18); }
@@ -212,7 +225,9 @@
   #projectPanel .footer button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); border-color:var(--rim); }
   @media (max-width:640px){ .projRow{ grid-template-columns:64px 1fr; } .projBtns{ grid-column:1 / -1; justify-content:flex-start; max-width:none; }
     .projThumb{ width:60px; height:46px; } #projectPanel .card{ padding:20px; }
-    #projectTemplates .templateGrid{ grid-template-columns:1fr; } }
+    #projectTemplates .templateGrid{ grid-template-columns:1fr; }
+    .customTemplate .customGrid{ grid-template-columns:repeat(2, minmax(90px,1fr)); }
+    .customTemplate button{ grid-column:1 / -1; } }
 
   /* Tablet-first touch polish. Pointer-coarse devices get larger orbs, rails,
      slider thumbs, and project buttons without changing desktop density. */
@@ -3995,6 +4010,20 @@
     projects.push(P); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
     flash('Template · '+P.name);
   }
+  const TEMPLATE_MIN=128, TEMPLATE_MAX=4096;
+  const clampNum=(v,min,max,fb)=>{ v=Math.round(+v); return Number.isFinite(v)?Math.max(min,Math.min(max,v)):fb; };
+  function templatePreviewEl(t){
+    const wrap=document.createElement('div'); wrap.className='tplPreview';
+    const paper=t.paper||DEFAULT_PAPER;
+    const r=(t.w||W0)/(t.h||H0), maxW=38, maxH=28;
+    let cw=maxW, ch=maxW/r; if(ch>maxH){ ch=maxH; cw=maxH*r; }
+    const rect=document.createElement('div'); rect.className='tplCanvas';
+    rect.style.width=Math.max(10,Math.round(cw))+'px'; rect.style.height=Math.max(10,Math.round(ch))+'px'; rect.style.background=paper;
+    wrap.appendChild(rect);
+    const beads=document.createElement('div'); beads.className='tplBeads';
+    const n=Math.min(6,Math.max(1,t.frames||1)); for(let i=0;i<n;i++) beads.appendChild(document.createElement('i'));
+    wrap.appendChild(beads); return wrap;
+  }
   function renderTemplates(){
     if(!projectTemplates) return;
     projectTemplates.innerHTML='';
@@ -4003,11 +4032,33 @@
     PROJECT_TEMPLATES.forEach(t=>{
       const btn=document.createElement('button'); btn.type='button'; btn.className='templateBtn';
       btn.disabled=projects.length>=MAX_PROJECTS; btn.style.opacity=btn.disabled ? .45 : 1;
-      const title=document.createElement('b'); title.textContent=t.name; btn.appendChild(title);
-      const meta=document.createElement('span'); meta.textContent=`${t.w}×${t.h} · ${t.frames||1} frame${(t.frames||1)===1?'':'s'} · ${t.fps||12} fps`; btn.appendChild(meta);
-      const desc=document.createElement('span'); desc.textContent=t.desc||''; btn.appendChild(desc);
+      btn.appendChild(templatePreviewEl(t));
+      const txt=document.createElement('div');
+      const title=document.createElement('b'); title.textContent=t.name; txt.appendChild(title);
+      const meta=document.createElement('span'); meta.textContent=`${t.w}×${t.h} · ${t.frames||1} frame${(t.frames||1)===1?'':'s'} · ${t.fps||12} fps`; txt.appendChild(meta);
+      const desc=document.createElement('span'); desc.textContent=t.desc||''; txt.appendChild(desc);
+      btn.appendChild(txt);
       btn.addEventListener('click',()=>addProjectFromTemplate(t)); grid.appendChild(btn);
     });
+    const custom=document.createElement('div'); custom.className='customTemplate';
+    const ch=document.createElement('div'); ch.className='templateHdr'; ch.textContent='Custom canvas'; custom.appendChild(ch);
+    const cg=document.createElement('div'); cg.className='customGrid'; custom.appendChild(cg);
+    const field=(label,type,value,min,max)=>{ const l=document.createElement('label'); l.textContent=label;
+      const inp=document.createElement('input'); inp.type=type; inp.value=value; if(min!=null) inp.min=min; if(max!=null) inp.max=max; l.appendChild(inp); cg.appendChild(l); return inp; };
+    const wIn=field('Width','number',W||W0,TEMPLATE_MIN,TEMPLATE_MAX);
+    const hIn=field('Height','number',H||H0,TEMPLATE_MIN,TEMPLATE_MAX);
+    const fIn=field('Frames','number',12,1,120);
+    const fpsIn=field('FPS','number',fps||12,1,60);
+    const pIn=field('Paper','color',paper(),null,null);
+    const make=document.createElement('button'); make.type='button'; make.textContent='Create'; make.className='projBtn primary'; make.disabled=projects.length>=MAX_PROJECTS;
+    make.addEventListener('click',()=>{
+      if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+      const w=clampNum(wIn.value,TEMPLATE_MIN,TEMPLATE_MAX,W0), h=clampNum(hIn.value,TEMPLATE_MIN,TEMPLATE_MAX,H0);
+      addProjectFromTemplate({ name:`Custom ${w}×${h}`, w, h,
+        frames:clampNum(fIn.value,1,120,1), fps:clampNum(fpsIn.value,1,60,12), paper:pIn.value||DEFAULT_PAPER,
+        desc:'custom' });
+    });
+    cg.appendChild(make); projectTemplates.appendChild(custom);
   }
   function renderProjectPanel(){
     if(!projectPanel) return;

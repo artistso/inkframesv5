@@ -125,9 +125,14 @@ const brushImport = d.getElementById('blabImport');
 const brushSavePreset = d.getElementById('blabSavePreset');
 const brushLibrary = d.getElementById('blabLibList');
 const barrelKid = d.getElementById('barrelModeKid');
+const manageKid = d.querySelector('[data-manage="1"]');
+if (manageKid) manageKid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles:true, cancelable:true }));
+const templateCount = d.querySelectorAll('.templateBtn').length;
+const customTemplate = d.querySelector('.customTemplate');
 if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
 if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
 if (!projectTemplates) { console.error('❌ #projectTemplates (project templates) missing'); failed++; }
+if (templateCount < 6 || !customTemplate) { console.error(`❌ project templates did not render (templates=${templateCount}, custom=${!!customTemplate})`); failed++; }
 if (!stylusPanel) { console.error('❌ #stylusPanel (stylus diagnostics) missing'); failed++; }
 if (!textureSlider) { console.error('❌ #blabTex (texture slider) missing'); failed++; }
 if (!brushExport || !brushImport) { console.error('❌ Brush Lab import/export controls missing'); failed++; }

@@ -12,6 +12,7 @@ semantic versioning once it reaches a public release.
 - **Portable brush profiles.** Brush Lab can export/import `.inkbrush` profile JSON for the current brush, making custom brush settings easy to back up and share.
 - **Custom brush library.** Brush Lab now has a per-brush saved preset list: save named presets, tap **Use** to apply them, export a saved preset, or delete old experiments. Imported `.inkbrush` files are added to the library automatically.
 - **Named project templates.** Gallery ▸ Manage now offers one-tap starters: Classic sketch, HD animation, Square social, Phone vertical, Pixel art, and Neon loop, with sensible canvas sizes, frame counts, FPS, and paper colours.
+- **Template previews + custom starter.** Template cards now show aspect/paper/frame-count preview chips, and the same panel includes a custom width/height/frame-count/FPS/paper creator for tablet-first setup.
 - **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
 - **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
 - **Cached gallery thumbnails.** Gallery/project-browser thumbnails now reuse a signature cache keyed by project/frame/layer versions, avoiding needless recompositing while browsing projects.
