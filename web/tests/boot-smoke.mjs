@@ -165,6 +165,9 @@ if (frameKidCount < 1) { console.error('❌ frame thumbnail list did not render'
 for (const label of ['+4','H+','Twos','Rev','Ping','All','None']) {
   if (!frameActionLabels.includes(label)) { console.error(`❌ frame batch action missing: ${label}`); failed++; }
 }
+for (const label of ['O·Depth','Ghost','Tint','O·Lay','Past','Future']) {
+  if (!frameActionLabels.includes(label)) { console.error(`❌ onion control missing: ${label}`); failed++; }
+}
 for (const label of ['Merge','Flat']) {
   if (!frameActionLabels.includes(label)) { console.error(`❌ layer productivity action missing: ${label}`); failed++; }
 }

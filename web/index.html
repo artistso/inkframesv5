@@ -928,6 +928,13 @@
       if(typeof p.readableText==='boolean') readableText=p.readableText;
       if(typeof p.barrelMode==='string' && BARREL_MODES.includes(p.barrelMode)) barrelMode=p.barrelMode;
       if(typeof p.onion==='boolean') onion=p.onion;
+      if(typeof p.onionDepth==='number') onionDepth=Math.max(0,Math.min(8,Math.round(p.onionDepth)));
+      if(typeof p.onionPastOpacity==='number') onionPastOpacity=Math.max(0.02,Math.min(0.85,p.onionPastOpacity));
+      if(typeof p.onionFutureOpacity==='number') onionFutureOpacity=Math.max(0.02,Math.min(0.85,p.onionFutureOpacity));
+      if(typeof p.onionTint==='number') onionTint=Math.max(0,Math.min(1,p.onionTint));
+      if(typeof p.onionLayerOnly==='boolean') onionLayerOnly=p.onionLayerOnly;
+      if(p.onionBack) onionBack=p.onionBack;
+      if(p.onionFront) onionFront=p.onionFront;
       if(typeof p.qsEnabled==='boolean') qsEnabled=p.qsEnabled;
       if(p.brushPrefs) Object.assign(brushPrefs, p.brushPrefs);
       if(Array.isArray(p.brushLibrary)){
@@ -947,8 +954,9 @@
   let savePrefsT=0;
   function savePrefs(){ clearTimeout(savePrefsT); savePrefsT=setTimeout(()=>{
     try{ localStorage.setItem(PREF_KEY, JSON.stringify({
-      color, streamline, stylusOnly, palmReject, readableText, barrelMode, onion, qsEnabled,
-      brushId:brush.id, brushPrefs, brushLibrary,
+      color, streamline, stylusOnly, palmReject, readableText, barrelMode, onion,
+      onionDepth, onionPastOpacity, onionFutureOpacity, onionTint, onionLayerOnly, onionBack, onionFront,
+      qsEnabled, brushId:brush.id, brushPrefs, brushLibrary,
     })); }catch(_){}
   }, 180); }
   function rememberBrush(){
@@ -1131,7 +1139,14 @@
   // Past frames recede into deep shadow-magenta; future frames advance in warm rose.
   // A scratch canvas lets us tint a frame's opaque pixels (source-atop) before compositing.
   let onionBack='#880057', onionFront='#f7cac9', onionDepth=2;
+  let onionPastOpacity=0.34, onionFutureOpacity=0.24, onionTint=0.5, onionLayerOnly=false;
   const tintC=document.createElement('canvas'); let tintG=null;
+  function onionSource(fr){
+    if(!onionLayerOnly) return frameComposite(fr);
+    const activeIdx = (frames[cur] && frames[cur].active) || 0;
+    const L = fr.layers && (fr.layers[activeIdx] || fr.layers[0]);
+    return L ? L.canvas : frameComposite(fr);
+  }
   function drawTinted(src,alpha,tint,tintAmt){
     if(tintC.width!==W||tintC.height!==H){tintC.width=W;tintC.height=H;tintG=tintC.getContext('2d');}
     const tg=tintG; tg.globalCompositeOperation='source-over'; tg.globalAlpha=1; tg.clearRect(0,0,W,H);
@@ -1149,8 +1164,9 @@
       const depth = Math.max(onionDepth, Math.round(scrubReach));
       for(let k=depth;k>=1;k--){           // farther frames are fainter & more tinted (depth fog)
         const fall=k/depth, reachFade = k<=onionDepth ? 1 : (1 - (k-onionDepth)/(SCRUB_REACH)); // extra reach frames are softer
-        if(cur-k>=0)           drawTinted(frameComposite(frames[cur-k]), 0.34*(1-0.45*(fall-1/depth))*reachFade, onionBack, 0.5*fall);
-        if(cur+k<frames.length)drawTinted(frameComposite(frames[cur+k]), 0.24*(1-0.45*(fall-1/depth))*reachFade, onionFront, 0.5*fall);
+        const fade=(1-0.45*(fall-1/depth))*reachFade;
+        if(cur-k>=0)           drawTinted(onionSource(frames[cur-k]), onionPastOpacity*fade, onionBack, onionTint*fall);
+        if(cur+k<frames.length)drawTinted(onionSource(frames[cur+k]), onionFutureOpacity*fade, onionFront, onionTint*fall);
       }
     }
     ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[cur]),0,0);
@@ -3507,7 +3523,20 @@
   const kRedo=actKid('@redo','Redo',doRedo);
   // Clear wipes only the ACTIVE layer of the current frame (other layers stay).
   actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);bumpFrame(frames[cur]);render();refreshFrames();});
-  const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);savePrefs();render();}); kOnion.classList.toggle('on',onion);
+  const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);savePrefs();render();flash(onion?'Onion skin ON':'Onion skin off');}); kOnion.classList.toggle('on',onion);
+  const onionDepthDial=kidEl({cls:'dial',glyph:String(onionDepth),sub:'O·Depth',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(onionDepthDial,0,8,()=>onionDepth,v=>{onionDepth=Math.round(v);onionDepthDial.querySelector('.glyph').textContent=onionDepth;savePrefs();render();},'Onion depth');
+  nAct._kids.appendChild(onionDepthDial);
+  const onionGhostDial=kidEl({cls:'dial',glyph:String(Math.round(onionPastOpacity*100)),sub:'Ghost',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(onionGhostDial,5,85,()=>Math.round(onionPastOpacity*100),v=>{onionPastOpacity=Math.round(v)/100;onionFutureOpacity=Math.max(0.02,Math.min(0.85,onionPastOpacity*0.72));onionGhostDial.querySelector('.glyph').textContent=Math.round(onionPastOpacity*100);savePrefs();render();},'Onion opacity');
+  nAct._kids.appendChild(onionGhostDial);
+  const onionTintDial=kidEl({cls:'dial',glyph:String(Math.round(onionTint*100)),sub:'Tint',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(onionTintDial,0,100,()=>Math.round(onionTint*100),v=>{onionTint=Math.round(v)/100;onionTintDial.querySelector('.glyph').textContent=Math.round(v);savePrefs();render();},'Onion tint');
+  nAct._kids.appendChild(onionTintDial);
+  const kOnionLayer=actKid('@layers','O·Lay',k=>{onionLayerOnly=!onionLayerOnly;k.classList.toggle('on',onionLayerOnly);savePrefs();render();flash(onionLayerOnly?'Onion: active layer only':'Onion: full frame');}); kOnionLayer.classList.toggle('on',onionLayerOnly);
+  function onionColorKid(label, get, set){ const k=kidEl({glyph:'@onion', sub:label, build(el){ const inp=document.createElement('input'); inp.type='color'; inp.value=get(); inp.addEventListener('input',e=>{set(e.target.value);savePrefs();render();}); el.appendChild(inp); }}); nAct._kids.appendChild(k); return k; }
+  onionColorKid('Past',()=>onionBack,v=>onionBack=v);
+  onionColorKid('Future',()=>onionFront,v=>onionFront=v);
   // A/B Compare toggle -- reveals a vertical divider showing the current
   // frame WITH the top layer (right) vs WITHOUT it (left). Perfect for
   // sanity-checking the effect you just added on a top layer.
@@ -4648,6 +4677,10 @@
     [...nTools._kids.children].forEach(c=>c.classList.toggle('on', c.dataset.id===brush.id));
     // toggle rings
     kOnion.classList.toggle('on', onion);
+    if(onionDepthDial){ onionDepthDial.querySelector('.glyph').textContent=onionDepth; if(onionDepthDial._upd) onionDepthDial._upd(); }
+    if(onionGhostDial){ onionGhostDial.querySelector('.glyph').textContent=Math.round(onionPastOpacity*100); if(onionGhostDial._upd) onionGhostDial._upd(); }
+    if(onionTintDial){ onionTintDial.querySelector('.glyph').textContent=Math.round(onionTint*100); if(onionTintDial._upd) onionTintDial._upd(); }
+    kOnionLayer.classList.toggle('on', onionLayerOnly);
     kPalm.classList.toggle('on', palmReject);
     kStylus.classList.toggle('on', stylusOnly);
     kText.classList.toggle('on', readableText); applyReadability();
