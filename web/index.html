@@ -391,25 +391,111 @@
   const mkAt=(w,h)=>{const f=document.createElement('canvas');f.width=w;f.height=h;return f;};
   const mk=()=>mkAt(W,H);
 
+  // ===== Layers per frame =====
+  // A frame is { layers:[{id,name,visible,opacity,blend,canvas}], active, _comp, _compV, _v }.
+  //   _v      -- monotonic version bumped when any layer's pixels/props change
+  //   _compV  -- version _comp was built at; frameComposite() rebuilds when they differ
+  // Wrapping every existing `frames[i]` read in frameComposite(fr) keeps consumers
+  // (onion skin, playback, PNG, GIF, thumbnails) blissfully unaware of layer count.
+  const BLEND_MODES=['source-over','multiply','screen','overlay','darken','lighten',
+                     'color-dodge','color-burn','hard-light','soft-light','difference'];
+  const BLEND_LABEL={'source-over':'Normal','multiply':'Multiply','screen':'Screen',
+    'overlay':'Overlay','darken':'Darken','lighten':'Lighten','color-dodge':'Dodge',
+    'color-burn':'Burn','hard-light':'Hard','soft-light':'Soft','difference':'Diff'};
+  let __lid=1;
+  function newLayer(w,h,name){ return {
+    id:__lid++, name:name||'Layer', visible:true, opacity:1, blend:'source-over',
+    canvas:mkAt(w||W,h||H)
+  }; }
+  function newFrame(w,h){ return { layers:[newLayer(w,h,'Layer 1')], active:0,
+                                    _comp:null, _compV:-1, _v:0 }; }
+  function frameActive(fr){ return fr.layers[fr.active] || fr.layers[0]; }
+  function frameActiveCtx(fr){ return frameActive(fr).canvas.getContext('2d'); }
+  function bumpFrame(fr){ if(fr) fr._v++; }
+  function frameComposite(fr, w, h){
+    w=w||fr.layers[0].canvas.width; h=h||fr.layers[0].canvas.height;
+    if(fr._comp && fr._comp.width===w && fr._comp.height===h && fr._compV===fr._v){
+      return fr._comp;
+    }
+    if(!fr._comp || fr._comp.width!==w || fr._comp.height!==h) fr._comp=mkAt(w,h);
+    const g=fr._comp.getContext('2d'); g.clearRect(0,0,w,h);
+    g.save();
+    for(const L of fr.layers){
+      if(!L.visible || L.opacity<=0) continue;
+      g.globalAlpha=L.opacity; g.globalCompositeOperation=L.blend;
+      g.drawImage(L.canvas,0,0);
+    }
+    g.restore(); g.globalAlpha=1; g.globalCompositeOperation='source-over';
+    fr._compV=fr._v;
+    return fr._comp;
+  }
+  // Legacy autosave payloads (v1) stored a raw canvas per frame; upgrade lazily.
+  function upgradeFrame(v, w, h){
+    if(v && typeof v==='object' && Array.isArray(v.layers)) return v;
+    const L=newLayer(w||W,h||H,'Layer 1');
+    if(v && v.getContext) L.canvas.getContext('2d').drawImage(v,0,0);
+    return { layers:[L], active:0, _comp:null, _compV:-1, _v:0 };
+  }
+
   // ===== Gallery: a few independent projects, each with its own layers/timeline/size =====
   const MAX_PROJECTS=4;   // keep it focused; deeper archives live in a future Gallery view
   function newProject(w,h){ w=w||W0; h=h||H0; return {
-    frames:[mkAt(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12, name:'Canvas' }; }
+    frames:[newFrame(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12, name:'Canvas' }; }
   let projects=[newProject()], pi=0;
   // live aliases into the active project (kept in sync by useProject)
-  let frames=projects[0].frames, holds=projects[0].holds, cur=0, undoStack=projects[0].undo, redoStack=projects[0].redo,
-      fctx=frames[0].getContext('2d');
+  let frames=projects[0].frames, holds=projects[0].holds, cur=0, undoStack=projects[0].undo, redoStack=projects[0].redo;
+  // fctx is recomputed on demand so it *always* points at the active layer of
+  // the current frame -- no bookkeeping when frames or layers change.
+  let fctx=frameActiveCtx(frames[0]);
+  function refreshFctx(){ fctx=frameActiveCtx(frames[cur]); }
   function useProject(i){
-    // save scalar state back into the outgoing project (cur is always a valid number here)
     const out=projects[pi]; if(out){ out.cur=cur; out.fps=fps; out.w=W; out.h=H; }
     pi=i; const P=projects[pi];
-    if(!P.holds) P.holds=P.frames.map(()=>1);                 // back-compat safety
+    if(!P.holds) P.holds=P.frames.map(()=>1);
+    // Lazily upgrade any legacy single-canvas frames (autosave v1 payloads).
+    P.frames = P.frames.map(f=>upgradeFrame(f, P.w, P.h));
     frames=P.frames; holds=P.holds; cur=P.cur; undoStack=P.undo; redoStack=P.redo; fps=P.fps; W=P.w; H=P.h;
-    fctx=frames[cur].getContext('2d');
+    refreshFctx();
   }
-  const snap=()=>({frame:cur,data:fctx.getImageData(0,0,W,H)});
+  // Fast snap (per-stroke): captures ONLY the active layer's pixels + its index.
+  // This is what pen-down calls; heavy structural snaps live in structSnap() below.
+  const snap=()=>{
+    const fr=frames[cur], L=frameActive(fr);
+    return { kind:'pixels', frame:cur, active:fr.active,
+             data:L.canvas.getContext('2d').getImageData(0,0,L.canvas.width,L.canvas.height) };
+  };
+  // Structural snap (layer add/dup/del/reorder, visibility/opacity/blend changes):
+  // clones every layer's ImageData + full props so the change is reversible. Only
+  // called on genuine structure changes -- pen strokes stay on the fast path.
+  const structSnap=()=>{
+    const fr=frames[cur];
+    return { kind:'struct', frame:cur, active:fr.active,
+      layers: fr.layers.map(L=>({
+        id:L.id, name:L.name, visible:L.visible, opacity:L.opacity, blend:L.blend,
+        w:L.canvas.width, h:L.canvas.height,
+        data:L.canvas.getContext('2d').getImageData(0,0,L.canvas.width,L.canvas.height),
+      })),
+    };
+  };
+  function restoreSnap(s){
+    const fr=frames[s.frame]; if(!fr) return;
+    if(s.kind==='pixels'){
+      const L=fr.layers[Math.min(s.active|0, fr.layers.length-1)] || frameActive(fr);
+      L.canvas.getContext('2d').putImageData(s.data,0,0);
+      bumpFrame(fr); refreshFctx();
+    } else {
+      fr.layers = s.layers.map(sL=>{
+        const c=mkAt(sL.w, sL.h); c.getContext('2d').putImageData(sL.data,0,0);
+        return { id:sL.id, name:sL.name, visible:sL.visible, opacity:sL.opacity, blend:sL.blend, canvas:c };
+      });
+      fr.active = Math.min(s.active|0, fr.layers.length-1);
+      bumpFrame(fr); refreshFctx();
+    }
+  }
   const pushU=s=>{undoStack.push(s);if(undoStack.length>40)undoStack.shift();redoStack.length=0;refreshActions();};
-  const setCur=i=>{cur=i;projects[pi].cur=i;fctx=frames[cur].getContext('2d');};
+  const setCur=i=>{cur=i;projects[pi].cur=i;refreshFctx();
+    if(typeof refreshLayers==='function') refreshLayers();
+  };
   const hOf=i=>Math.max(1,Math.round((holds&&holds[i])||1));   // per-frame hold (ticks); declared early to avoid TDZ
   // ===== Cameron: depth-tinted onion skins =====
   // Past frames recede into deep shadow-magenta; future frames advance in warm rose.
@@ -433,11 +519,11 @@
       const depth = Math.max(onionDepth, Math.round(scrubReach));
       for(let k=depth;k>=1;k--){           // farther frames are fainter & more tinted (depth fog)
         const fall=k/depth, reachFade = k<=onionDepth ? 1 : (1 - (k-onionDepth)/(SCRUB_REACH)); // extra reach frames are softer
-        if(cur-k>=0)           drawTinted(frames[cur-k], 0.34*(1-0.45*(fall-1/depth))*reachFade, onionBack, 0.5*fall);
-        if(cur+k<frames.length)drawTinted(frames[cur+k], 0.24*(1-0.45*(fall-1/depth))*reachFade, onionFront, 0.5*fall);
+        if(cur-k>=0)           drawTinted(frameComposite(frames[cur-k]), 0.34*(1-0.45*(fall-1/depth))*reachFade, onionBack, 0.5*fall);
+        if(cur+k<frames.length)drawTinted(frameComposite(frames[cur+k]), 0.24*(1-0.45*(fall-1/depth))*reachFade, onionFront, 0.5*fall);
       }
     }
-    ctx.globalAlpha=1; ctx.drawImage(frames[cur],0,0); }
+    ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[cur]),0,0); }
   // ease the reach back down to the resting onion depth when scrubbing stops
   let reachRAF=0;
   function decayReach(){ scrubReach*=0.82; if(scrubReach>0.3){ render(); reachRAF=requestAnimationFrame(decayReach); }
@@ -702,7 +788,9 @@
     resetHistory(); pushSample(c.x,c.y,c.p,c.az,c.flat);
     // ink lays a small entry pool where the nib first presses into the paper
     if(brush.id==='ink') inkPool(c.x,c.y,c.p,0.45);
-    dab(fctx,c.x,c.y,smoothP,brush.erase,0,0);if(brush.erase)render();else dab(ctx,c.x,c.y,smoothP,false,0,0);});
+    dab(fctx,c.x,c.y,smoothP,brush.erase,0,0);
+    if(brush.erase){ bumpFrame(frames[cur]); render(); }
+    else dab(ctx,c.x,c.y,smoothP,false,0,0);});
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
     if(!drawing||e.pointerId!==drawPid)return;    // only the owning pointer extends the stroke
@@ -727,7 +815,7 @@
       segCR(smoothP, c.az, c.flat);
       lx=penX; ly=penY;
       if(strokePath.length<400) strokePath.push({x:penX,y:penY});}
-    if(brush.erase)render(); updateLens(e);
+    if(brush.erase){ bumpFrame(frames[cur]); render(); } updateLens(e);
     // QuickShape: if the pen goes still mid/late-stroke, try to snap to a clean shape
     if(qsEnabled && !brush.erase){ const now=performance.now();
       const moved=Math.hypot(penX-(qsAnchor.x),penY-(qsAnchor.y));
@@ -755,6 +843,9 @@
       }
     }
     resetHistory();
+    // The stroke wrote to fctx (active layer) -- bump the frame version so
+    // the composite cache invalidates before render() reads it.
+    bumpFrame(frames[cur]);
     if(pend){pushU(pend);pend=null;}render();refreshFrames();
     // Spielberg: a catch-light glints once down the freshly-laid stroke (then it's done)
     if((brush.id==='ink'||brush.id==='pencil') && !qsActive && strokePath.length>4) fireGlint(strokePath.slice());
@@ -794,7 +885,7 @@
     if(!shape) return;
     qsActive=true; qsShape=shape;
     // revert this stroke's pixels, then paint the ideal shape in its place
-    if(pend) fctx.putImageData(pend.data,0,0);
+    if(pend){ restoreSnap(pend); }
     paintQuickShape(shape);
     render(); flash(shape.kind==='ellipse'?'QuickShape · ellipse':'QuickShape · line');
   }
@@ -1074,6 +1165,16 @@
     export:  S+'<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 18h14" class="soft"/>'+E,
     // GIF: film-strip badge with tiny "GIF" letterforms
     gif:     S+'<rect x="3.5" y="5.5" width="17" height="13" rx="1.6"/><path d="M3.5 8.5h17M3.5 15.5h17" class="soft"/><path d="M6 7v-1M9 7v-1M12 7v-1M15 7v-1M18 7v-1M6 18v-1M9 18v-1M12 18v-1M15 18v-1M18 18v-1" class="soft"/><path d="M9 10.5v3h1.5v-1H10M13 10.5v3M15.5 10.5v3M15.5 12h1.5" stroke-width="1.4"/>'+E,
+    // Layers orb glyphs -- kept in the same rose-quartz line style as the rest
+    layers:  S+'<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4" class="soft"/><path d="M4 16l8 4 8-4" class="soft"/>'+E,
+    layerAdd:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M18 14v6M15 17h6" stroke-width="1.6"/>'+E,
+    layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
+    layerDel:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M14 16l6 6M20 16l-6 6" stroke-width="1.6"/>'+E,
+    layerUp: S+'<path d="M4 12l6-3 6 3-6 3z" class="soft"/><path d="M12 18V6M8 10l4-4 4 4"/>'+E,
+    layerDn: S+'<path d="M4 12l6-3 6 3-6 3z" class="soft"/><path d="M12 6v12M8 14l4 4 4-4"/>'+E,
+    eyeOn:   S+'<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.6" class="fill"/>'+E,
+    eyeOff:  S+'<path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"/><path d="M4 4l16 16" stroke-width="1.8"/>'+E,
+    blend:   S+'<circle cx="9" cy="10" r="5"/><circle cx="15" cy="14" r="5" class="soft"/>'+E,
     stylus:  S+'<path d="M5 19l1.5-4.5L16 5l3 3-9.5 9.5z"/><path d="M14 7l3 3"/><path d="M5 19l3.5-1" class="soft"/>'+E,
     palm:    S+'<path d="M8 13V6.5a1.3 1.3 0 012.6 0V11m0-.5V5.2a1.3 1.3 0 012.6 0V11m0-.3V6.4a1.3 1.3 0 012.6 0V13c0 4-2 6-5 6s-4.4-1.6-5.6-3.6L6 13.2a1.3 1.3 0 012.2-1.3z"/>'+E,
     line:    S+'<path d="M4 16C8 16 9 7 13 7s4 6 7 6" /><circle cx="4" cy="16" r="1.4" class="fill"/><circle cx="20" cy="13" r="1.4" class="fill"/>'+E,
@@ -1245,18 +1346,32 @@
   function refreshSwatches(){ [...nColor._kids.querySelectorAll('.kid.swatch')].forEach(k=>k.classList.toggle('sel',k.dataset.c.toLowerCase()===color.toLowerCase())); }
   rebuildSwatches();
 
+  // The Layers orb is defined further down, but doUndo/doRedo and frame actions
+  // call refreshLayers()  -- stub it so early callers can no-op safely.
+  let refreshLayers = ()=>{};
+
   // ---- ACTIONS node ----
   const nAct=makeNode({glyph:'@actions',label:'Actions',x:0,y:300}); nAct.dataset.right='1';
   function actKid(glyph,label,fn,toggle){ const k=kidEl({glyph,sub:label});
     k.addEventListener('click',e=>{e.stopPropagation();fn(k);}); nAct._kids.appendChild(k); return k; }
-  function doUndo(){ if(!undoStack.length)return; redoStack.push(snap()); const s=undoStack.pop(); setCur(s.frame); fctx.putImageData(s.data,0,0); render(); refreshFrames(); refreshActions(); flash('Undo'); }
-  function doRedo(){ if(!redoStack.length)return; undoStack.push(snap()); const s=redoStack.pop(); setCur(s.frame); fctx.putImageData(s.data,0,0); render(); refreshFrames(); refreshActions(); flash('Redo'); }
+  // Undo/redo need to pick the right snap kind: structural for structure changes
+  // (layer add/dup/del/reorder/prop toggle), fast pixels for a stroke. The undo
+  // action just replays whatever was pushed onto the stack; the redo side pushes
+  // a matching snap so it can flip back.
+  function symmetricSnap(kind){ return kind==='struct' ? structSnap() : snap(); }
+  function doUndo(){ if(!undoStack.length)return; const s=undoStack.pop();
+    redoStack.push(symmetricSnap(s.kind)); setCur(s.frame); restoreSnap(s);
+    render(); refreshFrames(); refreshLayers(); refreshActions(); flash('Undo'); }
+  function doRedo(){ if(!redoStack.length)return; const s=redoStack.pop();
+    undoStack.push(symmetricSnap(s.kind)); setCur(s.frame); restoreSnap(s);
+    render(); refreshFrames(); refreshLayers(); refreshActions(); flash('Redo'); }
   const kUndo=actKid('@undo','Undo',doUndo);
   const kRedo=actKid('@redo','Redo',doRedo);
-  actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);render();refreshFrames();});
+  // Clear wipes only the ACTIVE layer of the current frame (other layers stay).
+  actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);bumpFrame(frames[cur]);render();refreshFrames();});
   const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);savePrefs();render();}); kOnion.classList.toggle('on',onion);
   // PNG — the current frame, flattened over the paper background.
-  actKid('@export','PNG',()=>{const o=mk(),oc=o.getContext('2d');oc.fillStyle='#fff0f3';oc.fillRect(0,0,W,H);oc.drawImage(frames[cur],0,0);
+  actKid('@export','PNG',()=>{const o=mk(),oc=o.getContext('2d');oc.fillStyle='#fff0f3';oc.fillRect(0,0,W,H);oc.drawImage(frameComposite(frames[cur]),0,0);
     const a=document.createElement('a');a.download='inkframe-'+(cur+1)+'.png';a.href=o.toDataURL('image/png');a.click();flash('Exported PNG');});
   // GIF — animated, loops, respects per-frame holds and current FPS.
   // Encoding runs in a Web Worker so the UI stays responsive even for long timelines.
@@ -1282,7 +1397,7 @@
   // Strength rises with frame rate (fast playback => longer trail).
   function blurAmt(){ return motionBlur ? Math.max(0, Math.min(.5, (fps-10)/40)) : 0; }
   function drawComposite(idx){ ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
-    ctx.globalAlpha=1; ctx.drawImage(frames[idx%frames.length],0,0); }
+    ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[idx%frames.length]),0,0); }
   function playLoop(t){ if(!playing)return;
     const spf=1000/Math.max(1,fps), prog=(t-playT0)/spf;
     // honor an isolated loop range; otherwise wrap the whole timeline
@@ -1297,13 +1412,13 @@
     const mb=blurAmt();
     if(mb>0 && frames.length>1){                    // trailing ghost (shutter smear)
       const prev = idx>lo ? idx-1 : hi;
-      ctx.globalAlpha=mb; ctx.drawImage(frames[prev],0,0);
+      ctx.globalAlpha=mb; ctx.drawImage(frameComposite(frames[prev]),0,0);
     }
     if(dissolve && frames.length>1){
       const nxt = idx<hi ? idx+1 : lo, fade=Math.min(1,f*1.6);   // hold, then quick dissolve
-      ctx.globalAlpha=1; ctx.drawImage(frames[idx],0,0);
-      ctx.globalAlpha=fade; ctx.drawImage(frames[nxt],0,0); ctx.globalAlpha=1;
-    } else { ctx.globalAlpha=1; ctx.drawImage(frames[idx],0,0); }
+      ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[idx]),0,0);
+      ctx.globalAlpha=fade; ctx.drawImage(frameComposite(frames[nxt]),0,0); ctx.globalAlpha=1;
+    } else { ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[idx]),0,0); }
     ctx.globalAlpha=1;
     // continuous playhead: position within the current frame's segment by sub-progress f
     syncRail((tickStart(idx)+f*hOf(idx))/ticksTotal());
@@ -1313,8 +1428,20 @@
   const kPlay=frameAct('@play','Play',k=>{playing=!playing;k.querySelector('.glyph').innerHTML=ICONS[playing?'pause':'play'];k.classList.toggle('on',playing);
     if(playing){ playT0=performance.now(); nFrames._timer=requestAnimationFrame(playLoop); }
     else{ cancelAnimationFrame(nFrames._timer); render(); refreshFrames(); syncRail(); }});
-  frameAct('@add','Add',()=>{frames.splice(cur+1,0,mk());holds.splice(cur+1,0,1);setCur(cur+1);render();refreshFrames();});
-  frameAct('@dup','Dup',()=>{const nf=mk();nf.getContext('2d').drawImage(frames[cur],0,0);frames.splice(cur+1,0,nf);holds.splice(cur+1,0,holds[cur]||1);setCur(cur+1);render();refreshFrames();});
+  // Add: blank single-layer frame after the current one.
+  frameAct('@add','Add',()=>{frames.splice(cur+1,0,newFrame(W,H));holds.splice(cur+1,0,1);setCur(cur+1);render();refreshFrames();});
+  // Dup: copy the whole layer stack of the current frame (props + pixels).
+  frameAct('@dup','Dup',()=>{
+    const src=frames[cur], copy={
+      layers: src.layers.map(L=>{ const c=mkAt(L.canvas.width,L.canvas.height);
+        c.getContext('2d').drawImage(L.canvas,0,0);
+        return { id:__lid++, name:L.name, visible:L.visible, opacity:L.opacity, blend:L.blend, canvas:c };
+      }),
+      active:src.active, _comp:null, _compV:-1, _v:0,
+    };
+    frames.splice(cur+1,0,copy); holds.splice(cur+1,0,holds[cur]||1);
+    setCur(cur+1); render(); refreshFrames();
+  });
   frameAct('@del','Del',()=>{if(frames.length<=1)return;frames.splice(cur,1);holds.splice(cur,1);setCur(Math.max(0,cur-1));render();refreshFrames();});
   const fpsDial=kidEl({cls:'dial',glyph:'12',sub:'FPS',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
   makeDial(fpsDial,1,24,()=>fps,v=>{fps=Math.round(v);fpsDial.querySelector('.glyph').textContent=fps;},'FPS');
@@ -1339,6 +1466,100 @@
     if(typeof buildRail==='function') buildRail();
     if(typeof refreshHold==='function') refreshHold(); }
 
+  // ---- LAYERS node ----
+  // Per-frame layer stack in the Glass Horizon design language. The orb sits
+  // next to Frames along the bottom rail; opening it fans out layer actions
+  // (add/dup/del/up/down), the visibility toggle, blend-mode cycler, opacity
+  // dial, and a "Stack" branch that lists layers bottom->top as tappable
+  // circles. All state (visible/opacity/blend/order) persists per frame.
+  const nLayers=makeNode({glyph:'@layers',label:'Layers',x:520,y:0}); nLayers.dataset.bottom='1';
+  function activeLayer(){ const fr=frames[cur]; return fr && fr.layers[fr.active]; }
+  function lAct(glyph,label,fn){ const k=kidEl({glyph,sub:label});
+    k.addEventListener('click',e=>{e.stopPropagation();fn(k);}); nLayers._kids.appendChild(k); return k; }
+
+  const kLayAdd=lAct('@layerAdd','Add',()=>{
+    pushU(structSnap()); const fr=frames[cur];
+    fr.layers.splice(fr.active+1, 0, newLayer(W,H,`Layer ${fr.layers.length+1}`));
+    fr.active++; bumpFrame(fr); refreshFctx(); render(); refreshLayers();
+    flash('Layer added');
+  });
+  const kLayDup=lAct('@layerDup','Dup',()=>{
+    pushU(structSnap()); const fr=frames[cur], src=fr.layers[fr.active];
+    const c=mkAt(W,H); c.getContext('2d').drawImage(src.canvas,0,0);
+    fr.layers.splice(fr.active+1, 0, { id:__lid++, name:src.name+' copy',
+      visible:src.visible, opacity:src.opacity, blend:src.blend, canvas:c });
+    fr.active++; bumpFrame(fr); refreshFctx(); render(); refreshLayers();
+    flash('Layer duplicated');
+  });
+  const kLayDel=lAct('@layerDel','Del',()=>{
+    const fr=frames[cur]; if(fr.layers.length<=1){ flash('Need at least one layer'); return; }
+    pushU(structSnap()); fr.layers.splice(fr.active,1);
+    fr.active = Math.max(0, fr.active-1);
+    bumpFrame(fr); refreshFctx(); render(); refreshLayers();
+  });
+  const kLayUp=lAct('@layerUp','Up',()=>{
+    const fr=frames[cur]; if(fr.active>=fr.layers.length-1){ flash('Already on top'); return; }
+    pushU(structSnap());
+    const t=fr.layers[fr.active]; fr.layers[fr.active]=fr.layers[fr.active+1]; fr.layers[fr.active+1]=t;
+    fr.active++; bumpFrame(fr); render(); refreshLayers();
+  });
+  const kLayDn=lAct('@layerDn','Down',()=>{
+    const fr=frames[cur]; if(fr.active<=0){ flash('Already at bottom'); return; }
+    pushU(structSnap());
+    const t=fr.layers[fr.active]; fr.layers[fr.active]=fr.layers[fr.active-1]; fr.layers[fr.active-1]=t;
+    fr.active--; bumpFrame(fr); render(); refreshLayers();
+  });
+  const kLayEye=lAct('@eyeOn','Show',(k)=>{
+    const L=activeLayer(); if(!L)return; pushU(structSnap());
+    L.visible=!L.visible; k.querySelector('.glyph').innerHTML=ICONS[L.visible?'eyeOn':'eyeOff'];
+    bumpFrame(frames[cur]); render(); refreshLayers();
+  });
+  const kLayBlend=lAct('@blend','Normal',(k)=>{
+    const L=activeLayer(); if(!L)return; pushU(structSnap());
+    const idx=Math.max(0, BLEND_MODES.indexOf(L.blend));
+    L.blend = BLEND_MODES[(idx+1) % BLEND_MODES.length];
+    k.querySelector('.sub').textContent = BLEND_LABEL[L.blend] || L.blend;
+    bumpFrame(frames[cur]); render(); refreshLayers(); flash('Blend · '+(BLEND_LABEL[L.blend]||L.blend));
+  });
+  const layerOpDial=kidEl({cls:'dial',glyph:'100',sub:'L·Op',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(layerOpDial,0,100,()=>Math.round(((activeLayer()&&activeLayer().opacity)||1)*100),
+    v=>{ const L=activeLayer(); if(!L)return; L.opacity=v/100;
+         layerOpDial.querySelector('.glyph').textContent=Math.round(v);
+         bumpFrame(frames[cur]); render(); }, 'Layer opacity');
+  nLayers._kids.appendChild(layerOpDial);
+  // Layer list as a branch (bottom -> top numbered swatches).
+  const layersBranch=makeBranchKid('@list','Stack'); nLayers._kids.appendChild(layersBranch);
+
+  // Replace the stub with the real refreshLayers now that all deps exist.
+  refreshLayers = function(){
+    const fr=frames[cur]; if(!fr) return;
+    const wrap=layersBranch._kids; wrap.innerHTML='';
+    // Top layer first in the branch (matches Photoshop-style stack ordering).
+    for(let i=fr.layers.length-1; i>=0; i--){
+      const L=fr.layers[i];
+      const k=kidEl({glyph:String(i+1)});
+      k.style.width='38px'; k.style.height='38px'; k.style.margin='-19px 0 0 -19px';
+      if(!L.visible) k.style.opacity='0.35';
+      if(i===fr.active) k.classList.add('on');
+      k.title = L.name + (L.visible?'':' (hidden)');
+      k.addEventListener('click',e=>{ e.stopPropagation();
+        fr.active=i; refreshFctx(); render(); refreshLayers();
+      });
+      wrap.appendChild(k);
+    }
+    if(layersBranch.classList.contains('open')) layersBranch._relayout();
+    // Sync the top-level toggle/dial glyphs with the active layer state.
+    const L=activeLayer();
+    if(L){
+      const eyeG=kLayEye.querySelector('.glyph');
+      if(eyeG) eyeG.innerHTML=ICONS[L.visible?'eyeOn':'eyeOff'];
+      const bs=kLayBlend.querySelector('.sub');
+      if(bs) bs.textContent = BLEND_LABEL[L.blend] || L.blend;
+      const og=layerOpDial.querySelector('.glyph');
+      if(og) og.textContent=Math.round(L.opacity*100);
+    }
+  };
+
   // ---- THEMES node ----
   const nTheme=makeNode({glyph:'@themes',label:'Themes',x:0,y:470}); nTheme.dataset.right='1';
   function rebuildThemes(){ nTheme._kids.innerHTML='';
@@ -1359,7 +1580,9 @@
   // ===== GALLERY node — up to 10 canvases, each its own project; tap = fluid switch =====
   const nGallery=makeNode({glyph:'@gallery',label:'Gallery',x:140,y:0}); nGallery.dataset.bottom='1';
   function thumbOf(P){ const t=mkAt(64,Math.round(64*P.h/P.w)); const tc=t.getContext('2d');
-    tc.fillStyle='#fff0f3'; tc.fillRect(0,0,t.width,t.height); tc.drawImage(P.frames[P.cur],0,0,t.width,t.height); return t.toDataURL(); }
+    tc.fillStyle='#fff0f3'; tc.fillRect(0,0,t.width,t.height);
+    const fr=upgradeFrame(P.frames[P.cur||0], P.w, P.h);
+    tc.drawImage(frameComposite(fr), 0,0, t.width, t.height); return t.toDataURL(); }
   function switchProject(i){
     if(i===pi || switchProject._busy) return;
     switchProject._busy=true;
@@ -1430,6 +1653,8 @@
     nAct._setPos(Wd-78, 300);
     nTheme._setPos(Wd-78, 470);
     nFrames._setPos(Math.max(120,Wd/2-120), Hd-78);
+    // Layers orb sits just right of Frames along the bottom rail.
+    nLayers._setPos(Math.min(Wd-160, Wd/2+40), Hd-78);
     nStudio._setPos(24, Hd-78);
     nGallery._setPos(96, Hd-78);
   }
@@ -1548,9 +1773,18 @@
   function reshapeDocument(nw,nh){
     nw=Math.round(Math.max(MINDIM,Math.min(MAXDIM,nw))); nh=Math.round(Math.max(MINDIM,Math.min(MAXDIM,nh)));
     if(nw===W && nh===H) return;
-    projects[pi].frames=projects[pi].frames.map(old=>{ const f=mkAt(nw,nh); f.getContext('2d').drawImage(old,0,0); return f; });
+    // Resize every layer of every frame (top-left anchored, no scaling).
+    projects[pi].frames = projects[pi].frames.map(oldFr=>{
+      const fr = upgradeFrame(oldFr, W, H);
+      fr.layers = fr.layers.map(L=>{
+        const c=mkAt(nw,nh); c.getContext('2d').drawImage(L.canvas,0,0);
+        return { id:L.id, name:L.name, visible:L.visible, opacity:L.opacity, blend:L.blend, canvas:c };
+      });
+      fr._comp=null; fr._compV=-1; fr._v++;
+      return fr;
+    });
     frames=projects[pi].frames; W=nw; H=nh; projects[pi].w=W; projects[pi].h=H;
-    canvas.width=W; canvas.height=H; fctx=frames[cur].getContext('2d');
+    canvas.width=W; canvas.height=H; refreshFctx();
     clampCanvas(); applyCanvas(); render(); startWires();
   }
 
@@ -1603,7 +1837,7 @@
     // A 2nd finger cancels a TOUCH stroke (intending a gesture). But if a PEN owns the
     // stroke, an extra touch is a resting palm → keep drawing, ignore the touch entirely.
     if(active.size>=2 && drawing && drawPidType!=='pen'){
-      drawing=false; drawPid=null; if(pend){ fctx.putImageData(pend.data,0,0); pend=null; render(); }
+      drawing=false; drawPid=null; if(pend){ restoreSnap(pend); pend=null; render(); }
     }
   }, true);
   canvas.addEventListener('pointermove',e=>{
@@ -1694,13 +1928,15 @@
      * of length width*height. Matches the PNG export composition so a single GIF
      * frame looks identical to the equivalent PNG.
      */
-    function flattenFrame(frameCanvas, width, height) {
+    function flattenFrame(frame, width, height) {
       const off = document.createElement('canvas');
       off.width = width; off.height = height;
       const g = off.getContext('2d');
       g.fillStyle = '#fff0f3';           // paper — matches render() clearRect fill
       g.fillRect(0, 0, width, height);
-      g.drawImage(frameCanvas, 0, 0);
+      // Accept both new {layers,...} frames and legacy raw canvases (v1 autosave).
+      const fr = upgradeFrame(frame, width, height);
+      g.drawImage(frameComposite(fr, width, height), 0, 0);
       const img = g.getImageData(0, 0, width, height);
       const src = img.data;              // Uint8ClampedArray, RGBA
       // Assemble a native little-endian ARGB Int32Array by hand so the
@@ -1922,11 +2158,21 @@
       // save scalar state into the currently-active project before snapshotting
       const p=projects[pi]; if(p){ p.cur=cur; p.fps=fps; p.w=W; p.h=H; }
       const payload={
-        v:1, savedAt:Date.now(), pi,
+        v:2, savedAt:Date.now(), pi,
         projects: await Promise.all(projects.map(async P=>({
           name:P.name||'Canvas', w:P.w, h:P.h, cur:P.cur||0, fps:P.fps||12,
           holds:(P.holds||P.frames.map(()=>1)).slice(),
-          frames: await Promise.all(P.frames.map(frameToBlob)),
+          // v2: each frame is { active, layers:[{name,visible,opacity,blend,blob}] }.
+          frames: await Promise.all(P.frames.map(async fr=>{
+            const F = upgradeFrame(fr, P.w, P.h);
+            return {
+              active: F.active|0,
+              layers: await Promise.all(F.layers.map(async L=>({
+                name:L.name, visible:!!L.visible, opacity:+L.opacity, blend:L.blend||'source-over',
+                blob: await frameToBlob(L.canvas),
+              }))),
+            };
+          })),
         }))),
       };
       return payload;
@@ -1950,9 +2196,31 @@
       const restored=[];
       for(const P of payload.projects){
         const w=P.w||W0, h=P.h||H0;
-        const fr=await Promise.all(P.frames.map(b=>blobToCanvas(b,w,h)));
+        // Accept both payload versions:
+        //   v1: frames = [Blob, Blob, ...]                   (flat, pre-layers)
+        //   v2: frames = [{active, layers:[{...,blob}]}, ...] (layer-aware)
+        const fr = [];
+        for(const item of P.frames){
+          if(item && Array.isArray(item.layers)){
+            const layers = await Promise.all(item.layers.map(async sL=>({
+              id:__lid++, name:sL.name||'Layer',
+              visible: sL.visible!==false,
+              opacity: typeof sL.opacity==='number' ? sL.opacity : 1,
+              blend: sL.blend || 'source-over',
+              canvas: await blobToCanvas(sL.blob, w, h),
+            })));
+            if(!layers.length) layers.push(newLayer(w,h,'Layer 1'));
+            fr.push({ layers, active: Math.min(item.active|0, layers.length-1),
+                      _comp:null, _compV:-1, _v:0 });
+          } else {
+            const canvas = await blobToCanvas(item, w, h);
+            fr.push({ layers:[{ id:__lid++, name:'Layer 1', visible:true, opacity:1,
+                                blend:'source-over', canvas }], active:0,
+                      _comp:null, _compV:-1, _v:0 });
+          }
+        }
         restored.push({
-          frames:fr.length?fr:[document.createElement('canvas')],
+          frames: fr.length ? fr : [newFrame(w,h)],
           holds: (P.holds && P.holds.length===fr.length) ? P.holds.slice() : fr.map(()=>1),
           cur:   Math.min(Math.max(0, P.cur|0), Math.max(0, fr.length-1)),
           undo:  [], redo:[],
@@ -2039,7 +2307,7 @@
   //   window.INKFRAME_AUTOSAVE.clear()  -> wipe the IDB snapshot (returns Promise)
   window.INKFRAME_AUTOSAVE = AUTOSAVE;
 
-  applyTheme(0); render(); refreshFrames(); refreshActions(); startWires();
+  applyTheme(0); render(); refreshFrames(); refreshLayers(); refreshActions(); startWires();
   flash('Tap a circle to spiral open · double-tap canvas to collapse all · ◌ Studio');
 })();
 </script>

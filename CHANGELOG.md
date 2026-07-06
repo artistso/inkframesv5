@@ -6,6 +6,26 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — layers per frame
+- **Layers orb** joins the bottom rail alongside Frames. Add / duplicate /
+  delete / move up / move down, per-layer visibility, opacity dial, and a
+  cycling blend-mode picker (Normal, Multiply, Screen, Overlay, Darken,
+  Lighten, Dodge, Burn, Hard, Soft, Difference).
+- **Layer Stack branch** — the "Stack" list inside the Layers orb shows every
+  layer of the current frame as a tappable circle (top layer first), with
+  hidden layers dimmed. Tap to make active.
+- **Frame model upgrade** — each frame becomes
+  `{layers:[{id,name,visible,opacity,blend,canvas}], active, _comp, _v}`.
+  Onion skin, playback, PNG, GIF, Dup-Frame, resize, gallery thumbnails, and
+  the autosave restore path all consume the layers via a cached
+  `frameComposite(fr)` helper. Consumers still see "one image per frame"; the
+  cache rebuilds only when the frame's version counter advances.
+- **Snapshots split** into a fast pixel snap (per stroke — active layer only)
+  and a structural snap (layer add/dup/del/reorder/prop toggle) so pen-down
+  never has to clone every layer.
+- **Autosave v2** — layer-aware payload; v1 sessions still restore (upgraded
+  to a single-layer frame on load).
+
 ### Web build — animated GIF export
 - **New GIF action in the Actions node** (`@gif` glyph) — exports the current
   project as a looping animated GIF, honouring per-frame Hold ticks and the
