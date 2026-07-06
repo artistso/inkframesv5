@@ -1,0 +1,15 @@
+{
+  "name": "inkframe-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "InkFrame Studio — a 2D animation & drawing app (web build).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

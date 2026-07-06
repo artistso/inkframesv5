@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>InkFrame · The Glass Horizon</title>
+<style>
+  :root{
+    --accent:#bb0037; --accent-deep:#880057; --rose:#f7cac9; --blush:#fff0f3; --violet:#2a001a;
+    --glass: rgba(247,202,201,0.12);
+    --glass-strong: rgba(247,202,201,0.20);
+    --stroke: rgba(247,202,201,0.40);
+    --rim: rgba(255,240,243,0.6);
+    --text:#fff0f3; --dim:#e8b9c6;
+    --shadow: 0 14px 50px rgba(20,0,14,0.55);
+    --bg: radial-gradient(120% 82% at 50% -12%, #ffd9e2 0%, #f7cac9 14%, #d77fa0 38%, #a52766 64%, #4d0a33 86%, #1a001a 100%);
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; height:100%; overflow:hidden; touch-action:none; overscroll-behavior:none;
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); }
+
+  #bg{ position:fixed; inset:0; z-index:0; background:var(--bg); transition:background .6s ease; }
+  #rays{ position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.42; mix-blend-mode:screen; filter:blur(2px);
+    background:conic-gradient(from 200deg at 50% 0%, transparent 0deg, rgba(255,255,255,.35) 12deg, transparent 16deg,
+      transparent 28deg, rgba(255,255,255,.22) 32deg, transparent 36deg,
+      transparent 52deg, rgba(255,255,255,.30) 56deg, transparent 60deg); }
+  #grain{ position:fixed; inset:0; z-index:2; pointer-events:none; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>"); }
+  #vignette{ position:fixed; inset:0; z-index:3; pointer-events:none;
+    background:radial-gradient(120% 92% at 50% 42%, transparent 55%, rgba(20,0,14,.55) 100%); }
+
+  .glass{ background:linear-gradient(160deg, var(--glass-strong), var(--glass));
+    backdrop-filter:blur(20px) saturate(150%); -webkit-backdrop-filter:blur(20px) saturate(150%);
+    border:1px solid var(--stroke); box-shadow:var(--shadow), inset 0 1px 0 var(--rim), inset 0 0 30px rgba(255,240,243,.06); }
+
+  #title{ position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:5; text-align:center; pointer-events:none; transition:opacity .4s; }
+  #title h1{ margin:0; font-family:"Cinzel",Georgia,serif; font-weight:600; font-size:20px; letter-spacing:.26em; text-transform:uppercase;
+    background:linear-gradient(180deg,#fff,var(--rose) 55%,var(--accent)); -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 2px 16px rgba(255,255,255,.25); }
+  #title .sub{ font-size:9px; letter-spacing:.42em; text-transform:uppercase; color:var(--dim); opacity:.75; margin-top:3px; }
+
+  /* The Lens — a live glass nib cursor floating at the pen tip */
+  #lens{ position:fixed; left:0; top:0; width:0; height:0; z-index:23; pointer-events:none;
+    opacity:0; transform:translate(-50%,-50%); transition:opacity .14s ease; }
+  #lens.show{ opacity:1; }
+  #lens svg{ position:absolute; left:-50px; top:-50px; width:100px; height:100px; overflow:visible;
+    filter:drop-shadow(0 2px 6px rgba(42,0,26,.5)); }
+  #lens #lensRing{ fill:rgba(247,202,201,.06); stroke:var(--rim); stroke-width:1.2;
+    backdrop-filter:blur(2px); }
+  #lens #lensNib{ stroke:rgba(255,240,243,.85); stroke-width:1; opacity:.92; }
+  #glint{ position:fixed; inset:0; z-index:12; pointer-events:none; opacity:0;
+    transition:opacity .25s ease; mix-blend-mode:screen; }
+  #stage{ position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; }
+  #frameGlass{ position:relative; padding:14px; border-radius:30px; }
+  canvas#c{ display:block; background:#fff0f3; border-radius:16px; touch-action:none;
+    box-shadow:0 0 0 1px rgba(20,0,14,.4), 0 18px 60px rgba(20,0,14,.6); }
+  body.zen #title{ opacity:0; }
+  body.zen #frameGlass{ padding:8px; border-radius:18px; }
+
+  /* ===== Nodes (circles only — spiral out) ===== */
+  .node{ position:fixed; z-index:20; will-change:transform; }
+  .orb{ position:relative; width:58px; height:58px; border-radius:50%; cursor:grab; touch-action:none;
+    display:flex; align-items:center; justify-content:center; transition:box-shadow .25s, transform .12s, background .2s; }
+  .orb:active{ cursor:grabbing; }
+  /* darker lens behind glyph guarantees legibility over the bright canvas */
+  .orb::after{ content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle at 50% 42%, rgba(20,0,14,.34), rgba(20,0,14,0) 72%); }
+  .orb .glyph{ position:relative; z-index:1; font-size:22px; color:#fff; font-weight:600; line-height:1;
+    text-shadow:0 1px 3px rgba(0,0,0,.6), 0 0 10px rgba(0,0,0,.35); }
+  /* custom SVG icons: drawn with the glass rim light, not pasted glyphs */
+  .glyph svg{ width:26px; height:26px; display:block; overflow:visible; }
+  .kid .glyph svg{ width:21px; height:21px; }
+  .glyph svg path, .glyph svg circle, .glyph svg line, .glyph svg polyline, .glyph svg rect{
+    fill:none; stroke:#fff; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,.55)); vector-effect:non-scaling-stroke; }
+  .glyph svg .fill{ fill:#fff; stroke:none; }
+  .glyph svg .soft{ opacity:.5; }
+  .orb .lbl{ position:absolute; top:62px; left:50%; transform:translateX(-50%); font-size:9px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; transition:opacity .2s;
+    text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  .node.open > .orb .lbl{ opacity:0; }
+  .node.dragging > .orb, .node.dragging .orb{ box-shadow:var(--shadow), 0 0 26px rgba(255,255,255,.4), inset 0 1px 0 var(--rim); }
+  .node.dragging{ --glass:rgba(247,202,201,0.30); --glass-strong:rgba(247,202,201,0.42); }
+  .node.open > .orb{ box-shadow:var(--shadow), 0 0 22px rgba(187,0,55,.5), inset 0 1px 0 var(--rim); }
+
+  /* child container: zero-size anchor at orb centre; kids fan out via transforms */
+  .kids{ position:absolute; left:29px; top:29px; width:0; height:0; z-index:-1; }
+  .kid{ position:absolute; left:0; top:0; width:48px; height:48px; margin:-24px 0 0 -24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transform:translate(0,0) scale(.35); opacity:0; pointer-events:none;
+    transition:transform .34s cubic-bezier(.2,.95,.25,1.1), opacity .24s ease; }
+  .node.open > .kids > .kid, .branch.open > .kids > .kid{ opacity:1; pointer-events:auto;
+    transform:translate(var(--dx,0), var(--dy,0)) scale(1); }
+  .kid::after{ content:""; position:absolute; inset:0; border-radius:50%; pointer-events:none;
+    background:radial-gradient(circle at 50% 42%, rgba(20,0,14,.30), rgba(20,0,14,0) 72%); }
+  .kid .glyph{ position:relative; z-index:1; font-size:18px; color:#fff; font-weight:600;
+    text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  .kid.on{ background:linear-gradient(160deg, var(--accent), var(--accent-deep)) !important; border-color:var(--rim) !important;
+    box-shadow:0 0 18px rgba(187,0,55,.6), inset 0 1px 0 var(--rim) !important; }
+  .kid .sub{ position:absolute; top:50px; left:50%; transform:translateX(-50%); font-size:8px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+
+  /* dial gauge ring */
+  .kid.dial .ring{ position:absolute; inset:-3px; border-radius:50%; pointer-events:none;
+    background:conic-gradient(var(--accent) calc(var(--p,40)*1%), rgba(247,202,201,.16) 0);
+    -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+            mask:radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px)); }
+  .kid.dial .glyph{ font-size:13px; }
+
+  /* swatch / colour kids */
+  .kid.swatch{ border:2px solid rgba(255,240,243,.25); }
+  .kid.swatch.sel{ border-color:var(--blush); box-shadow:0 0 14px rgba(255,255,255,.8); }
+  .kid input[type=color]{ position:absolute; inset:0; opacity:0; width:100%; height:100%; border:none; cursor:pointer; }
+
+  /* theme preview kids show a colour ring */
+  .kid.theme .glyph{ display:none; }
+  .kid.theme .ring{ position:absolute; inset:4px; border-radius:50%; }
+  .kid.theme.sel{ box-shadow:0 0 16px rgba(255,255,255,.85); border:2px solid var(--blush); }
+
+  /* studio overlay — soft glow, no box */
+  #studio{ position:fixed; inset:0; z-index:45; display:none; align-items:center; justify-content:center; text-align:center; padding:30px; }
+  #studio.show{ display:flex; }
+  #studio .glow{ max-width:440px; padding:40px; border-radius:50%;
+    background:radial-gradient(ellipse at center, rgba(20,0,14,.6), rgba(20,0,14,0) 72%); }
+  #studio h2{ font-family:"Cinzel",Georgia,serif; letter-spacing:.18em; font-size:22px; margin:0 0 14px;
+    background:linear-gradient(180deg,#fff,var(--rose)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #studio p{ font-size:14px; line-height:1.7; color:var(--blush); margin:0 0 10px; }
+  #studio .mute{ color:var(--dim); font-size:12px; letter-spacing:.1em; }
+
+  /* ===== Node-graph connector wires ===== */
+  #wires{ position:fixed; inset:0; z-index:18; pointer-events:none; width:100%; height:100%; }
+  #wires path.glow{ stroke:var(--rose); stroke-width:6; fill:none; stroke-linecap:round; opacity:.16; filter:blur(3px); }
+  #wires path.core{ stroke:var(--blush); stroke-width:1.6; fill:none; stroke-linecap:round; opacity:.55;
+    stroke-dasharray:2 8; animation:flow 1.3s linear infinite; }
+  #wires circle.tip{ fill:var(--blush); opacity:.6; }
+  #wires circle.pulse{ fill:#fff; filter:drop-shadow(0 0 6px var(--rose)) drop-shadow(0 0 12px var(--accent)); }
+  @keyframes flow{ to{ stroke-dashoffset:-20; } }
+
+  /* layer that holds torn-off / pinned tool circles (no transformed ancestor) */
+  /* Nolan: physical film-rail scrubber — time you can grab, mounted under the canvas */
+  #rail{ position:absolute; left:14px; right:14px; bottom:-26px; height:30px; border-radius:18px;
+    display:flex; align-items:center; padding:0 16px; touch-action:none; cursor:pointer; z-index:6; }
+  #railTrack{ position:relative; flex:1; height:4px; border-radius:3px;
+    background:linear-gradient(90deg, rgba(255,240,243,.18), rgba(255,240,243,.30)); }
+  #railTrack .seg{ position:absolute; top:50%; height:4px; margin-top:-2px; border-radius:3px;
+    background:rgba(255,240,243,.10); border-right:1px solid rgba(42,0,26,.5); box-sizing:border-box; }
+  #railTrack .seg.held{ background:linear-gradient(90deg, rgba(187,0,55,.30), rgba(247,202,201,.18));
+    box-shadow:inset 0 0 5px rgba(255,150,190,.4); }
+  #railTrack .bead{ position:absolute; top:50%; width:9px; height:9px; margin:-4.5px 0 0 -4.5px; border-radius:50%;
+    background:var(--rose); opacity:.55; box-shadow:0 0 5px rgba(255,150,190,.5); transition:opacity .2s, transform .2s; }
+  #railTrack .bead.on{ opacity:1; transform:scale(1.4); background:var(--blush); }
+  #playhead{ position:absolute; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%;
+    background:linear-gradient(160deg,var(--blush),var(--accent)); border:1.5px solid var(--rim);
+    box-shadow:0 0 12px var(--accent), inset 0 1px 0 var(--rim); pointer-events:none; z-index:2; transition:transform .05s; }
+  /* Nolan: in/out loop range — a lit beat you can isolate and repeat */
+  #loopRegion{ position:absolute; top:50%; height:8px; margin-top:-4px; border-radius:4px; display:none;
+    background:linear-gradient(90deg, rgba(187,0,55,.32), rgba(247,202,201,.42)); box-shadow:0 0 8px var(--accent); z-index:1; }
+  #rail.looping #loopRegion, #rail.looping .loophandle{ display:block; }
+  .loophandle{ position:absolute; top:50%; width:11px; height:18px; margin:-9px 0 0 -5.5px; border-radius:4px; display:none;
+    background:linear-gradient(160deg,var(--blush),var(--accent-deep)); border:1px solid var(--rim);
+    box-shadow:0 0 8px var(--accent); z-index:3; pointer-events:auto; cursor:ew-resize; }
+  .loophandle::after{ content:""; position:absolute; left:50%; top:4px; width:1px; height:10px; margin-left:-.5px;
+    background:rgba(255,240,243,.7); box-shadow:2px 0 0 rgba(255,240,243,.5),-2px 0 0 rgba(255,240,243,.5); }
+  body.zen #rail{ bottom:-22px; }
+  /* Collapse-all button — a small fixed glass orb, bottom-right */
+  #collapseBtn{ position:fixed; right:18px; bottom:18px; z-index:24; width:52px; height:52px; border-radius:50%;
+    border:1px solid var(--rim); cursor:pointer; display:flex; align-items:center; justify-content:center;
+    color:#fff; opacity:0; transform:scale(.6); pointer-events:none;
+    transition:opacity .3s ease, transform .3s cubic-bezier(.2,.95,.25,1.1); padding:0; }
+  #collapseBtn.show{ opacity:.92; transform:scale(1); pointer-events:auto; }
+  #collapseBtn:active{ transform:scale(.9); }
+  #collapseBtn svg{ width:24px; height:24px; fill:none; stroke:#fff; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  /* a kid that is near enough to a node snaps a faint halo to invite re-linking */
+  .kid.relinking, .kidwrap.relinking{ box-shadow:0 0 22px 4px var(--accent), 0 0 40px var(--rose) !important; }
+  #pinLayer{ position:fixed; inset:0; z-index:21; pointer-events:none; }
+  #pinLayer .kid{ pointer-events:auto; }
+
+  /* tiny cut handles on each wire midpoint */
+  #cuts{ position:fixed; inset:0; z-index:19; pointer-events:none; }
+  .cut{ position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%; pointer-events:auto;
+    cursor:pointer; background:radial-gradient(circle at 50% 40%, rgba(255,240,243,.9), rgba(187,0,55,.7));
+    border:1px solid var(--rim); box-shadow:0 0 8px rgba(255,150,190,.6); opacity:.0; transition:opacity .25s, transform .12s; }
+  #cuts.show .cut{ opacity:.55; }
+  .cut:hover, .cut:active{ opacity:1 !important; transform:scale(1.25); }
+  .cut::before{ content:"✂"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:9px; color:#3a0018; }
+
+  /* ===== Canvas corner scale handles ===== */
+  .chandle{ position:absolute; width:26px; height:26px; z-index:12; pointer-events:auto; cursor:nwse-resize;
+    border:2px solid var(--rim); border-radius:8px; background:rgba(247,202,201,.12);
+    box-shadow:0 0 12px rgba(255,150,190,.4); opacity:.65; transition:opacity .2s, transform .1s; touch-action:none; }
+  .chandle:hover,.chandle:active{ opacity:1; transform:scale(1.12); }
+  .chandle.tl{ top:-13px; left:-13px; border-right:none; border-bottom:none; border-radius:10px 0 0 0; cursor:nwse-resize;}
+  .chandle.tr{ top:-13px; right:-13px; border-left:none; border-bottom:none; border-radius:0 10px 0 0; cursor:nesw-resize;}
+  .chandle.bl{ bottom:-13px; left:-13px; border-right:none; border-top:none; border-radius:0 0 0 10px; cursor:nesw-resize;}
+  .chandle.br{ bottom:-13px; right:-13px; border-left:none; border-top:none; border-radius:0 0 10px 0; cursor:nwse-resize;}
+  /* side handles — reshape one axis (changes aspect, like sizing the negative) */
+  .shandle{ position:absolute; z-index:12; pointer-events:auto; border:2px solid var(--rim);
+    background:rgba(247,202,201,.12); box-shadow:0 0 12px rgba(255,150,190,.4); opacity:.55;
+    transition:opacity .2s, transform .1s; touch-action:none; border-radius:8px; }
+  .shandle:hover,.shandle:active{ opacity:1; transform:scale(1.08); }
+  .shandle.n,.shandle.s{ left:50%; width:46px; height:14px; margin-left:-23px; cursor:ns-resize; }
+  .shandle.e,.shandle.w{ top:50%; width:14px; height:46px; margin-top:-23px; cursor:ew-resize; }
+  .shandle.n{ top:-9px; } .shandle.s{ bottom:-9px; } .shandle.e{ right:-9px; } .shandle.w{ left:-9px; }
+
+  .hint{ position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:40; font-size:12px; letter-spacing:.06em;
+    color:#fff; background:rgba(20,0,14,.5); padding:7px 16px; border-radius:16px; border:1px solid var(--stroke);
+    pointer-events:none; opacity:0; transition:opacity .4s; backdrop-filter:blur(8px); }
+</style>
+</head>
+<body>
+<div id="bg"></div><div id="rays"></div><div id="grain"></div><div id="vignette"></div>
+<div id="title"><h1>InkFrame</h1><div class="sub">The Glass Horizon</div></div>
+<div id="stage"><div id="frameGlass" class="glass">
+  <canvas id="c" width="1024" height="768"></canvas>
+  <div class="chandle tl" data-h="tl"></div><div class="chandle tr" data-h="tr"></div>
+  <div class="chandle bl" data-h="bl"></div><div class="chandle br" data-h="br"></div>
+  <div class="shandle n"  data-s="n"></div><div class="shandle s" data-s="s"></div>
+  <div class="shandle e"  data-s="e"></div><div class="shandle w" data-s="w"></div>
+</div>
+<div id="rail" class="glass"><div id="railTrack"><div id="loopRegion"></div><div id="loopIn" class="loophandle"></div><div id="loopOut" class="loophandle"></div></div><div id="playhead"></div></div>
+</div>
+
+<div id="studio" onclick="this.classList.remove('show')">
+  <div class="glow">
+    <h2>A Calm Studio</h2>
+    <p><b>InkFrame</b> is a professional drawing &amp; animation studio.</p>
+    <p>Free &amp; ad-free. No account. No data collected. No AI.</p>
+    <p class="mute">Just you, your stylus, and a quiet place to create. Tap anywhere to return.</p>
+  </div>
+</div>
+
+<div class="hint" id="hint"></div>
+<button id="collapseBtn" class="glass" title="Collapse all circles" aria-label="Collapse all circles"></button>
+
+<script>
+(function(){
+  "use strict";
+  const W0=1024,H0=768;          // default document size
+  let W=W0,H=H0;                  // current document size (mutable: side handles reshape it)
+  const canvas=document.getElementById('c'), ctx=canvas.getContext('2d',{willReadFrequently:true});
+
+  // ===== Themes (8 color worlds) =====
+  const themes=[
+    {name:'Glass Horizon', a:'#bb0037', d:'#880057', rose:'#f7cac9', blush:'#fff0f3', v:'#2a001a',
+      bg:'radial-gradient(120% 82% at 50% -12%, #ffd9e2 0%, #f7cac9 14%, #d77fa0 38%, #a52766 64%, #4d0a33 86%, #1a001a 100%)',
+      sw:['#bb0037','#880057','#f7cac9','#fff0f3','#2a001a','#d77fa0','#a52766','#7a1746']},
+    {name:'Aurora', a:'#1f9c6b', d:'#0f5c45', rose:'#bfe9d6', blush:'#eafff6', v:'#04211a',
+      bg:'radial-gradient(120% 82% at 50% -12%, #d8fff0 0%, #bfe9d6 14%, #5fc79b 38%, #1f9c6b 64%, #0c4a37 86%, #04211a 100%)',
+      sw:['#1f9c6b','#0f5c45','#bfe9d6','#eafff6','#04211a','#57c79b','#127a55','#0a3a2b']},
+    {name:'Sapphire', a:'#2f6df2', d:'#14367a', rose:'#bcd2ff', blush:'#eef4ff', v:'#050a24',
+      bg:'radial-gradient(120% 82% at 50% -12%, #dbe7ff 0%, #bcd2ff 14%, #6f9bf5 38%, #2f6df2 64%, #15306e 86%, #050a24 100%)',
+      sw:['#2f6df2','#14367a','#bcd2ff','#eef4ff','#050a24','#5b8af5','#1d4aa8','#0c1c4a']},
+    {name:'Ember', a:'#e3552b', d:'#8a2410', rose:'#ffcdab', blush:'#fff0e6', v:'#2a0a04',
+      bg:'radial-gradient(120% 82% at 50% -12%, #ffe2cf 0%, #ffcdab 14%, #f2864f 38%, #e3552b 64%, #6e1c0a 86%, #2a0a04 100%)',
+      sw:['#e3552b','#8a2410','#ffcdab','#fff0e6','#2a0a04','#f2864f','#b53a17','#5c1606']},
+    {name:'Amethyst', a:'#8e44c0', d:'#4d1f70', rose:'#e3c9f7', blush:'#f7eeff', v:'#1a0428',
+      bg:'radial-gradient(120% 82% at 50% -12%, #f0ddff 0%, #e3c9f7 14%, #b06fe0 38%, #8e44c0 64%, #3c1758 86%, #1a0428 100%)',
+      sw:['#8e44c0','#4d1f70','#e3c9f7','#f7eeff','#1a0428','#b06fe0','#6a2e96','#34114e']},
+    {name:'Graphite', a:'#8a8f99', d:'#4a4f57', rose:'#cfd4dc', blush:'#f2f4f7', v:'#15171c',
+      bg:'radial-gradient(120% 82% at 50% -12%, #e7eaef 0%, #cfd4dc 14%, #9aa0aa 38%, #6f757e 64%, #2c2ف34 86%, #15171c 100%)'.replace('2ف3','2e3'),
+      sw:['#8a8f99','#4a4f57','#cfd4dc','#f2f4f7','#15171c','#a8adb6','#5e636b','#2a2d33']},
+    {name:'Gold Dusk', a:'#d9a328', d:'#8a6310', rose:'#f3dca0', blush:'#fff7e3', v:'#261a04',
+      bg:'radial-gradient(120% 82% at 50% -12%, #fff1c9 0%, #f3dca0 14%, #e0b94e 38%, #d9a328 64%, #6e4f0c 86%, #261a04 100%)',
+      sw:['#d9a328','#8a6310','#f3dca0','#fff7e3','#261a04','#e0b94e','#a87c18','#4e3908']},
+    {name:'Mint Glass', a:'#1fb6a6', d:'#0f6b62', rose:'#b8efe7', blush:'#e8fffb', v:'#042320',
+      bg:'radial-gradient(120% 82% at 50% -12%, #d6fff8 0%, #b8efe7 14%, #5fd6c7 38%, #1fb6a6 64%, #0c544c 86%, #042320 100%)',
+      sw:['#1fb6a6','#0f6b62','#b8efe7','#e8fffb','#042320','#5fd6c7','#138c80','#0a423c']},
+  ];
+  let themeIdx=0, palette=themes[0].sw.slice();
+  function applyTheme(i){
+    const t=themes[i]; themeIdx=i; palette=t.sw.slice();
+    const r=document.documentElement.style;
+    r.setProperty('--accent',t.a); r.setProperty('--accent-deep',t.d);
+    r.setProperty('--rose',t.rose); r.setProperty('--blush',t.blush); r.setProperty('--violet',t.v);
+    r.setProperty('--bg',t.bg);
+    document.getElementById('bg').style.background=t.bg;
+    if(!palette.includes(color)) color=t.a;
+    rebuildSwatches(); rebuildThemes();
+  }
+
+  // ===== Brush + frame engine (unchanged core) =====
+  const brushes=[
+    {id:'pencil',ic:'@pencil',size:6,op:1,hard:.95},
+    {id:'ink',ic:'@ink',size:14,op:1,hard:.9},
+    {id:'marker',ic:'@marker',size:40,op:.85,hard:.7},
+    {id:'glow',ic:'@glow',size:64,op:.5,hard:.15},
+    {id:'eraser',ic:'@eraser',size:40,op:1,hard:.8,erase:true},
+  ];
+  let brush=brushes[1], color='#bb0037', size=14, opacity=1, onion=true, playing=false, fps=12, stylusOnly=false;
+  const mkAt=(w,h)=>{const f=document.createElement('canvas');f.width=w;f.height=h;return f;};
+  const mk=()=>mkAt(W,H);
+
+  // ===== Gallery: a few independent projects, each with its own layers/timeline/size =====
+  const MAX_PROJECTS=4;   // keep it focused; deeper archives live in a future Gallery view
+  function newProject(w,h){ w=w||W0; h=h||H0; return {
+    frames:[mkAt(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12, name:'Canvas' }; }
+  let projects=[newProject()], pi=0;
+  // live aliases into the active project (kept in sync by useProject)
+  let frames=projects[0].frames, holds=projects[0].holds, cur=0, undoStack=projects[0].undo, redoStack=projects[0].redo,
+      fctx=frames[0].getContext('2d');
+  function useProject(i){
+    // save scalar state back into the outgoing project (cur is always a valid number here)
+    const out=projects[pi]; if(out){ out.cur=cur; out.fps=fps; out.w=W; out.h=H; }
+    pi=i; const P=projects[pi];
+    if(!P.holds) P.holds=P.frames.map(()=>1);                 // back-compat safety
+    frames=P.frames; holds=P.holds; cur=P.cur; undoStack=P.undo; redoStack=P.redo; fps=P.fps; W=P.w; H=P.h;
+    fctx=frames[cur].getContext('2d');
+  }
+  const snap=()=>({frame:cur,data:fctx.getImageData(0,0,W,H)});
+  const pushU=s=>{undoStack.push(s);if(undoStack.length>40)undoStack.shift();redoStack.length=0;refreshActions();};
+  const setCur=i=>{cur=i;projects[pi].cur=i;fctx=frames[cur].getContext('2d');};
+  const hOf=i=>Math.max(1,Math.round((holds&&holds[i])||1));   // per-frame hold (ticks); declared early to avoid TDZ
+  // ===== Cameron: depth-tinted onion skins =====
+  // Past frames recede into deep shadow-magenta; future frames advance in warm rose.
+  // A scratch canvas lets us tint a frame's opaque pixels (source-atop) before compositing.
+  let onionBack='#880057', onionFront='#f7cac9', onionDepth=2;
+  const tintC=document.createElement('canvas'); let tintG=null;
+  function drawTinted(src,alpha,tint,tintAmt){
+    if(tintC.width!==W||tintC.height!==H){tintC.width=W;tintC.height=H;tintG=tintC.getContext('2d');}
+    const tg=tintG; tg.globalCompositeOperation='source-over'; tg.globalAlpha=1; tg.clearRect(0,0,W,H);
+    tg.drawImage(src,0,0);
+    if(tintAmt>0){ tg.globalCompositeOperation='source-atop'; tg.globalAlpha=tintAmt; tg.fillStyle=tint; tg.fillRect(0,0,W,H); }
+    tg.globalAlpha=1; tg.globalCompositeOperation='source-over';
+    ctx.globalAlpha=alpha; ctx.drawImage(tintC,0,0); ctx.globalAlpha=1;
+  }
+  // Spielberg: while scrubbing, the onion "reaches" deeper — more ghost frames fan out
+  // with falling opacity, so you feel the whole arc of motion sweep past.
+  let scrubbing=false, scrubReach=0;       // scrubReach grows while scrubbing, decays after
+  const SCRUB_REACH=5;                      // max frames each side during a scrub
+  function render(){ ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
+    if(onion&&!playing){
+      const depth = Math.max(onionDepth, Math.round(scrubReach));
+      for(let k=depth;k>=1;k--){           // farther frames are fainter & more tinted (depth fog)
+        const fall=k/depth, reachFade = k<=onionDepth ? 1 : (1 - (k-onionDepth)/(SCRUB_REACH)); // extra reach frames are softer
+        if(cur-k>=0)           drawTinted(frames[cur-k], 0.34*(1-0.45*(fall-1/depth))*reachFade, onionBack, 0.5*fall);
+        if(cur+k<frames.length)drawTinted(frames[cur+k], 0.24*(1-0.45*(fall-1/depth))*reachFade, onionFront, 0.5*fall);
+      }
+    }
+    ctx.globalAlpha=1; ctx.drawImage(frames[cur],0,0); }
+  // ease the reach back down to the resting onion depth when scrubbing stops
+  let reachRAF=0;
+  function decayReach(){ scrubReach*=0.82; if(scrubReach>0.3){ render(); reachRAF=requestAnimationFrame(decayReach); }
+    else { scrubReach=0; reachRAF=0; render(); } }
+  function bumpReach(){ scrubReach=SCRUB_REACH; if(reachRAF){cancelAnimationFrame(reachRAF);reachRAF=0;} }
+
+  let drawing=false,lx=0,ly=0,pend=null,penX=0,penY=0,smoothP=0.5;
+  let drawVel=0,lastMoveT=0,lastAng=0;   // smoothed pen velocity (px/frame) + last stroke direction, for calligraphic ink
+  // ===== Living Line: Nolan (physical momentum/weight) × Spielberg (reveal/dissolve) =====
+  let nibW=0;            // current nib width — carries INERTIA so the line has weight (Nolan)
+  let nibAng=-0.5;       // current nib ORIENTATION — also has inertia (the nib swivels with weight)
+  let nibFlat=0;         // current tilt "flatness" 0..1 (eased) — pencil shades broad when laid flat
+  let strokeLen=0;       // distance travelled this stroke — drives the reveal envelope (Spielberg)
+  let strokePath=[];     // recorded screen-space path of the current stroke (for the catch-light glint)
+  let lastP={x:0,y:0};   // last raw pen sample, for the live Lens
+  let drawPid=null, drawPidType=null;  // pointerId/type that owns the active stroke (so a palm can't hijack it)
+  let penSeen=0;         // last time a real pen pointer was seen (palm rejection)
+  const PEN_ANGLE=-0.5;  // default broad-nib holding angle when no tilt is reported (radians)
+  const WLAG=0.35;       // how fast nib width eases to target (lower = heavier momentum)
+  const ALAG=0.22;       // how fast nib orientation eases (lower = heavier swivel inertia)
+  const REVEAL_LEN=22;   // px over which a stroke fades in from nothing (the "reveal")
+  const toC=e=>{const r=canvas.getBoundingClientRect();
+    // tilt → a heading (azimuth) and a "flatness" 0..1 (0 = upright, 1 = laid flat for shading)
+    let az=null, flat=0;
+    const tx=e.tiltX||0, ty=e.tiltY||0;
+    if(tx||ty){ az=Math.atan2(ty,tx); flat=Math.min(1, Math.hypot(tx,ty)/60); }
+    else if(e.altitudeAngle!=null){ az=(e.azimuthAngle||0); flat=Math.min(1,1-(e.altitudeAngle/(Math.PI/2))); }
+    return {x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height),
+            p:e.pressure&&e.pressure>0?e.pressure:0.5, az, flat, type:e.pointerType};};
+  const hexA=(h,a)=>{const n=parseInt(h.slice(1),16);return`rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;};
+
+  // ===== Paper grain — a real tooth the dry media (pencil/marker) bites into =====
+  // A tiling value-noise field locked to canvas coordinates, so re-passing a stroke
+  // reveals the same tooth (like graphite catching on paper fibres).
+  const GW=256; let grain=null;
+  function buildGrain(){
+    const raw=new Float32Array(GW*GW);
+    for(let i=0;i<raw.length;i++) raw[i]=Math.random();
+    grain=new Float32Array(GW*GW);
+    for(let y=0;y<GW;y++)for(let x=0;x<GW;x++){     // soft clumps (blur) + fine fibre (raw)
+      let s=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)
+        s+=raw[(((y+dy)+GW)%GW)*GW+(((x+dx)+GW)%GW)];
+      grain[y*GW+x]=(s/9)*0.6 + raw[y*GW+x]*0.4;
+    }
+  }
+  function grainAt(x,y){ if(!grain)buildGrain();
+    const ix=(((x|0)%GW)+GW)%GW, iy=(((y|0)%GW)+GW)%GW; return grain[iy*GW+ix]; }
+
+  const NIB=-0.7;   // fixed chisel-marker holder angle (radians)
+  // Each brush has its own nib character: graphite tooth biting paper, velocity-tapered
+  // ink, a chisel marker that bleeds when pressed slowly, soft glow, clean eraser.
+  // Target nib diameter for the CURRENT sample (before momentum is applied).
+  function targetWidth(pr,spd){
+    let pf=(brush.id==='pencil'||brush.id==='ink')?(.4+.6*pr):1;
+    if(brush.id==='ink') pf*=1-Math.min(.6,(spd||0)*0.030);   // faster pen -> thinner (real velocity)
+    return Math.max(.6,size*pf);
+  }
+  // dOverride: momentum-eased diameter (Nolan).  reveal: 0..1 fade-in envelope (Spielberg).
+  // nAng: eased nib orientation.  flat: tilt flatness 0..1.
+  function dab(g,x,y,pr,erase,ang,spd,dOverride,reveal,nAng,flat){
+    let d = (dOverride!=null) ? dOverride : targetWidth(pr,spd);
+    const rev = (reveal==null)?1:reveal;
+    const nibA = (nAng==null)?PEN_ANGLE:nAng;
+    const fl = flat||0;
+    // marker bleed: slow + heavy pressure makes ink pool wider and softer
+    let bleed=0;
+    if(brush.id==='marker'){ bleed=Math.max(0,1-(spd||0)/14)*(0.30+0.70*pr); d*=(1+0.45*bleed); }
+    g.save();
+    if(erase){g.globalCompositeOperation='destination-out';g.globalAlpha=1;}
+    else{g.globalCompositeOperation='source-over';
+         g.globalAlpha=opacity*(brush.id==='pencil'?(.45+.55*pr):1)*rev;}
+    const setFill=rad=>{ if(brush.hard>0.85){g.fillStyle=erase?'#000':color;}
+      else{const gr=g.createRadialGradient(0,0,rad*brush.hard,0,0,rad);
+        gr.addColorStop(0,erase?'#000':color);gr.addColorStop(1,hexA('#000000',0));g.fillStyle=gr;} };
+    g.translate(x,y);
+    if(brush.id==='ink'){                     // PEN: broad calligraphic nib, swivelling with weight
+      // thickness depends on stroke direction vs. the (eased) nib angle: across = fat, along = thin.
+      // tilt flattens the nib further (a laid-down pen drags a broader edge).
+      const rel=(ang||0)-nibA, base=0.30-0.14*fl;
+      const squash=base+(1-base)*Math.abs(Math.sin(rel));
+      g.rotate(nibA); g.scale(1, squash); setFill(d*.5);
+      g.beginPath();g.arc(0,0,d*.5,0,7);g.fill();
+    } else if(brush.id==='marker'){           // chisel nib: oval held at a fixed angle
+      const tooth=grainAt(x,y), bite=0.45+0.55*tooth;
+      g.globalAlpha*= bite + (1-bite)*bleed; // dry marker skips on tooth; bleed fills it in
+      g.rotate(NIB); g.scale(1,0.34); setFill(d*.5);
+      g.beginPath();g.arc(0,0,d*.5,0,7);g.fill();
+      if(bleed>0.12){                        // wet halo pooling outward when pressed slow
+        g.scale(1,1/0.34);                   // undo squash for a round bloom
+        const br=d*.5*(1+0.9*bleed), gr=g.createRadialGradient(0,0,d*.25,0,0,br);
+        gr.addColorStop(0,hexA(color,opacity*0.22*bleed)); gr.addColorStop(1,hexA(color,0));
+        g.fillStyle=gr; g.beginPath();g.arc(0,0,br,0,7);g.fill();
+      }
+    } else if(brush.id==='pencil'){          // graphite tooth: jittered specks catching fibres
+      setFill(d*.5);
+      // tilt → the lead lays over and shades a broader, softer patch (elliptical, along the nib edge)
+      const spread=1+2.4*fl;                  // flat pencil = wide shading sweep
+      g.rotate(nibA);
+      const specks=Math.min(16,Math.max(2,Math.round(d*.45*(1+fl))));
+      for(let i=0;i<specks;i++){const a=Math.random()*7,rr=Math.random()*d*.5;
+        const sx=Math.cos(a)*rr*spread, sy=Math.sin(a)*rr, tooth=grainAt(x+sx,y+sy);
+        g.globalAlpha=opacity*(.16+.5*pr)*tooth*(.5+.5*Math.random())*rev*(1-0.35*fl);
+        g.beginPath();g.arc(sx,sy,d*.13,0,7);g.fill();}
+    } else {                                  // glow / eraser: round nib
+      setFill(d*.5); g.beginPath();g.arc(0,0,d*.5,0,7);g.fill();
+    }
+    g.restore(); }
+  // Calligraphic ink terminal: a soft pool of ink where the nib presses in (start) or
+  // dwells before lifting (end). Strength 0..1 controls how much ink gathers.
+  function inkPool(x,y,pr,strength){
+    const d=Math.max(.6,size*(.4+.6*pr)), r=d*.5*(1+0.85*strength);
+    [fctx,ctx].forEach(g=>{ g.save(); g.globalCompositeOperation='source-over';
+      g.globalAlpha=opacity*(.5+.5*strength);
+      const gr=g.createRadialGradient(x,y,r*0.35,x,y,r);
+      gr.addColorStop(0,color); gr.addColorStop(.7,hexA(color,opacity)); gr.addColorStop(1,hexA(color,0));
+      g.fillStyle=gr; g.beginPath();g.arc(x,y,r,0,7);g.fill(); g.restore(); });
+  }
+  // shortest-path angle ease (handles wrap-around so the nib never spins the long way)
+  function easeAng(cur,tgt,k){ let dA=((tgt-cur+Math.PI)%(2*Math.PI))-Math.PI; return cur+dA*k; }
+  function seg(x0,y0,x1,y1,p,az,flat){const dx=x1-x0,dy=y1-y0,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
+    const st=Math.max(1,size*.14),n=Math.max(1,Math.floor(dist/st));
+    const livingLine=(brush.id==='ink'||brush.id==='pencil');   // pen & pencil get momentum + reveal
+    // nib orientation target: real tilt heading if the stylus reports it, else the default hold angle
+    const angTgt = (az!=null) ? az : PEN_ANGLE;
+    for(let i=0;i<=n;i++){const x=x0+dx*i/n,y=y0+dy*i/n;
+      let d=null, reveal=1;
+      if(livingLine){
+        const tgt=targetWidth(p,drawVel);
+        nibW += (tgt-nibW)*WLAG;                 // Nolan: width has inertia → the line carries weight
+        nibAng = easeAng(nibAng, angTgt, ALAG);  // Nolan: orientation also swivels with momentum
+        if(flat!=null) nibFlat += (flat-nibFlat)*0.25;
+        d=nibW;
+        strokeLen += dist/n;               // advance the reveal envelope along the path
+        reveal=Math.min(1, strokeLen/REVEAL_LEN);   // Spielberg: the line reveals into being
+      }
+      dab(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
+      if(!brush.erase)dab(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);}}
+  // ===== Palm rejection =====
+  // Two layers:  (1) "Stylus-only" hard mode → only pen pointers ever draw.
+  //  (2) Auto mode (always on) → once a real pen has touched the screen, incidental TOUCH
+  //      input (a resting palm/knuckle) is ignored for drawing for a short grace window,
+  //      and any touch with a large contact patch (width/height) is treated as a palm.
+  let palmReject=true;            // auto palm rejection (independent of stylus-only)
+  const PALM_GRACE=900;           // ms after a pen is seen during which touch is suppressed
+  const PALM_SIZE=40;             // contact patch (px) above which a touch is judged a palm
+  function isPalm(e){
+    if(e.pointerType!=='touch') return false;
+    if((e.width||0)>PALM_SIZE || (e.height||0)>PALM_SIZE) return true;     // big blob = palm
+    if(palmReject && (performance.now()-penSeen)<PALM_GRACE) return true;  // pen active recently
+    return false;
+  }
+  function allow(e){
+    if(e.pointerType==='pen') return true;
+    if(stylusOnly) return false;         // hard stylus-only mode rejects all non-pen
+    return !isPalm(e);                   // otherwise reject only palm-like touches
+  }
+  // Pressure + position stabilization: the drawn point trails the raw stylus on a short
+  // "string", and pressure is eased — killing the jitter that makes lines look nervous.
+  // StreamLine (Procreate-style): an adjustable smoothing amount drives the position lag.
+  let streamline=0.45;          // 0 = raw, ~0.9 = heavy smoothing
+  let stab=0.55, PSTAB=0.3;     // stab = per-sample position lerp (derived from streamline)
+  function applyStream(){ stab=Math.max(0.08, 1-streamline*0.92); }
+  applyStream();
+  // QuickShape: hold the pen still at the end of a stroke and it snaps to a clean line/ellipse.
+  let qsEnabled=true, qsActive=false, qsShape=null, qsTimer=0, qsLastMove=0, qsAnchor={x:0,y:0};
+  const QS_HOLD=420;            // ms of stillness before a shape snaps
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='pen') penSeen=performance.now();
+    if(drawing) return;                  // a stroke already owns the canvas — ignore extra contacts (palm)
+    if(!allow(e))return;
+    e.preventDefault();drawing=true;drawPid=e.pointerId;drawPidType=e.pointerType;pend=snap();
+    const c=toC(e);
+    nibW=targetWidth(c.p, 0); strokeLen=0;                  // reset Living-Line state
+    nibAng=(c.az!=null)?c.az:PEN_ANGLE; nibFlat=c.flat||0;  // seat the nib at its true starting tilt
+    strokePath=[{x:c.x,y:c.y}];                             // record path for the Spielberg catch-light
+    qsActive=false; qsShape=null; qsAnchor={x:c.x,y:c.y}; clearTimeout(qsTimer);  // reset QuickShape
+    lx=c.x;ly=c.y;penX=c.x;penY=c.y;smoothP=c.p;drawVel=0;lastMoveT=performance.now();
+    // ink lays a small entry pool where the nib first presses into the paper
+    if(brush.id==='ink') inkPool(c.x,c.y,c.p,0.45);
+    dab(fctx,c.x,c.y,smoothP,brush.erase,0,0);if(brush.erase)render();else dab(ctx,c.x,c.y,smoothP,false,0,0);});
+  canvas.addEventListener('pointermove',e=>{
+    if(e.pointerType==='pen') penSeen=performance.now();
+    if(!drawing||e.pointerId!==drawPid)return;    // only the owning pointer extends the stroke
+    e.preventDefault();
+    const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
+    for(const ev of evs){const c=toC(ev);
+      smoothP+=(c.p-smoothP)*PSTAB;            // eased pressure
+      const ox=penX,oy=penY;
+      penX+=(c.x-penX)*stab; penY+=(c.y-penY)*stab;   // StreamLine: stabilized (trailing) point
+      const step=Math.hypot(penX-ox,penY-oy); drawVel+=(step-drawVel)*0.35;   // smoothed velocity
+      if(step>0.01) lastAng=Math.atan2(penY-oy,penX-ox);
+      lastP={x:c.x,y:c.y};
+      seg(lx,ly,penX,penY,smoothP,c.az,c.flat); lx=penX; ly=penY;
+      if(strokePath.length<400) strokePath.push({x:penX,y:penY});}
+    if(brush.erase)render(); updateLens(e);
+    // QuickShape: if the pen goes still mid/late-stroke, try to snap to a clean shape
+    if(qsEnabled && !brush.erase){ const now=performance.now();
+      const moved=Math.hypot(penX-(qsAnchor.x),penY-(qsAnchor.y));
+      if(moved>3){ qsAnchor={x:penX,y:penY}; qsLastMove=now; clearTimeout(qsTimer);
+        qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
+  const up=e=>{if(!drawing)return; if(e&&e.pointerId!=null&&e.pointerId!==drawPid)return;  // ignore a palm lifting
+    drawing=false; drawPid=null; hideLens(); clearTimeout(qsTimer);
+    // ink: a slow lift gathers a pool (calligraphic terminal); a fast flick tapers to nothing
+    if(brush.id==='ink' && !qsActive){ const dwell=Math.max(0,1-drawVel/9); if(dwell>0.12) inkPool(lx,ly,smoothP,dwell*0.8); }
+    if(pend){pushU(pend);pend=null;}render();refreshFrames();
+    // Spielberg: a catch-light glints once down the freshly-laid stroke (then it's done)
+    if((brush.id==='ink'||brush.id==='pencil') && !qsActive && strokePath.length>4) fireGlint(strokePath.slice());
+    qsActive=false; qsShape=null; strokePath=[];};
+  window.addEventListener('pointerup',up); canvas.addEventListener('pointercancel',up);
+
+  // ===== QuickShape — hold still and a rough stroke snaps to a clean line or ellipse =====
+  // Proven Procreate behaviour, rebuilt here: we fit the recorded path to the nearest of a
+  // straight line or an ellipse, then repaint the current stroke as that ideal geometry.
+  function qsFitLine(P){            // total perpendicular error to the chord, normalized by length
+    const a=P[0], b=P[P.length-1], dx=b.x-a.x, dy=b.y-a.y, L=Math.hypot(dx,dy)||1;
+    let err=0; for(const p of P){ const t=((p.x-a.x)*dx+(p.y-a.y)*dy)/(L*L);
+      const px=a.x+dx*t, py=a.y+dy*t; err+=Math.hypot(p.x-px,p.y-py); }
+    return {err:err/P.length/Math.max(40,L)*40, a, b, L};
+  }
+  function qsFitEllipse(P){         // closed-ish loop → bounding-box ellipse fit
+    let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+    for(const p of P){minx=Math.min(minx,p.x);miny=Math.min(miny,p.y);maxx=Math.max(maxx,p.x);maxy=Math.max(maxy,p.y);}
+    const cx=(minx+maxx)/2, cy=(miny+maxy)/2, rx=Math.max(4,(maxx-minx)/2), ry=Math.max(4,(maxy-miny)/2);
+    const gap=Math.hypot(P[0].x-P[P.length-1].x, P[0].y-P[P.length-1].y);
+    const peri=Math.PI*(rx+ry);
+    let err=0; for(const p of P){ const ang=Math.atan2((p.y-cy)/ry,(p.x-cx)/rx);
+      const ex=cx+rx*Math.cos(ang), ey=cy+ry*Math.sin(ang); err+=Math.hypot(p.x-ex,p.y-ey); }
+    return {err:err/P.length/Math.max(40,(rx+ry))*40 + gap/peri*1.4, cx, cy, rx, ry, closed:gap<(rx+ry)*0.6};
+  }
+  function tryQuickShape(){
+    if(!drawing||brush.erase) return;
+    const P=strokePath; if(P.length<8) return;
+    const len=qsFitLine(P);
+    const span=Math.hypot(P[P.length-1].x-P[0].x, P[P.length-1].y-P[0].y);
+    if(span<14) return;                          // too short to be a deliberate shape
+    const ell=qsFitEllipse(P);
+    // choose the better fit; only snap if it's genuinely clean
+    let shape=null;
+    if(ell.closed && ell.err<0.5 && ell.err<len.err) shape={kind:'ellipse',e:ell};
+    else if(len.err<0.42) shape={kind:'line',e:len};
+    if(!shape) return;
+    qsActive=true; qsShape=shape;
+    // revert this stroke's pixels, then paint the ideal shape in its place
+    if(pend) fctx.putImageData(pend.data,0,0);
+    paintQuickShape(shape);
+    render(); flash(shape.kind==='ellipse'?'QuickShape · ellipse':'QuickShape · line');
+  }
+  function paintQuickShape(shape){
+    nibW=size; strokeLen=REVEAL_LEN;            // full reveal for the clean shape
+    if(shape.kind==='line'){
+      const {a,b}=shape.e; seg(a.x,a.y,b.x,b.y,smoothP,null,0);
+    } else {
+      const {cx,cy,rx,ry}=shape.e; let px=cx+rx, py=cy, first=true, fx=0, fy=0;
+      const steps=Math.max(48,Math.round((rx+ry)));
+      for(let i=1;i<=steps;i++){ const t=i/steps*2*Math.PI, x=cx+rx*Math.cos(t), y=cy+ry*Math.sin(t);
+        if(first){fx=px;fy=py;first=false;} seg(px,py,x,y,0.6,null,0); px=x; py=y; }
+    }
+  }
+
+  // ===== The Lens — a live glass nib cursor that hovers at the pen tip =====
+  // It renders the ACTUAL nib (shape, orientation, size, tilt) so you feel the tool in
+  // your hand before the ink lands — a rose-quartz monocle floating over the page.
+  const lensEl=document.createElement('div'); lensEl.id='lens';
+  lensEl.innerHTML='<svg viewBox="-50 -50 100 100"><ellipse id="lensNib"/><circle id="lensRing" r="34"/></svg>';
+  document.body.appendChild(lensEl);
+  const lensNib=lensEl.querySelector('#lensNib'), lensRing=lensEl.querySelector('#lensRing');
+  let lensHideT=0;
+  function updateLens(e){
+    if(stylusOnly && e.pointerType!=='pen'){ hideLens(); return; }
+    if(e.pointerType==='touch'){ hideLens(); return; }
+    const r=canvas.getBoundingClientRect();
+    // map document-space nib size to screen px
+    const scl=r.width/W, dpx=Math.max(2,nibW*scl);
+    lensEl.style.left=(lastP.x*scl+r.left)+'px'; lensEl.style.top=(lastP.y*scl+r.top)+'px';
+    // shape the inner nib glyph to match the live brush
+    let rx=dpx*.5, ry=dpx*.5, rot=0;
+    if(brush.id==='ink'){ rot=nibAng*180/Math.PI; ry=dpx*.5*(0.30-0.14*nibFlat+ (1-(0.30-0.14*nibFlat))*0.45); }
+    else if(brush.id==='marker'){ rot=NIB*180/Math.PI; ry=dpx*.5*0.34; rx=dpx*.5; }
+    else if(brush.id==='pencil'){ rot=nibAng*180/Math.PI; rx=dpx*.5*(1+1.2*nibFlat); ry=dpx*.5; }
+    lensNib.setAttribute('rx',rx.toFixed(1)); lensNib.setAttribute('ry',ry.toFixed(1));
+    lensNib.setAttribute('transform',`rotate(${rot.toFixed(0)})`);
+    lensNib.style.fill = brush.erase ? 'rgba(255,240,243,.25)' : color;
+    lensRing.setAttribute('r', Math.max(20, dpx*.5+10).toFixed(0));
+    lensEl.classList.add('show'); clearTimeout(lensHideT);
+  }
+  function hideLens(){ clearTimeout(lensHideT); lensHideT=setTimeout(()=>lensEl.classList.remove('show'),140); }
+  // hover preview (pen near the glass, not yet drawing) — pointerrawupdate/move with no buttons
+  canvas.addEventListener('pointermove',e=>{ if(!drawing && e.pointerType==='pen'){
+    const c=toC(e); lastP={x:c.x,y:c.y}; nibW=targetWidth(c.p,0); nibAng=(c.az!=null)?c.az:PEN_ANGLE; nibFlat=c.flat||0; updateLens(e);} });
+  canvas.addEventListener('pointerleave',()=>hideLens());
+
+  // ===== Spielberg catch-light — a glint travels the stroke once, then fades =====
+  const glintC=document.createElement('canvas'); glintC.id='glint'; document.body.appendChild(glintC);
+  let glintG=null;
+  function fireGlint(path){
+    const r=canvas.getBoundingClientRect(), scl=r.width/W;
+    glintC.width=window.innerWidth; glintC.height=window.innerHeight; glintG=glintC.getContext('2d');
+    // build screen-space cumulative lengths
+    const pts=path.map(p=>({x:p.x*scl+r.left, y:p.y*scl+r.top}));
+    let total=0; const seglen=[0];
+    for(let i=1;i<pts.length;i++){ total+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y); seglen.push(total); }
+    if(total<2) return;
+    const t0=performance.now(), DUR=520, TRAIL=Math.max(40,total*0.22);
+    glintC.style.opacity='1';
+    (function frame(now){
+      const pr=(now-t0)/DUR; if(pr>=1){ glintG.clearRect(0,0,glintC.width,glintC.height); glintC.style.opacity='0'; return; }
+      const head=pr*(total+TRAIL)-TRAIL;   // glowing window of length TRAIL sweeping the path
+      glintG.clearRect(0,0,glintC.width,glintC.height);
+      glintG.lineCap='round'; glintG.lineJoin='round';
+      for(let i=1;i<pts.length;i++){
+        const d=seglen[i], inWin=(d>=head && d<=head+TRAIL);
+        if(!inWin) continue;
+        const local=(d-head)/TRAIL, fade=Math.sin(local*Math.PI)*Math.sin(pr*Math.PI);
+        glintG.strokeStyle=`rgba(255,255,255,${(0.85*fade).toFixed(3)})`;
+        glintG.lineWidth=2.2; glintG.shadowColor='rgba(255,200,225,.9)'; glintG.shadowBlur=8;
+        glintG.beginPath(); glintG.moveTo(pts[i-1].x,pts[i-1].y); glintG.lineTo(pts[i].x,pts[i].y); glintG.stroke();
+      }
+      requestAnimationFrame(frame);
+    })(t0);
+  }
+
+  // ===== Node / radial system =====
+  const layer=document.createElement('div'); document.body.appendChild(layer);
+  const $=id=>document.getElementById(id);
+  function flash(m){const h=$('hint');h.textContent=m;h.style.opacity=1;clearTimeout(h._t);h._t=setTimeout(()=>h.style.opacity=0,1600);}
+
+  // ===== Connector wires (true node-graph, gentle curves) =====
+  const NS='http://www.w3.org/2000/svg';
+  const wires=document.createElementNS(NS,'svg'); wires.id='wires'; document.body.appendChild(wires);
+  const cuts=document.createElement('div'); cuts.id='cuts'; document.body.appendChild(cuts);
+  let wireRAF=0, draggingAny=false;
+  const ctr=el=>{const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};};
+
+  // Each segment carries the child element so a cut handle can sever exactly that link.
+  function collectSegs(){
+    const s=[];
+    document.querySelectorAll('.node.open').forEach(node=>{
+      const a=ctr(node._orb);
+      [...node._kids.children].forEach(ch=>{ if(ch._pinned)return; const t=ch.classList.contains('kidwrap')?ch._anchor:ch;
+        s.push({a,b:ctr(t),child:ch,parent:node}); });
+    });
+    document.querySelectorAll('.kidwrap.open').forEach(br=>{
+      const a=ctr(br._anchor);
+      [...br._kids.children].forEach(ch=>{ if(ch._pinned)return; s.push({a,b:ctr(ch),child:ch,parent:br}); });
+    });
+    return s;
+  }
+  // quadratic bézier control point: midpoint pushed perpendicular for a soft bow
+  function curvePath(a,b,bowMul){
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
+    const bow=Math.min(40, len*0.18)*(bowMul||1);  // gentle, proportional bow (parallax-scaled)
+    const nx=-dy/len, ny=dx/len;                    // perpendicular
+    const cxp=mx+nx*bow, cyp=my+ny*bow;
+    return {d:`M${a.x.toFixed(1)},${a.y.toFixed(1)} Q${cxp.toFixed(1)},${cyp.toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}`,
+            mid:{x:(a.x+2*cxp+b.x)/4, y:(a.y+2*cyp+b.y)/4}, cx:cxp, cy:cyp};
+  }
+  // A gentle light pulse runs along the wires when a node first opens (Spielberg "reveal").
+  const pulses=new Map();           // parent element -> start timestamp
+  const PULSE_DUR=640;              // ms for one travel from parent -> tip
+  function firePulse(parent){ pulses.set(parent, performance.now()); startWires(); }
+  const bezAt=(a,c,b,t)=>{ const u=1-t; return {x:u*u*a.x+2*u*t*c.x+t*t*b.x, y:u*u*a.y+2*u*t*c.y+t*t*b.y}; };
+  // Parallax/momentum: each child tip eases toward its true target, trailing while dragging.
+  const tipPos=new WeakMap();            // child element -> {x,y} smoothed position
+  let lastVX=0, lastVY=0, lastFocus=null; // drag velocity, for the depth lean
+  function tickWires(){
+    const segs=collectSegs();
+    if(segs.length){
+      // estimate drag velocity from the active dragging node's orb centre
+      const dn=document.querySelector('.node.dragging'); let vx=0,vy=0;
+      if(dn){ const c=ctr(dn._orb); if(lastFocus){ vx=c.x-lastFocus.x; vy=c.y-lastFocus.y; } lastFocus=c; }
+      else lastFocus=null;
+      lastVX+=(vx-lastVX)*0.3; lastVY+=(vy-lastVY)*0.3;
+      const moving=draggingAny;
+
+      let h='';
+      segs.forEach((s)=>{
+        // smoothed (trailing) endpoint for depth feel
+        let tp=tipPos.get(s.child);
+        if(!tp){ tp={x:s.b.x,y:s.b.y}; tipPos.set(s.child,tp); }
+        const ease = moving?0.32:0.55;
+        tp.x+=(s.b.x-tp.x)*ease; tp.y+=(s.b.y-tp.y)*ease;
+        // parallax lean: bow grows with drag speed, biased by perpendicular velocity sign
+        const speed=Math.hypot(lastVX,lastVY);
+        const bowMul=1 + Math.min(1.4, speed*0.05);
+        const a=s.a, b={x:tp.x, y:tp.y};
+        const c=curvePath(a,b,bowMul);
+        const far = (s.parent && s.parent.classList && s.parent.classList.contains('kidwrap'))?' soft':'';
+        h+=`<path class="glow${far}" d="${c.d}"/><path class="core" d="${c.d}"/><circle class="tip" cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="2.2"/>`;
+        s._mid=c.mid; s._c=c;
+      });
+      // travelling light pulses (node-open reveal): a bright bead glides each wire of the opened parent
+      const now=performance.now();
+      pulses.forEach((t0,parent)=>{
+        const prog=(now-t0)/PULSE_DUR;
+        if(prog>=1){ pulses.delete(parent); return; }
+        segs.forEach(s=>{ if(s.parent!==parent||!s._c)return;
+          const tt=prog<.5?2*prog*prog:1-Math.pow(-2*prog+2,2)/2;   // easeInOut
+          const p=bezAt(s.a,{x:s._c.cx,y:s._c.cy},{x:s._c.x,y:s._c.y},tt);
+          const fade=Math.sin(prog*Math.PI);                         // brighten then dim
+          h+=`<circle class="pulse" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${(3.4+2.6*fade).toFixed(1)}" opacity="${(0.9*fade).toFixed(2)}"/>`;
+        });
+      });
+      wires.innerHTML=h;
+      // rebuild cut handles at curve midpoints
+      cuts.innerHTML='';
+      segs.forEach((s)=>{ const d=document.createElement('div'); d.className='cut';
+        d.style.left=s._mid.x+'px'; d.style.top=s._mid.y+'px'; d.title='Disconnect';
+        d.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();severLink(s);});
+        cuts.appendChild(d); });
+    } else { wires.innerHTML=''; cuts.innerHTML=''; }
+    // Keep ticking while dragging or while trailing tips are still settling; then stop
+    // (the flowing dashes themselves are CSS-animated, so no idle JS loop is needed).
+    const settling = segs.some(s=>{const tp=tipPos.get(s.child); return tp && (Math.abs(tp.x-s.b.x)>0.4||Math.abs(tp.y-s.b.y)>0.4);});
+    if(segs.length && (draggingAny||settling||pulses.size)) wireRAF=requestAnimationFrame(tickWires);
+    else wireRAF=0;
+  }
+  function startWires(){ if(!wireRAF) wireRAF=requestAnimationFrame(tickWires); }
+  cuts.addEventListener('pointerenter',()=>cuts.classList.add('show'));
+  // keep cut handles faintly visible whenever any graph is open (touch-friendly)
+  function refreshCutsVisibility(){
+    const open=!!document.querySelector('.node.open,.kidwrap.open');
+    cuts.classList.toggle('show', open);
+    const cb=$('collapseBtn'); if(cb) cb.classList.toggle('show', open || pinLayer.children.length>0);
+  }
+
+  function collapseAll(){
+    document.querySelectorAll('.node.open,.kidwrap.open').forEach(n=>n.classList.remove('open'));
+    // also fold any torn-off pins back home
+    [...pinLayer.children].forEach(el=>{ if(el._reattach) el._reattach(); });
+    refreshCutsVisibility(); startWires();
+  }
+
+  // ===== Pin / tear-off system =====
+  // Severing a link lifts that child circle out of its spiral into a free-floating,
+  // draggable pin that keeps all its behaviour. It becomes its own root you can place
+  // anywhere — a personal toolset. (Sub-of-sub branches carry their children along.)
+  const pinLayer=document.createElement('div'); pinLayer.id='pinLayer'; document.body.appendChild(pinLayer);
+  const RELINK_DIST=70;   // px from a parent orb at which a pin snaps home
+  // distance from a free pin's centre to a parent node/branch's anchor centre
+  function parentAnchor(p){ return ctr(p.classList.contains('kidwrap')?p._anchor:p._orb); }
+  function nearestParent(cx,cy){
+    let best=null,bd=RELINK_DIST;
+    document.querySelectorAll('.node,.kidwrap').forEach(p=>{
+      if(!p._kids||p._pinned) return; const a=parentAnchor(p); const d=Math.hypot(a.x-cx,a.y-cy);
+      if(d<bd){ bd=d; best=p; }
+    });
+    return best;
+  }
+  function severLink(seg){
+    const child=seg.child;
+    const r=child.getBoundingClientRect();
+    const home=seg.parent;                        // remember where it came from
+    child._pinned=true; child._home=home;
+    pinLayer.appendChild(child);                  // reparent to the fixed pin layer
+    child.classList.add('pinned');
+    // place exactly where it was, then make draggable as a free pin
+    child.style.position='fixed'; child.style.margin='0'; child.style.transition='none';
+    child.style.transform='none'; child.style.opacity='1'; child.style.pointerEvents='auto';
+    let px=r.left, py=r.top;
+    const put=()=>child.style.transform=`translate3d(${px}px,${py}px,0)`; put();
+    // reattach: drop the pin back into a parent's spiral, restoring kid behaviour
+    child._reattach=(target)=>{
+      const dest=target||child._home; if(!dest||!dest._kids) return false;
+      child._pinned=false; delete child._home; delete child._reattach;
+      child.classList.remove('pinned','relinking');
+      child.style.position=''; child.style.margin=''; child.style.transition='';
+      child.style.transform=''; child.style.opacity=''; child.style.pointerEvents=''; child.style.zIndex='';
+      dest._kids.appendChild(child);
+      if(dest.classList.contains('open')){ if(dest._relayout) requestAnimationFrame(dest._relayout); }
+      flash('Re-linked'); refreshCutsVisibility(); startWires(); return true;
+    };
+    makePinDraggable(child, ()=>px, ()=>py, (nx,ny)=>{px=nx;py=ny;put();});
+    flash('Pinned · drag near a circle to re-link · double-tap to release');
+    refreshCutsVisibility(); startWires();
+  }
+  function makePinDraggable(el,getX,getY,setXY){
+    let dn=null, tapT=0;
+    el.addEventListener('pointerdown',e=>{ e.stopPropagation(); e.preventDefault(); el.setPointerCapture(e.pointerId);
+      dn={sx:e.clientX,sy:e.clientY,ox:getX(),oy:getY(),moved:false}; el.style.zIndex=40; });
+    el.addEventListener('pointermove',e=>{ if(!dn)return; const dx=e.clientX-dn.sx,dy=e.clientY-dn.sy;
+      if(!dn.moved&&Math.hypot(dx,dy)>6)dn.moved=true;
+      if(dn.moved){ setXY(Math.max(4,Math.min(window.innerWidth-52,dn.ox+dx)),
+                          Math.max(4,Math.min(window.innerHeight-52,dn.oy+dy))); startWires();
+        const c=ctr(el), near=nearestParent(c.x,c.y);      // glow when close enough to snap home
+        el.classList.toggle('relinking', !!near); } });
+    el.addEventListener('pointerup',e=>{ if(!dn)return;
+      if(dn.moved){ const c=ctr(el), near=nearestParent(c.x,c.y);   // released near a node -> link up
+        if(near && el._reattach){ el._reattach(near); dn=null; el.style.zIndex=''; return; } }
+      if(!dn.moved){ const now=performance.now();
+        if(now-tapT<330){ releasePin(el); tapT=0; }   // double-tap a pin to remove it
+        else { tapT=now; el.dispatchEvent(new Event('click',{bubbles:false})); } // single tap = use the tool
+      }
+      dn=null; el.style.zIndex=''; });
+  }
+  function releasePin(el){ el.remove(); flash('Pin released'); refreshCutsVisibility(); startWires(); }
+  // ===== Custom organic icon set — hand-drawn line-art that lives inside the glass =====
+  // Each is an SVG body on a 24×24 field; strokes inherit the rim-light styling above.
+  const S='<svg viewBox="0 0 24 24">', E='</svg>';
+  const ICONS={
+    // identity / categories
+    tools:   S+'<path d="M4 19l7-7"/><path d="M9 6.5l5 5"/><path d="M14.5 4.5c1.6-.4 3.6.2 4.4 1.6.8 1.5.3 3.4-1 4.4l-3-3z" class="soft"/>'+E,
+    color:   S+'<path d="M12 3a9 9 0 100 18c1.4 0 2-.9 2-1.8 0-1.3-1.1-1.5-1.1-2.6 0-.8.7-1.4 1.6-1.4H16a5 5 0 005-5C21 6 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1.2" class="fill"/><circle cx="11" cy="7.8" r="1.2" class="fill"/><circle cx="15.5" cy="9.5" r="1.2" class="fill"/>'+E,
+    actions: S+'<path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><circle cx="12" cy="12" r="3.2"/>'+E,
+    frames:  S+'<rect x="3.5" y="6" width="17" height="12" rx="2"/><line x1="8" y1="6" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="18"/><line x1="3.5" y1="12" x2="20.5" y2="12" class="soft"/>'+E,
+    themes:  S+'<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 010 17z" class="fill"/><circle cx="12" cy="12" r="2.4"/>'+E,
+    studio:  S+'<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3" class="soft"/>'+E,
+    gallery: S+'<rect x="3.5" y="5.5" width="11" height="9" rx="1.6"/><path d="M9.5 9.5h11v9h-11z" class="soft"/>'+E,
+    // brushes
+    pencil:  S+'<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>'+E,
+    ink:     S+'<path d="M6 18c0-4 4-7 6-13 2 6 6 9 6 13a6 6 0 01-12 0z"/><path d="M9.5 17.5a2.5 2.5 0 005 0" class="soft"/>'+E,
+    marker:  S+'<path d="M5 19l2-5 8-8 3 3-8 8z"/><path d="M13 6l3 3"/><line x1="5" y1="19" x2="9" y2="19" class="soft"/>'+E,
+    glow:    S+'<circle cx="12" cy="12" r="3.4" class="fill"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2" class="soft"/>'+E,
+    eraser:  S+'<path d="M4 15l7-7 6 6-4 4H7z"/><line x1="8" y1="19" x2="19" y2="19"/>'+E,
+    // actions
+    undo:    S+'<path d="M9 7L5 11l4 4"/><path d="M5 11h8a5 5 0 015 5v1" class="soft"/><path d="M5 11h8a5 5 0 015 5"/>'+E,
+    redo:    S+'<path d="M15 7l4 4-4 4"/><path d="M19 11h-8a5 5 0 00-5 5"/>'+E,
+    clear:   S+'<path d="M7 7l10 10"/><path d="M17 7L7 17"/>'+E,
+    onion:   S+'<circle cx="10" cy="12" r="6"/><path d="M14 6.5a6 6 0 010 11" class="soft"/>'+E,
+    export:  S+'<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 18h14" class="soft"/>'+E,
+    stylus:  S+'<path d="M5 19l1.5-4.5L16 5l3 3-9.5 9.5z"/><path d="M14 7l3 3"/><path d="M5 19l3.5-1" class="soft"/>'+E,
+    palm:    S+'<path d="M8 13V6.5a1.3 1.3 0 012.6 0V11m0-.5V5.2a1.3 1.3 0 012.6 0V11m0-.3V6.4a1.3 1.3 0 012.6 0V13c0 4-2 6-5 6s-4.4-1.6-5.6-3.6L6 13.2a1.3 1.3 0 012.2-1.3z"/>'+E,
+    line:    S+'<path d="M4 16C8 16 9 7 13 7s4 6 7 6" /><circle cx="4" cy="16" r="1.4" class="fill"/><circle cx="20" cy="13" r="1.4" class="fill"/>'+E,
+    stream:  S+'<path d="M4 9c3 0 4 2 8 2s5-2 8-2"/><path d="M4 15c3 0 4 2 8 2s5-2 8-2" class="soft"/>'+E,
+    qshape:  S+'<circle cx="9" cy="9" r="4.5"/><path d="M13 15l5 5M14 20h6v-6" class="soft"/>'+E,
+    full:    S+'<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>'+E,
+    expand:  S+'<path d="M9 5H5v4"/><path d="M15 5h4v4"/><path d="M9 19H5v-4"/><path d="M15 19h4v-4"/><circle cx="12" cy="12" r="2" class="soft"/>'+E,
+    // frames / playback
+    play:    S+'<path d="M8 5l11 7-11 7z" class="fill"/>'+E,
+    pause:   S+'<rect x="7" y="5" width="3.4" height="14" rx="1" class="fill"/><rect x="13.6" y="5" width="3.4" height="14" rx="1" class="fill"/>'+E,
+    add:     S+'<path d="M12 5v14"/><path d="M5 12h14"/>'+E,
+    dup:     S+'<rect x="4.5" y="4.5" width="10" height="10" rx="2"/><rect x="9.5" y="9.5" width="10" height="10" rx="2" class="soft"/>'+E,
+    del:     S+'<path d="M6 8h12"/><path d="M9 8V6h6v2"/><path d="M7 8l1 11h8l1-11"/>'+E,
+    dissolve:S+'<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" class="soft"/>'+E,
+    loop:    S+'<path d="M7 8h7a4 4 0 010 8H6"/><path d="M9 5L6 8l3 3"/>'+E,
+    mblur:   S+'<circle cx="15" cy="12" r="4"/><path d="M3 12h4M5 9h3M5 15h3" class="soft"/>'+E,
+    hold:    S+'<path d="M9 6v12M15 6v12"/><path d="M5 12h2M17 12h2" class="soft"/>'+E,
+    list:    S+'<circle cx="6" cy="12" r="1.6" class="fill"/><circle cx="12" cy="12" r="1.6" class="fill"/><circle cx="18" cy="12" r="1.6" class="fill"/>'+E,
+    custom:  S+'<circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/>'+E,
+  };
+  function glyphNode(spec){ const g=document.createElement('span'); g.className='glyph';
+    if(spec && spec[0]==='@'){ g.innerHTML=ICONS[spec.slice(1)]||''; }
+    else g.textContent=spec; return g; }
+
+  function orbEl(glyph,cls){ const o=document.createElement('div'); o.className='orb glass '+(cls||'');
+    o.appendChild(glyphNode(glyph)); return o; }
+
+  // Build a kid (child circle). spec: {glyph, cls, sub, build(el)}.  glyph "@name" => SVG icon.
+  function kidEl(spec){ const k=document.createElement('div'); k.className='kid glass '+(spec.cls||'');
+    if(spec.glyph!=null){ k.appendChild(glyphNode(spec.glyph)); }
+    if(spec.sub){const s=document.createElement('span');s.className='sub';s.textContent=spec.sub;k.appendChild(s);}
+    if(spec.build) spec.build(k);
+    return k; }
+
+  // Fan kids outward in an arc. Spacing follows the kid size so circles never overlap,
+  // and the arc radius grows with count using a golden-ratio feel (Fibonacci-inspired):
+  // each successive ring is the previous radius times ~1/φ of the remaining spread.
+  const PHI=1.618033988749895;
+  function layoutKids(branchEl, kidsWrap){
+    const kids=[...kidsWrap.children].filter(k=>!k._pinned);
+    const n=kids.length; if(!n) return;
+    const rect=branchEl.getBoundingClientRect();
+    const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+    const base=Math.atan2(cy-window.innerHeight/2, cx-window.innerWidth/2); // point outward from screen centre
+
+    // kid diameter (largest in the set) drives required angular spacing → no overlap.
+    let kd=48; kids.forEach(k=>{ kd=Math.max(kd, k.getBoundingClientRect().width||48); });
+    const pad=14;                              // breathing room between circles
+    const need=kd+pad;                         // chord length we must leave between neighbours
+
+    // Base radius on a Fibonacci-ish progression so denser sets bow out gracefully.
+    // R is chosen so the chord for the angular step >= need.
+    const spread=Math.min(Math.PI*1.15, 0.55*n + 0.6);   // total fan angle
+    const step = n>1 ? spread/(n-1) : 0;
+    // chord = 2R*sin(step/2) >= need  ->  R >= need / (2 sin(step/2))
+    let R = n>1 ? need/(2*Math.sin(step/2)) : (kd+pad+34);
+    R = Math.max(R, kd+pad+30);
+    // golden easing of radius so it never grows absurd, but expands organically
+    R = Math.min(R, 96 + 26*Math.log(n+1)*PHI);
+
+    kids.forEach((k,i)=>{
+      const ang = base + (i-(n-1)/2)*step;
+      const dx=Math.cos(ang)*R, dy=Math.sin(ang)*R;
+      k.style.setProperty('--dx',dx.toFixed(1)+'px');
+      k.style.setProperty('--dy',dy.toFixed(1)+'px');
+      k.style.transitionDelay=(i*26)+'ms';
+    });
+  }
+
+  // Generic node (root, draggable, tap to toggle)
+  function makeNode(opts){
+    const node=document.createElement('div'); node.className='node';
+    const orb=orbEl(opts.glyph); const lbl=document.createElement('span'); lbl.className='lbl'; lbl.textContent=opts.label; orb.appendChild(lbl);
+    node.appendChild(orb);
+    const kids=document.createElement('div'); kids.className='kids'; node.appendChild(kids);
+    layer.appendChild(node);
+
+    let x=opts.x, y=opts.y; const apply=()=>node.style.transform=`translate3d(${x}px,${y}px,0)`; apply();
+    node._setPos=(nx,ny)=>{x=nx;y=ny;apply();};
+
+    // drag vs tap
+    let dn=null;
+    orb.addEventListener('pointerdown',e=>{ e.preventDefault(); orb.setPointerCapture(e.pointerId);
+      dn={sx:e.clientX,sy:e.clientY,ox:x,oy:y,moved:false}; node.style.zIndex=30; });
+    orb.addEventListener('pointermove',e=>{ if(!dn)return; const dx=e.clientX-dn.sx,dy=e.clientY-dn.sy;
+      if(!dn.moved&&Math.hypot(dx,dy)>6){dn.moved=true;node.classList.add('dragging');draggingAny=true;startWires();}
+      if(dn.moved){ x=Math.max(6,Math.min(window.innerWidth-64,dn.ox+dx)); y=Math.max(6,Math.min(window.innerHeight-64,dn.oy+dy));
+        node.style.transform=`translate3d(${x}px,${y}px,0)`;
+        if(node.classList.contains('open')) layoutKids(orb,kids); } });
+    orb.addEventListener('pointerup',()=>{ if(!dn)return;
+      if(!dn.moved){ const willOpen=!node.classList.contains('open'); node.classList.toggle('open');
+        if(willOpen){ if(opts.onOpen)opts.onOpen(); requestAnimationFrame(()=>{layoutKids(orb,kids); firePulse(node);}); } }
+      node.classList.remove('dragging'); node.style.zIndex=20; dn=null; draggingAny=false; refreshCutsVisibility(); startWires(); });
+
+    node._kids=kids; node._orb=orb; node._relayout=()=>layoutKids(orb,kids);
+    return node;
+  }
+
+  // Branch kid (a circle that itself fans more circles)
+  function makeBranchKid(glyph,label){
+    const wrap=document.createElement('div'); wrap.className='branch';
+    const k=kidEl({glyph,sub:label}); wrap.appendChild(k);
+    const kids=document.createElement('div'); kids.className='kids'; wrap.appendChild(kids);
+    k.addEventListener('click',e=>{ e.stopPropagation(); const willOpen=!wrap.classList.contains('open');
+      wrap.classList.toggle('open'); if(willOpen) requestAnimationFrame(()=>{layoutKids(k,kids); firePulse(wrap);}); refreshCutsVisibility(); startWires(); });
+    wrap._kids=kids; wrap._anchor=k; wrap._relayout=()=>layoutKids(k,kids);
+    // wrap must sit where a kid sits; give it kid sizing via the inner k positioning
+    wrap.style.position='absolute'; wrap.style.left='0'; wrap.style.top='0'; wrap.style.width='48px'; wrap.style.height='48px';
+    wrap.style.margin='-24px 0 0 -24px';
+    wrap.style.transform='translate(0,0) scale(.35)'; wrap.style.opacity='0';
+    wrap.style.transition='transform .34s cubic-bezier(.2,.95,.25,1.1), opacity .24s ease';
+    // promote wrap to behave as a .kid for the open animation
+    wrap.classList.add('kidwrap');
+    return wrap;
+  }
+
+  // ---- TOOLS node ----
+  const nTools=makeNode({glyph:'@tools',label:'Tools',x:24,y:96});
+  brushes.forEach(b=>{ const k=kidEl({glyph:b.ic,sub:b.id});
+    k.dataset.id=b.id; if(b.id===brush.id)k.classList.add('on');
+    k.addEventListener('click',e=>{e.stopPropagation(); brush=b; size=b.size; opacity=b.op;
+      [...nTools._kids.children].forEach(c=>c.classList.toggle('on',c.dataset.id===b.id)); flash(b.id);});
+    nTools._kids.appendChild(k); });
+
+  // ---- LINE node (the Living Line: StreamLine smoothing + QuickShape) ----
+  const nLine=makeNode({glyph:'@line',label:'Line',x:24,y:230});
+  // StreamLine dial — adjustable smoothing, Procreate-style
+  const streamDial=kidEl({cls:'dial',glyph:Math.round(streamline*100),sub:'StreamLine',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(streamDial,0,100,()=>Math.round(streamline*100),v=>{streamline=v/100;applyStream();streamDial.querySelector('.glyph').textContent=Math.round(v);},'StreamLine');
+  nLine._kids.appendChild(streamDial);
+  // QuickShape toggle
+  const kQS=kidEl({glyph:'@qshape',sub:'QuickShape'});
+  kQS.classList.toggle('on',qsEnabled);
+  kQS.addEventListener('click',e=>{e.stopPropagation();qsEnabled=!qsEnabled;kQS.classList.toggle('on',qsEnabled);flash(qsEnabled?'QuickShape ON · hold still to snap':'QuickShape off');});
+  nLine._kids.appendChild(kQS);
+
+  // ---- COLOR node ----
+  const nColor=makeNode({glyph:'@color',label:'Color',x:0,y:96}); nColor.dataset.right='1';
+  // size dial
+  const sizeDial=kidEl({cls:'dial',glyph:'14',sub:'Size',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(sizeDial,1,120,()=>size,v=>{size=v;sizeDial.querySelector('.glyph').textContent=Math.round(v);},'Size');
+  nColor._kids.appendChild(sizeDial);
+  // opacity dial
+  const opDial=kidEl({cls:'dial',glyph:'100',sub:'Opacity',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(opDial,5,100,()=>Math.round(opacity*100),v=>{opacity=v/100;opDial.querySelector('.glyph').textContent=Math.round(v);},'Opacity');
+  nColor._kids.appendChild(opDial);
+  // custom color
+  const custom=kidEl({glyph:'@custom',sub:'Custom',build(k){const inp=document.createElement('input');inp.type='color';inp.value=color;
+    inp.addEventListener('input',e=>{color=e.target.value;refreshSwatches();}); k.appendChild(inp);}});
+  nColor._kids.appendChild(custom);
+  // palette swatches (rebuilt on theme change)
+  function rebuildSwatches(){ [...nColor._kids.querySelectorAll('.kid.swatch')].forEach(e=>e.remove());
+    palette.forEach(p=>{ const k=kidEl({cls:'swatch',build(el){el.style.background=p;}}); k.dataset.c=p;
+      if(p.toLowerCase()===color.toLowerCase())k.classList.add('sel');
+      k.addEventListener('click',e=>{e.stopPropagation();color=p;refreshSwatches();});
+      nColor._kids.appendChild(k); });
+    if(nColor.classList.contains('open')) nColor._relayout(); }
+  function refreshSwatches(){ [...nColor._kids.querySelectorAll('.kid.swatch')].forEach(k=>k.classList.toggle('sel',k.dataset.c.toLowerCase()===color.toLowerCase())); }
+  rebuildSwatches();
+
+  // ---- ACTIONS node ----
+  const nAct=makeNode({glyph:'@actions',label:'Actions',x:0,y:300}); nAct.dataset.right='1';
+  function actKid(glyph,label,fn,toggle){ const k=kidEl({glyph,sub:label});
+    k.addEventListener('click',e=>{e.stopPropagation();fn(k);}); nAct._kids.appendChild(k); return k; }
+  function doUndo(){ if(!undoStack.length)return; redoStack.push(snap()); const s=undoStack.pop(); setCur(s.frame); fctx.putImageData(s.data,0,0); render(); refreshFrames(); refreshActions(); flash('Undo'); }
+  function doRedo(){ if(!redoStack.length)return; undoStack.push(snap()); const s=redoStack.pop(); setCur(s.frame); fctx.putImageData(s.data,0,0); render(); refreshFrames(); refreshActions(); flash('Redo'); }
+  const kUndo=actKid('@undo','Undo',doUndo);
+  const kRedo=actKid('@redo','Redo',doRedo);
+  actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);render();refreshFrames();});
+  const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);render();}); kOnion.classList.toggle('on',onion);
+  actKid('@export','Export',()=>{const o=mk(),oc=o.getContext('2d');oc.fillStyle='#fff0f3';oc.fillRect(0,0,W,H);oc.drawImage(frames[cur],0,0);
+    const a=document.createElement('a');a.download='inkframe-'+(cur+1)+'.png';a.href=o.toDataURL('image/png');a.click();flash('Exported PNG');});
+  actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');});
+  const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
+  const kFull=actKid('@full','Full',k=>{ if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||(()=>{})).call(document.documentElement); document.body.classList.add('zen'); k.classList.add('on'); }
+    else { (document.exitFullscreen||document.webkitExitFullscreen||(()=>{})).call(document); document.body.classList.remove('zen'); k.classList.remove('on'); } });
+  document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement){document.body.classList.remove('zen');kFull.classList.remove('on');} });
+  function refreshActions(){ kUndo.style.opacity=undoStack.length?1:.4; kRedo.style.opacity=redoStack.length?1:.4; }
+
+  // ---- ZEN (expand canvas without fullscreen) lives in Actions too ----
+  actKid('@expand','Expand',k=>{ document.body.classList.toggle('zen'); k.classList.toggle('on',document.body.classList.contains('zen')); });
+
+  // ---- FRAMES node ----
+  const nFrames=makeNode({glyph:'@frames',label:'Frames',x:380,y:0}); nFrames.dataset.bottom='1';
+  function frameAct(glyph,label,fn,toggle){ const k=kidEl({glyph,sub:label}); k.addEventListener('click',e=>{e.stopPropagation();fn(k);}); nFrames._kids.appendChild(k); return k; }
+  // ===== Spielberg: dissolve playback — frames cross-fade instead of hard-cutting =====
+  let dissolve=true;                               // filmic cross-fade between frames
+  let motionBlur=true;                             // Cameron: persistence-of-vision trails when fast
+  let loopOn=false, loopIn=0, loopOut=0;           // Nolan: in/out points isolate a beat to repeat (set in rail section)
+  // Cameron: ghost the trailing frame so fast motion smears like a real shutter.
+  // Strength rises with frame rate (fast playback => longer trail).
+  function blurAmt(){ return motionBlur ? Math.max(0, Math.min(.5, (fps-10)/40)) : 0; }
+  function drawComposite(idx){ ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
+    ctx.globalAlpha=1; ctx.drawImage(frames[idx%frames.length],0,0); }
+  function playLoop(t){ if(!playing)return;
+    const spf=1000/Math.max(1,fps), prog=(t-playT0)/spf;
+    // honor an isolated loop range; otherwise wrap the whole timeline
+    const lo = loopOn ? loopIn : 0, hi = (loopOn ? loopOut : frames.length-1);
+    // Nolan: per-frame holds make some drawings linger — true animation timing.
+    // Build the total tick length of the range, then map prog (in ticks) to a frame.
+    let total=0; for(let j=lo;j<=hi;j++) total+=hOf(j); total=Math.max(1,total);
+    let tick=prog%total, idx=lo, f=0;
+    for(let j=lo;j<=hi;j++){ const h=hOf(j); if(tick<h){ idx=j; f=tick/h; break; } tick-=h; }
+    setCur(idx);
+    ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
+    const mb=blurAmt();
+    if(mb>0 && frames.length>1){                    // trailing ghost (shutter smear)
+      const prev = idx>lo ? idx-1 : hi;
+      ctx.globalAlpha=mb; ctx.drawImage(frames[prev],0,0);
+    }
+    if(dissolve && frames.length>1){
+      const nxt = idx<hi ? idx+1 : lo, fade=Math.min(1,f*1.6);   // hold, then quick dissolve
+      ctx.globalAlpha=1; ctx.drawImage(frames[idx],0,0);
+      ctx.globalAlpha=fade; ctx.drawImage(frames[nxt],0,0); ctx.globalAlpha=1;
+    } else { ctx.globalAlpha=1; ctx.drawImage(frames[idx],0,0); }
+    ctx.globalAlpha=1;
+    // continuous playhead: position within the current frame's segment by sub-progress f
+    syncRail((tickStart(idx)+f*hOf(idx))/ticksTotal());
+    nFrames._timer=requestAnimationFrame(playLoop);
+  }
+  let playT0=0;
+  const kPlay=frameAct('@play','Play',k=>{playing=!playing;k.querySelector('.glyph').innerHTML=ICONS[playing?'pause':'play'];k.classList.toggle('on',playing);
+    if(playing){ playT0=performance.now(); nFrames._timer=requestAnimationFrame(playLoop); }
+    else{ cancelAnimationFrame(nFrames._timer); render(); refreshFrames(); syncRail(); }});
+  frameAct('@add','Add',()=>{frames.splice(cur+1,0,mk());holds.splice(cur+1,0,1);setCur(cur+1);render();refreshFrames();});
+  frameAct('@dup','Dup',()=>{const nf=mk();nf.getContext('2d').drawImage(frames[cur],0,0);frames.splice(cur+1,0,nf);holds.splice(cur+1,0,holds[cur]||1);setCur(cur+1);render();refreshFrames();});
+  frameAct('@del','Del',()=>{if(frames.length<=1)return;frames.splice(cur,1);holds.splice(cur,1);setCur(Math.max(0,cur-1));render();refreshFrames();});
+  const fpsDial=kidEl({cls:'dial',glyph:'12',sub:'FPS',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(fpsDial,1,24,()=>fps,v=>{fps=Math.round(v);fpsDial.querySelector('.glyph').textContent=fps;},'FPS');
+  nFrames._kids.appendChild(fpsDial);
+  // Nolan: per-frame HOLD — how many ticks the current drawing lingers (animation timing)
+  const holdDial=kidEl({cls:'dial',glyph:'1',sub:'Hold',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
+  makeDial(holdDial,1,8,()=>hOf(cur),v=>{holds[cur]=Math.round(v);holdDial.querySelector('.glyph').textContent=Math.round(v);buildRail();},'Hold');
+  nFrames._kids.appendChild(holdDial);
+  function refreshHold(){ const g=holdDial.querySelector('.glyph'); if(g) g.textContent=hOf(cur); if(holdDial._upd) holdDial._upd(); }
+  const kDissolve=frameAct('@dissolve','Dissolve',k=>{dissolve=!dissolve;k.classList.toggle('on',dissolve);flash(dissolve?'Dissolve playback ON':'Hard-cut playback');}); kDissolve.classList.toggle('on',dissolve);
+  const kMblur=frameAct('@mblur','Blur',k=>{motionBlur=!motionBlur;k.classList.toggle('on',motionBlur);flash(motionBlur?'Motion-blur trails ON':'Motion-blur off');}); kMblur.classList.toggle('on',motionBlur);
+  const kLoop=frameAct('@loop','Loop',k=>{ loopOn=!loopOn;
+    if(loopOn){ loopIn=0; loopOut=frames.length-1; }   // start spanning the whole timeline, then drag handles in
+    k.classList.toggle('on',loopOn); syncRail(); flash(loopOn?'Loop range ON · drag the handles':'Loop off'); }); kLoop.classList.toggle('on',loopOn);
+  // frame list as a branch of small circles
+  const framesBranch=makeBranchKid('@list','List'); nFrames._kids.appendChild(framesBranch);
+  function refreshFrames(){ const wrap=framesBranch._kids; wrap.innerHTML='';
+    frames.forEach((f,i)=>{ const k=kidEl({glyph:String(i+1)}); k.style.width='38px';k.style.height='38px';k.style.margin='-19px 0 0 -19px';
+      if(i===cur)k.classList.add('on'); k.addEventListener('click',e=>{e.stopPropagation();setCur(i);render();refreshFrames();});
+      wrap.appendChild(k); });
+    if(framesBranch.classList.contains('open')) framesBranch._relayout();
+    if(typeof buildRail==='function') buildRail();
+    if(typeof refreshHold==='function') refreshHold(); }
+
+  // ---- THEMES node ----
+  const nTheme=makeNode({glyph:'@themes',label:'Themes',x:0,y:470}); nTheme.dataset.right='1';
+  function rebuildThemes(){ nTheme._kids.innerHTML='';
+    themes.forEach((t,i)=>{ const k=kidEl({cls:'theme',build(el){const r=document.createElement('div');r.className='ring';
+      r.style.background=`conic-gradient(${t.a} 0 25%, ${t.rose} 0 50%, ${t.d} 0 75%, ${t.blush} 0)`; el.appendChild(r);}});
+      k.dataset.i=i; k.title=t.name; if(i===themeIdx)k.classList.add('sel');
+      k.addEventListener('click',e=>{e.stopPropagation(); applyTheme(i); flash('Theme · '+t.name);
+        [...nTheme._kids.children].forEach(c=>c.classList.toggle('sel',+c.dataset.i===i));});
+      nTheme._kids.appendChild(k); });
+    if(nTheme.classList.contains('open')) nTheme._relayout(); }
+  rebuildThemes();
+
+  // ---- STUDIO node (root leaf -> overlay) ----
+  const nStudio=makeNode({glyph:'@studio',label:'Studio',x:24,y:0}); nStudio.dataset.bottom='1';
+  // override: studio has no kids; tapping shows overlay instead of toggling
+  nStudio._orb.addEventListener('click',()=>{ if(!nStudio._dragged) $('studio').classList.add('show'); });
+
+  // ===== GALLERY node — up to 10 canvases, each its own project; tap = fluid switch =====
+  const nGallery=makeNode({glyph:'@gallery',label:'Gallery',x:140,y:0}); nGallery.dataset.bottom='1';
+  function thumbOf(P){ const t=mkAt(64,Math.round(64*P.h/P.w)); const tc=t.getContext('2d');
+    tc.fillStyle='#fff0f3'; tc.fillRect(0,0,t.width,t.height); tc.drawImage(P.frames[P.cur],0,0,t.width,t.height); return t.toDataURL(); }
+  function switchProject(i){
+    if(i===pi || switchProject._busy) return;
+    switchProject._busy=true;
+    // Cameron "dive": the current world sinks back into depth (scale down + blur + fade),
+    // the new world surfaces from below it (rises + un-blurs) — a fluid pass through water.
+    const dur=420;
+    canvas.style.transition=`transform ${dur*0.5}ms cubic-bezier(.4,0,.7,.2), opacity ${dur*0.5}ms ease, filter ${dur*0.5}ms ease`;
+    canvas.style.transformOrigin='center';
+    canvas.style.transform='scale(.86)'; canvas.style.opacity='0'; canvas.style.filter='blur(10px) saturate(1.4)';
+    setTimeout(()=>{
+      useProject(i);
+      canvas.width=W; canvas.height=H; clampCanvas(); applyCanvas();
+      render(); refreshFrames(); refreshActions();
+      // surface from depth
+      canvas.style.transition='none';
+      canvas.style.transform='scale(1.10)'; canvas.style.opacity='0'; canvas.style.filter='blur(12px)';
+      requestAnimationFrame(()=>{
+        canvas.style.transition=`transform ${dur*0.6}ms cubic-bezier(.16,.84,.3,1), opacity ${dur*0.5}ms ease, filter ${dur*0.6}ms ease`;
+        canvas.style.transform='scale(1)'; canvas.style.opacity='1'; canvas.style.filter='none';
+      });
+      setTimeout(()=>{ canvas.style.transition=''; canvas.style.transform=''; canvas.style.filter=''; switchProject._busy=false; }, dur*0.7);
+      flash('Canvas '+(i+1)+(projects[i].name?' · '+projects[i].name:''));
+    }, dur*0.5);
+  }
+  function rebuildGallery(){
+    const wrap=nGallery._kids; wrap.innerHTML='';
+    projects.forEach((P,i)=>{
+      const k=kidEl({build(el){ const im=document.createElement('div'); im.className='thumb';
+        im.style.cssText='position:absolute;inset:4px;border-radius:50%;background-size:cover;background-position:center;';
+        im.style.backgroundImage=`url(${thumbOf(P)})`; el.appendChild(im);
+        const num=document.createElement('span'); num.className='glyph'; num.textContent=i+1;
+        num.style.cssText='position:relative;z-index:2;font-size:13px'; el.appendChild(num); }});
+      k.dataset.i=i; if(i===pi)k.classList.add('on');
+      k.addEventListener('click',e=>{e.stopPropagation(); switchProject(i);
+        [...wrap.children].forEach(c=>c.classList.toggle('on',+c.dataset.i===i&&!c.dataset.add)); });
+      wrap.appendChild(k);
+    });
+    if(projects.length<MAX_PROJECTS){
+      const add=kidEl({glyph:'@add',sub:'New'}); add.dataset.add='1';
+      add.addEventListener('click',e=>{e.stopPropagation();
+        projects.push(newProject()); rebuildGallery(); switchProject(projects.length-1);
+        requestAnimationFrame(()=>nGallery._relayout()); });
+      wrap.appendChild(add);
+    }
+    if(nGallery.classList.contains('open')) nGallery._relayout();
+  }
+  // refresh thumbnails each time the gallery opens
+  nGallery._orb.addEventListener('click',()=>{ requestAnimationFrame(()=>{ if(nGallery.classList.contains('open')) rebuildGallery(); }); });
+  rebuildGallery();
+
+  // ===== Dial helper (vertical drag adjusts; ring shows level) =====
+  function makeDial(el,min,max,get,set,label){
+    function upd(v){ const p=(v-min)/(max-min)*100; el.style.setProperty('--p',p.toFixed(0)); }
+    upd(get());
+    let d=null;
+    el.addEventListener('pointerdown',e=>{ e.stopPropagation(); e.preventDefault(); el.setPointerCapture(e.pointerId);
+      d={y:e.clientY,v:get()}; });
+    el.addEventListener('pointermove',e=>{ if(!d)return; const dv=(d.y-e.clientY)*((max-min)/200);
+      let v=Math.max(min,Math.min(max,d.v+dv)); set(v); upd(v); });
+    el.addEventListener('pointerup',()=>{ d=null; });
+    el._upd=()=>upd(get());
+  }
+
+  // ===== Position right/bottom-anchored nodes after layout =====
+  function placeNodes(){
+    const Wd=window.innerWidth, Hd=window.innerHeight;
+    nColor._setPos(Wd-78, 96);
+    nAct._setPos(Wd-78, 300);
+    nTheme._setPos(Wd-78, 470);
+    nFrames._setPos(Math.max(120,Wd/2-120), Hd-78);
+    nStudio._setPos(24, Hd-78);
+    nGallery._setPos(96, Hd-78);
+  }
+  placeNodes(); window.addEventListener('resize',()=>{placeNodes();clampCanvas();applyCanvas();startWires();});
+
+  // ===== Canvas scaling & reshaping =====
+  const stage=$('stage'), frameGlass=$('frameGlass');
+  let cScale=1;                                   // display scale of the canvas element
+  function fitScale(){
+    const availW=window.innerWidth*(document.body.classList.contains('zen')?0.96:0.82);
+    const availH=window.innerHeight*(document.body.classList.contains('zen')?0.92:0.74);
+    return Math.min(availW/W, availH/H);
+  }
+  function clampCanvas(){ const f=fitScale(); cScale=Math.max(f*0.35, Math.min(cScale, f*2.2)); }
+  function applyCanvas(){
+    canvas.style.width=Math.round(W*cScale)+'px'; canvas.style.height=Math.round(H*cScale)+'px';
+  }
+  cScale=fitScale(); applyCanvas();
+
+  // ===== Nolan: physical film-rail scrubber — drag the playhead to move through time =====
+  const rail=$('rail'), railTrack=$('railTrack'), playhead=$('playhead');
+  const loopRegion=$('loopRegion'), loopInH=$('loopIn'), loopOutH=$('loopOut');
+  const fracOf=i=>frames.length>1 ? i/(frames.length-1) : 0;
+  function railFrac(){ return fracOf(cur); }
+  function syncLoop(){
+    rail.classList.toggle('looping', loopOn && frames.length>1);
+    if(!(loopOn && frames.length>1)) return;
+    loopIn=Math.max(0,Math.min(loopIn,frames.length-1)); loopOut=Math.max(loopIn,Math.min(loopOut,frames.length-1));
+    // align handles to the time-segments so the lit region matches real playback duration
+    const tot=ticksTotal();
+    const a=tickStart(loopIn)/tot*100, b=(tickStart(loopOut)+hOf(loopOut))/tot*100;
+    loopRegion.style.left=a+'%'; loopRegion.style.width=(b-a)+'%';
+    loopInH.style.left=a+'%'; loopOutH.style.left=b+'%';
+  }
+  // Nolan: time made physical — a frame's rail width equals its hold duration.
+  function ticksTotal(){ let s=0; for(let i=0;i<frames.length;i++) s+=hOf(i); return Math.max(1,s); }
+  function tickStart(i){ let s=0; for(let j=0;j<i;j++) s+=hOf(j); return s; }
+  function frameCenterFrac(i){ return (tickStart(i)+hOf(i)/2)/ticksTotal(); }
+  // playhead position: continuous tick fraction (during playback) or current frame centre
+  function setPlayheadFrac(fr){ const w=railTrack.clientWidth||1; playhead.style.left=(railTrack.offsetLeft+fr*w)+'px'; }
+  function syncRail(playFrac){
+    setPlayheadFrac(playFrac!=null?playFrac:frameCenterFrac(cur));
+    [...railTrack.querySelectorAll('.bead')].forEach((b,i)=>b.classList.toggle('on',i===cur));
+    syncLoop();
+  }
+  function buildRail(){
+    [...railTrack.querySelectorAll('.bead, .seg')].forEach(b=>b.remove());
+    const n=frames.length, tot=ticksTotal();
+    for(let i=0;i<n;i++){
+      const a=tickStart(i)/tot, w=hOf(i)/tot;
+      const seg=document.createElement('div'); seg.className='seg';   // physical duration block
+      seg.style.left=(a*100)+'%'; seg.style.width=(w*100)+'%';
+      if(hOf(i)>1) seg.classList.add('held'); railTrack.appendChild(seg);
+      const b=document.createElement('div'); b.className='bead'+(i===cur?' on':'');
+      b.style.left=((a+w/2)*100)+'%'; railTrack.appendChild(b);
+    }
+    if(loopOut>=n) loopOut=n-1;
+    syncRail();
+  }
+  // map an x position to a frame by its time-segment (so wide held frames are easier to hit)
+  function frameAtFrac(f){ const tot=ticksTotal(); let target=f*tot, acc=0;
+    for(let i=0;i<frames.length;i++){ acc+=hOf(i); if(target<acc) return i; } return frames.length-1; }
+  function railSeek(clientX){
+    const r=railTrack.getBoundingClientRect();
+    const f=Math.max(0,Math.min(1,(clientX-r.left)/(r.width||1)));
+    const idx=frameAtFrac(f);
+    bumpReach();                                   // Spielberg: fan the motion arc while scrubbing
+    if(idx!==cur){ setCur(idx); render(); refreshFrames(); } else render();
+    syncRail();
+  }
+  // dragging a loop handle redefines the beat (snaps to nearest frame)
+  function makeLoopHandle(el,which){
+    el.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
+      const mv=ev=>{ const r=railTrack.getBoundingClientRect();
+        const f=Math.max(0,Math.min(1,(ev.clientX-r.left)/(r.width||1)));
+        const idx=frameAtFrac(f);
+        if(which==='in') loopIn=Math.min(idx,loopOut); else loopOut=Math.max(idx,loopIn);
+        syncLoop(); };
+      const upp=()=>{ el.releasePointerCapture&&el.releasePointerCapture(e.pointerId);
+        el.removeEventListener('pointermove',mv); el.removeEventListener('pointerup',upp);
+        flash('Loop '+(loopIn+1)+'–'+(loopOut+1)); };
+      el.addEventListener('pointermove',mv); el.addEventListener('pointerup',upp); });
+  }
+  makeLoopHandle(loopInH,'in'); makeLoopHandle(loopOutH,'out');
+  let railDrag=false;
+  rail.addEventListener('pointerdown',e=>{ if(e.target.classList.contains('loophandle'))return;
+    e.preventDefault(); e.stopPropagation(); rail.setPointerCapture(e.pointerId);
+    railDrag=true; if(playing){ kPlay.click(); } railSeek(e.clientX); });
+  rail.addEventListener('pointermove',e=>{ if(railDrag) railSeek(e.clientX); });
+  rail.addEventListener('pointerup',()=>{ railDrag=false; if(!reachRAF) reachRAF=requestAnimationFrame(decayReach); });
+  window.addEventListener('resize',()=>syncRail());
+
+  // Reshape the document to new pixel dims, preserving all frames' artwork (top-left anchored).
+  const MINDIM=256, MAXDIM=4096;
+  function reshapeDocument(nw,nh){
+    nw=Math.round(Math.max(MINDIM,Math.min(MAXDIM,nw))); nh=Math.round(Math.max(MINDIM,Math.min(MAXDIM,nh)));
+    if(nw===W && nh===H) return;
+    projects[pi].frames=projects[pi].frames.map(old=>{ const f=mkAt(nw,nh); f.getContext('2d').drawImage(old,0,0); return f; });
+    frames=projects[pi].frames; W=nw; H=nh; projects[pi].w=W; projects[pi].h=H;
+    canvas.width=W; canvas.height=H; fctx=frames[cur].getContext('2d');
+    clampCanvas(); applyCanvas(); render(); startWires();
+  }
+
+  // corner-handle drag → proportional scale (display only; aspect preserved)
+  frameGlass.querySelectorAll('.chandle').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{ e.stopPropagation(); e.preventDefault(); h.setPointerCapture(e.pointerId);
+      const start=cScale, sx=e.clientX, sy=e.clientY;
+      const sgnX=(h.dataset.h==='br'||h.dataset.h==='tr')?1:-1, sgnY=(h.dataset.h==='br'||h.dataset.h==='bl')?1:-1;
+      const mv=ev=>{ const dpx=(ev.clientX-sx)*sgnX + (ev.clientY-sy)*sgnY;
+        cScale=Math.max(0.18, start + dpx/((W+H)/2)); clampCanvas(); applyCanvas(); startWires(); };
+      const upp=()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',upp); flash('Canvas '+Math.round(cScale*100)+'%'); };
+      window.addEventListener('pointermove',mv); window.addEventListener('pointerup',upp);
+    });
+  });
+
+  // side-handle drag → reshape ONE axis (changes the document's aspect ratio)
+  frameGlass.querySelectorAll('.shandle').forEach(h=>{
+    h.addEventListener('pointerdown',e=>{ e.stopPropagation(); e.preventDefault(); h.setPointerCapture(e.pointerId);
+      const s=h.dataset.s, sx=e.clientX, sy=e.clientY, w0=W, h0=H;
+      let pendW=W, pendH=H;
+      const mv=ev=>{
+        // convert screen delta to document px via current display scale
+        const ddx=(ev.clientX-sx)/cScale, ddy=(ev.clientY-sy)/cScale;
+        if(s==='e') pendW=w0+ddx; else if(s==='w') pendW=w0-ddx;
+        else if(s==='s') pendH=h0+ddy; else if(s==='n') pendH=h0-ddy;
+        // live visual preview by stretching the element; commit real pixels on release
+        canvas.style.width=Math.round(Math.max(MINDIM,Math.min(MAXDIM,pendW))*cScale)+'px';
+        canvas.style.height=Math.round(Math.max(MINDIM,Math.min(MAXDIM,pendH))*cScale)+'px';
+        startWires();
+      };
+      const upp=()=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',upp);
+        reshapeDocument(pendW,pendH); flash('Document '+W+'×'+H); };
+      window.addEventListener('pointermove',mv); window.addEventListener('pointerup',upp);
+    });
+  });
+
+  // pinch on the canvas → scale the canvas (NOT a UI zoom). Two-finger only; one finger draws.
+  // Multi-touch on the canvas:
+  //   • 2 fingers drag  → pinch-scale the canvas
+  //   • 2-finger tap    → Undo      • 3-finger tap → Redo   (quick, little movement)
+  const active=new Map(); let pinchBase=0, pinchScale0=1;
+  let gStart=0, gMaxN=0, gMoved=false, gStartPts=[];
+  function gAvgMove(){ // largest movement of any finger since gesture start
+    let m=0, i=0; for(const e of active.values()){ const s=gStartPts[i++]; if(s) m=Math.max(m,Math.hypot(e.clientX-s.x,e.clientY-s.y)); } return m; }
+  canvas.addEventListener('pointerdown',e=>{
+    active.set(e.pointerId,e);
+    if(active.size===1){ gStart=performance.now(); gMoved=false; }
+    gMaxN=Math.max(gMaxN,active.size);
+    gStartPts=[...active.values()].map(p=>({x:p.clientX,y:p.clientY}));
+    // A 2nd finger cancels a TOUCH stroke (intending a gesture). But if a PEN owns the
+    // stroke, an extra touch is a resting palm → keep drawing, ignore the touch entirely.
+    if(active.size>=2 && drawing && drawPidType!=='pen'){
+      drawing=false; drawPid=null; if(pend){ fctx.putImageData(pend.data,0,0); pend=null; render(); }
+    }
+  }, true);
+  canvas.addEventListener('pointermove',e=>{
+    if(active.has(e.pointerId)) active.set(e.pointerId,e);
+    if(active.size>=2 && !(drawing && drawPidType==='pen')){   // don't pinch while a pen stroke is live (palm resting)
+      if(gAvgMove()>10) gMoved=true;
+      const [p,q]=[...active.values()]; const dist=Math.hypot(p.clientX-q.clientX,p.clientY-q.clientY);
+      if(gMoved){ if(!pinchBase){ pinchBase=dist; pinchScale0=cScale; }
+        else { cScale=Math.max(0.18, pinchScale0*(dist/pinchBase)); clampCanvas(); applyCanvas(); startWires(); } }
+    }
+  }, true);
+  const endPtr=e=>{
+    const wasN=active.size;
+    active.delete(e.pointerId);
+    if(active.size===0){                            // whole gesture lifted
+      const quick=(performance.now()-gStart)<420;
+      if(quick && !gMoved){
+        if(gMaxN===2) doUndo();
+        else if(gMaxN>=3) doRedo();
+      }
+      pinchBase=0; gMaxN=0; gMoved=false;
+    } else if(active.size<2){ pinchBase=0; }
+  };
+  canvas.addEventListener('pointerup',endPtr,true); canvas.addEventListener('pointercancel',endPtr,true);
+
+  // ===== Double-tap the canvas to collapse every node back to circles =====
+  // Tracks taps that didn't move far (so it never fires after an actual stroke).
+  let lastTap=0, tapDownX=0, tapDownY=0, tapMoved=false;
+  canvas.addEventListener('pointerdown',e=>{ tapDownX=e.clientX; tapDownY=e.clientY; tapMoved=false; });
+  canvas.addEventListener('pointermove',e=>{ if(Math.hypot(e.clientX-tapDownX,e.clientY-tapDownY)>8) tapMoved=true; });
+  canvas.addEventListener('pointerup',e=>{
+    if(tapMoved) { lastTap=0; return; }   // it was a stroke, not a tap
+    const anyOpen=document.querySelector('.node.open,.kidwrap.open');
+    const now=performance.now();
+    if(now-lastTap<330 && anyOpen){ collapseAll(); flash('Collapsed · clean canvas'); lastTap=0; }
+    else lastTap=now;
+  });
+
+  // ===== Collapse-all button (folds every open node + torn-off pin back to circles) =====
+  const collapseBtn=$('collapseBtn');
+  if(collapseBtn){
+    collapseBtn.innerHTML='<svg viewBox="0 0 24 24"><path d="M9 9l-4-1 1 4"/><path d="M15 9l4-1-1 4"/><path d="M9 15l-4 1 1-4"/><path d="M15 15l4 1-1-4"/><circle cx="12" cy="12" r="2.4"/></svg>';
+    collapseBtn.addEventListener('click',e=>{ e.stopPropagation();
+      const any=document.querySelector('.node.open,.kidwrap.open')||pinLayer.children.length;
+      if(any){ collapseAll(); flash('Collapsed · clean canvas'); } });
+  }
+
+  applyTheme(0); render(); refreshFrames(); refreshActions(); startWires();
+  flash('Tap a circle to spiral open · double-tap canvas to collapse all · ◌ Studio');
+})();
+</script>
+</body>
+</html>
