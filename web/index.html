@@ -172,30 +172,57 @@
 
   /* layer that holds torn-off / pinned tool circles (no transformed ancestor) */
   /* Nolan: physical film-rail scrubber — time you can grab, mounted under the canvas */
-  #rail{ position:absolute; left:14px; right:14px; bottom:-26px; height:30px; border-radius:18px;
-    display:flex; align-items:center; padding:0 16px; touch-action:none; cursor:pointer; z-index:6; }
-  #railTrack{ position:relative; flex:1; height:4px; border-radius:3px;
-    background:linear-gradient(90deg, rgba(255,240,243,.18), rgba(255,240,243,.30)); }
-  #railTrack .seg{ position:absolute; top:50%; height:4px; margin-top:-2px; border-radius:3px;
-    background:rgba(255,240,243,.10); border-right:1px solid rgba(42,0,26,.5); box-sizing:border-box; }
-  #railTrack .seg.held{ background:linear-gradient(90deg, rgba(187,0,55,.30), rgba(247,202,201,.18));
-    box-shadow:inset 0 0 5px rgba(255,150,190,.4); }
-  #railTrack .bead{ position:absolute; top:50%; width:9px; height:9px; margin:-4.5px 0 0 -4.5px; border-radius:50%;
-    background:var(--rose); opacity:.55; box-shadow:0 0 5px rgba(255,150,190,.5); transition:opacity .2s, transform .2s; }
-  #railTrack .bead.on{ opacity:1; transform:scale(1.4); background:var(--blush); }
-  #playhead{ position:absolute; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%;
-    background:linear-gradient(160deg,var(--blush),var(--accent)); border:1.5px solid var(--rim);
-    box-shadow:0 0 12px var(--accent), inset 0 1px 0 var(--rim); pointer-events:none; z-index:2; transition:transform .05s; }
-  /* Nolan: in/out loop range — a lit beat you can isolate and repeat */
-  #loopRegion{ position:absolute; top:50%; height:8px; margin-top:-4px; border-radius:4px; display:none;
-    background:linear-gradient(90deg, rgba(187,0,55,.32), rgba(247,202,201,.42)); box-shadow:0 0 8px var(--accent); z-index:1; }
+  /* Timeline scrubber. Was a nearly-hidden hint strip (bottom:-26px); now a
+     proper first-class band at the bottom of the stage that shows every
+     frame as a segment you can grab, held frames wide + accented, an
+     always-visible playhead, and prev/next buttons that step frame-by-frame. */
+  #rail{ position:absolute; left:14px; right:14px; bottom:6px; height:44px; border-radius:22px;
+    display:flex; align-items:center; padding:0 12px; gap:8px;
+    background:linear-gradient(180deg, rgba(20,0,14,.42), rgba(20,0,14,.28));
+    border:1px solid rgba(247,202,201,.22);
+    box-shadow:inset 0 1px 0 rgba(255,240,243,.18), 0 6px 22px rgba(10,0,10,.32);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    touch-action:none; cursor:pointer; z-index:6; }
+  #railTrack{ position:relative; flex:1; height:14px; border-radius:9px;
+    background:linear-gradient(90deg, rgba(255,240,243,.10), rgba(255,240,243,.18));
+    box-shadow:inset 0 1px 3px rgba(10,0,10,.4);
+    border:1px solid rgba(247,202,201,.20); }
+  #railTrack .seg{ position:absolute; top:2px; height:10px; border-radius:5px;
+    background:rgba(255,240,243,.10);
+    border-right:1px solid rgba(42,0,26,.55); box-sizing:border-box; }
+  #railTrack .seg.held{ background:linear-gradient(90deg, rgba(187,0,55,.36), rgba(247,202,201,.24));
+    box-shadow:inset 0 0 6px rgba(255,150,190,.5); }
+  #railTrack .bead{ position:absolute; top:50%; width:5px; height:5px; margin:-2.5px 0 0 -2.5px; border-radius:50%;
+    background:var(--rose); opacity:.55; transition:opacity .18s, transform .18s; }
+  #railTrack .bead.on{ opacity:1; transform:scale(1.7); background:var(--blush);
+    box-shadow:0 0 8px var(--accent); }
+  #playhead{ position:absolute; top:50%; width:20px; height:20px; margin:-10px 0 0 -10px; border-radius:50%;
+    background:linear-gradient(160deg,var(--blush),var(--accent));
+    border:2px solid var(--rim);
+    box-shadow:0 0 14px var(--accent), inset 0 1px 0 var(--rim), 0 3px 8px rgba(10,0,10,.5);
+    pointer-events:none; z-index:2; transition:transform .05s; }
+  /* Prev / next frame buttons: sit on the rail either side of the track. */
+  .railStep{ flex:0 0 auto; width:32px; height:32px; border-radius:50%;
+    background:rgba(247,202,201,.12); border:1px solid rgba(247,202,201,.28);
+    color:var(--text); font-size:0; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; touch-action:none; transition:transform .1s, background .2s; }
+  .railStep:active{ transform:scale(.92); background:rgba(247,202,201,.24); }
+  .railStep svg{ width:16px; height:16px; fill:none; stroke:var(--text); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  /* Frame counter tucked to the right of the last step button. */
+  #railCount{ flex:0 0 auto; min-width:52px; text-align:center;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--dim); font-variant-numeric:tabular-nums; }
+  /* Loop range visualization (existing feature -- restyled to match). */
+  #loopRegion{ position:absolute; top:2px; height:10px; border-radius:5px; display:none;
+    background:linear-gradient(90deg, rgba(187,0,55,.38), rgba(247,202,201,.48));
+    box-shadow:0 0 10px var(--accent); z-index:1; }
   #rail.looping #loopRegion, #rail.looping .loophandle{ display:block; }
-  .loophandle{ position:absolute; top:50%; width:11px; height:18px; margin:-9px 0 0 -5.5px; border-radius:4px; display:none;
+  .loophandle{ position:absolute; top:50%; width:12px; height:22px; margin:-11px 0 0 -6px; border-radius:5px; display:none;
     background:linear-gradient(160deg,var(--blush),var(--accent-deep)); border:1px solid var(--rim);
     box-shadow:0 0 8px var(--accent); z-index:3; pointer-events:auto; cursor:ew-resize; }
-  .loophandle::after{ content:""; position:absolute; left:50%; top:4px; width:1px; height:10px; margin-left:-.5px;
+  .loophandle::after{ content:""; position:absolute; left:50%; top:6px; width:1px; height:10px; margin-left:-.5px;
     background:rgba(255,240,243,.7); box-shadow:2px 0 0 rgba(255,240,243,.5),-2px 0 0 rgba(255,240,243,.5); }
-  body.zen #rail{ bottom:-22px; }
+  body.zen #rail{ opacity:.65; }
   /* Collapse-all button — a small fixed glass orb, bottom-right */
   #collapseBtn{ position:fixed; right:18px; bottom:18px; z-index:24; width:52px; height:52px; border-radius:50%;
     border:1px solid var(--rim); cursor:pointer; display:flex; align-items:center; justify-content:center;
@@ -321,7 +348,24 @@
   <div class="shandle n"  data-s="n"></div><div class="shandle s" data-s="s"></div>
   <div class="shandle e"  data-s="e"></div><div class="shandle w" data-s="w"></div>
 </div>
-<div id="rail" class="glass"><div id="railTrack"><div id="loopRegion"></div><div id="loopIn" class="loophandle"></div><div id="loopOut" class="loophandle"></div></div><div id="playhead"></div></div>
+<!-- Timeline scrubber. Drag the track to seek; tap the arrows to step. The
+     playhead sits ON the track (not inside it) so it can render partway
+     through a wide "held" frame's segment and still read as its position. -->
+<div id="rail" class="glass">
+  <button type="button" id="railPrev" class="railStep" title="Previous frame" aria-label="Previous frame">
+    <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+  </button>
+  <div id="railTrack">
+    <div id="loopRegion"></div>
+    <div id="loopIn" class="loophandle"></div>
+    <div id="loopOut" class="loophandle"></div>
+    <div id="playhead"></div>
+  </div>
+  <button type="button" id="railNext" class="railStep" title="Next frame" aria-label="Next frame">
+    <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+  <div id="railCount">1 / 1</div>
+</div>
 </div>
 
 <!-- Studio "about" overlay. Frosted-glass panel; tap the backdrop or Close
@@ -3474,6 +3518,41 @@
   // ===== Nolan: physical film-rail scrubber — drag the playhead to move through time =====
   const rail=$('rail'), railTrack=$('railTrack'), playhead=$('playhead');
   const loopRegion=$('loopRegion'), loopInH=$('loopIn'), loopOutH=$('loopOut');
+  const railPrev=$('railPrev'), railNext=$('railNext'), railCount=$('railCount');
+
+  // Prev / next arrow buttons: single step, wraps at the ends when Loop is
+  // ON (so scrubbing an isolated beat feels natural), otherwise clamps.
+  function stepFrame(delta){
+    const n = frames.length;
+    if(n <= 1) return;
+    // Honour a loop range if it's on -- prev/next stays inside the beat.
+    const lo = (typeof loopOn !== 'undefined' && loopOn) ? loopIn  : 0;
+    const hi = (typeof loopOn !== 'undefined' && loopOn) ? loopOut : n - 1;
+    let next = cur + delta;
+    if(next < lo) next = hi;
+    if(next > hi) next = lo;
+    if(next === cur) return;
+    // Pause playback when the user manually steps -- otherwise the frame
+    // they wanted to see would just fly by.
+    if(playing && typeof kPlay !== 'undefined'){ kPlay.click(); }
+    setCur(next); render(); refreshFrames();
+    // Sub-hint so the tablet artist can see where they landed at a glance.
+    if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
+  }
+  railPrev.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); stepFrame(-1); });
+  railNext.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); stepFrame(+1); });
+  // Prevent the buttons' pointerdown from seeding a rail drag.
+  ['pointerdown','pointerup','pointermove'].forEach(t=>{
+    railPrev.addEventListener(t, e=>e.stopPropagation());
+    railNext.addEventListener(t, e=>e.stopPropagation());
+  });
+  // Keyboard shortcuts on desktop: ArrowLeft / ArrowRight step frames when
+  // no input is focused (typing in a colour picker etc.). No-op on touch.
+  window.addEventListener('keydown', e=>{
+    if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if(e.key === 'ArrowLeft'){  stepFrame(-1); e.preventDefault(); }
+    else if(e.key === 'ArrowRight'){ stepFrame(+1); e.preventDefault(); }
+  });
   const fracOf=i=>frames.length>1 ? i/(frames.length-1) : 0;
   function railFrac(){ return fracOf(cur); }
   function syncLoop(){
@@ -3491,10 +3570,15 @@
   function tickStart(i){ let s=0; for(let j=0;j<i;j++) s+=hOf(j); return s; }
   function frameCenterFrac(i){ return (tickStart(i)+hOf(i)/2)/ticksTotal(); }
   // playhead position: continuous tick fraction (during playback) or current frame centre
-  function setPlayheadFrac(fr){ const w=railTrack.clientWidth||1; playhead.style.left=(railTrack.offsetLeft+fr*w)+'px'; }
+  // Playhead lives INSIDE #railTrack now (previously a rail-level sibling), so
+  // its left is track-relative -- no more offsetLeft addition.
+  function setPlayheadFrac(fr){ const w=railTrack.clientWidth||1; playhead.style.left=(fr*w)+'px'; }
   function syncRail(playFrac){
     setPlayheadFrac(playFrac!=null?playFrac:frameCenterFrac(cur));
     [...railTrack.querySelectorAll('.bead')].forEach((b,i)=>b.classList.toggle('on',i===cur));
+    // Counter reflects 1-based frame index and total, matching every other
+    // "frame N" hint in the app.
+    if(railCount) railCount.textContent = (cur+1) + ' / ' + frames.length;
     syncLoop();
   }
   function buildRail(){
