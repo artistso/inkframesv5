@@ -1158,18 +1158,19 @@
     if(drawing) return;                  // a stroke already owns the canvas — ignore extra contacts (palm)
     if(!allow(e))return;
     // Constellation modal: taps drop anchors, doesn't paint a normal stroke.
-    // Selection modal: rectangle marquee. Drag = draw marquee, up = commit.
-    if(SEL.mode === 'rect'){
+    // Selection modal (rectangle or lasso). Drag = build selection, up = commit.
+    if(SEL.mode === 'rect' || SEL.mode === 'lasso'){
       e.preventDefault();
       const c = toC(e);
-      // Tap outside the current selection deselects; tap inside starts a new
-      // marquee (matches Photoshop / Fresco convention).
-      if(SEL.rect && !selInside(c.x, c.y)){
+      // Tap outside the current selection deselects; tap inside starts a
+      // fresh selection (matches Photoshop / Fresco convention).
+      if((SEL.rect || SEL.poly) && !selInside(c.x, c.y)){
         selClear();
         return;
       }
       SEL.dragging = true;
       SEL.start = { x: c.x, y: c.y };
+      if(SEL.mode === 'lasso') SEL.dragPoly = [{ x:c.x, y:c.y }];
       canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
       return;
     }
@@ -1237,13 +1238,25 @@
   });
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
-    // Selection-drag routing: while the user is drawing out a marquee, paint
-    // the live outline to the predicted overlay and short-circuit the normal
-    // stroke path.
-    if(SEL.mode === 'rect' && SEL.dragging){
+    // Selection-drag routing (rect or lasso). Paint the live outline to the
+    // predicted overlay and short-circuit the normal stroke path.
+    if(SEL.dragging && (SEL.mode === 'rect' || SEL.mode === 'lasso')){
       e.preventDefault();
       const c = toC(e);
-      selDrawLive(SEL.start.x, SEL.start.y, c.x, c.y);
+      if(SEL.mode === 'rect'){
+        selDrawLive('rect', SEL.start.x, SEL.start.y, c.x, c.y);
+      } else {
+        // Append every coalesced sample so the freehand path is dense.
+        const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+        for(const ev of evs){
+          const cc = toC(ev);
+          const last = SEL.dragPoly[SEL.dragPoly.length-1];
+          if(!last || Math.hypot(cc.x-last.x, cc.y-last.y) >= 1.5){
+            SEL.dragPoly.push({ x:cc.x, y:cc.y });
+          }
+        }
+        selDrawLive('lasso');
+      }
       return;
     }
     if(!drawing||e.pointerId!==drawPid)return;    // only the owning pointer extends the stroke
@@ -1311,11 +1324,16 @@
       if(moved>3){ qsAnchor={x:penX,y:penY}; qsLastMove=now; clearTimeout(qsTimer);
         qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
   const up=e=>{
-    // Selection-marquee commit: user released after dragging out a rect.
-    if(SEL.mode === 'rect' && SEL.dragging){
+    // Selection commit: user released after dragging out a rect or lasso.
+    if(SEL.dragging && (SEL.mode === 'rect' || SEL.mode === 'lasso')){
       SEL.dragging = false;
-      const c = e ? toC(e) : SEL.start;
-      selCommit(SEL.start.x, SEL.start.y, c.x, c.y);
+      if(SEL.mode === 'rect'){
+        const c = e ? toC(e) : SEL.start;
+        selCommitRect(SEL.start.x, SEL.start.y, c.x, c.y);
+      } else {
+        selCommitPoly(SEL.dragPoly);
+        SEL.dragPoly = null;
+      }
       SEL.start = null;
       return;
     }
@@ -2127,75 +2145,144 @@
   // "Clear selection" wipes selected pixels on the ACTIVE layer with a proper
   // undo snap; committing / clearing a selection also deactivates it.
   const SEL = {
-    mode: null,        // null | 'rect' | 'lasso' (lasso arrives in A1.2)
+    mode: null,        // null | 'rect' | 'lasso'
     dragging: false,
     start: null,       // {x,y} in doc coords, at pen-down
-    rect: null,        // committed selection: {x,y,w,h} in doc coords
+    rect: null,        // committed rectangle selection: {x,y,w,h} in doc coords
+    poly: null,        // committed lasso selection: [{x,y}, ...] in doc coords
+    dragPoly: null,    // in-progress lasso path (during dragging)
     antsRAF: 0,        // requestAnimationFrame handle for the marching ants
     antsPhase: 0,      // rolling offset (0..7) for the dash pattern
   };
   function selInside(px, py){
     // px,py in doc coords -- is the point inside the committed selection?
-    if(!SEL.rect) return false;
-    const r = SEL.rect;
-    return px >= r.x && py >= r.y && px < r.x + r.w && py < r.y + r.h;
+    if(SEL.rect){
+      const r = SEL.rect;
+      return px >= r.x && py >= r.y && px < r.x + r.w && py < r.y + r.h;
+    }
+    if(SEL.poly && SEL.poly.length >= 3){
+      // Ray-casting point-in-polygon. Cheap: allocation-free, integer-math
+      // friendly. Handles concave lassos correctly.
+      const p = SEL.poly; let inside = false;
+      for(let i = 0, j = p.length - 1; i < p.length; j = i++){
+        const xi = p[i].x, yi = p[i].y, xj = p[j].x, yj = p[j].y;
+        const intersect = ((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+        if(intersect) inside = !inside;
+      }
+      return inside;
+    }
+    return false;
   }
   function selClear(){
-    SEL.rect = null; SEL.dragging = false; SEL.start = null;
+    SEL.rect = null; SEL.poly = null; SEL.dragPoly = null;
+    SEL.dragging = false; SEL.start = null;
     if(SEL.antsRAF){ cancelAnimationFrame(SEL.antsRAF); SEL.antsRAF = 0; }
     clearPredicted();
   }
-  // Draw the marching-ants outline of SEL.rect onto the predicted overlay.
-  // Called every animation frame while a selection exists; overlay clears
-  // and repaints on top of any predicted-stroke debris.
+  // Trace the committed selection path onto the predicted overlay (used by
+  // both the ants animation and the live-drag preview). Handles rect and
+  // polygon selections uniformly via a path builder.
+  function selTracePath(ctx2){
+    if(SEL.rect){
+      const r = SEL.rect;
+      ctx2.beginPath();
+      ctx2.rect(r.x, r.y, r.w, r.h);
+    } else if(SEL.poly && SEL.poly.length){
+      ctx2.beginPath();
+      ctx2.moveTo(SEL.poly[0].x, SEL.poly[0].y);
+      for(let i=1;i<SEL.poly.length;i++) ctx2.lineTo(SEL.poly[i].x, SEL.poly[i].y);
+      ctx2.closePath();
+    }
+  }
+  // Draw the marching-ants outline of the current selection onto the
+  // predicted overlay. Two-pass (dark under + light over with an offset dash
+  // phase) = the classic Photoshop ants. Animates at 60 fps via rAF.
   function selDrawAnts(){
-    if(!pctx || !SEL.rect){ SEL.antsRAF = 0; return; }
+    if(!pctx || (!SEL.rect && !SEL.poly)){ SEL.antsRAF = 0; return; }
     pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
-    const r = SEL.rect;
     pctx.save();
-    // Two-pass: dark under, light over, offset dash phase = classic ants.
     pctx.lineWidth = 1.5;
-    pctx.strokeStyle = 'rgba(0,0,0,.85)';
     pctx.setLineDash([6, 4]);
+    pctx.strokeStyle = 'rgba(0,0,0,.85)';
     pctx.lineDashOffset = -SEL.antsPhase;
-    pctx.strokeRect(r.x, r.y, r.w, r.h);
+    selTracePath(pctx); pctx.stroke();
     pctx.strokeStyle = 'rgba(255,255,255,.95)';
     pctx.lineDashOffset = -SEL.antsPhase + 5;
-    pctx.strokeRect(r.x, r.y, r.w, r.h);
+    selTracePath(pctx); pctx.stroke();
     pctx.restore();
     SEL.antsPhase = (SEL.antsPhase + 0.5) % 10;
     SEL.antsRAF = requestAnimationFrame(selDrawAnts);
   }
-  // Draw the LIVE (dragging) marquee. Called on every pointermove while
-  // the user is dragging out a fresh selection.
-  function selDrawLive(x1, y1, x2, y2){
+  // Draw the LIVE (dragging) marquee. Called on every pointermove while the
+  // user is dragging out a fresh selection. Handles both rect and lasso.
+  function selDrawLive(mode, ax, ay, bx, by){
     if(!pctx) return;
     pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
     pctx.save();
     pctx.lineWidth = 1.5;
     pctx.strokeStyle = 'rgba(255,255,255,.9)';
     pctx.setLineDash([5, 3]);
-    // Fill hint so the artist sees the region being selected.
     pctx.fillStyle = 'rgba(255,255,255,.08)';
-    const x = Math.min(x1, x2), y = Math.min(y1, y2);
-    const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
-    pctx.fillRect(x, y, w, h);
-    pctx.strokeRect(x, y, w, h);
+    if(mode === 'rect'){
+      const x = Math.min(ax, bx), y = Math.min(ay, by);
+      const w = Math.abs(bx - ax), h = Math.abs(by - ay);
+      pctx.fillRect(x, y, w, h);
+      pctx.strokeRect(x, y, w, h);
+    } else if(mode === 'lasso' && SEL.dragPoly && SEL.dragPoly.length){
+      const p = SEL.dragPoly;
+      pctx.beginPath();
+      pctx.moveTo(p[0].x, p[0].y);
+      for(let i=1;i<p.length;i++) pctx.lineTo(p[i].x, p[i].y);
+      // Close the loop visually so the user sees what will commit.
+      pctx.closePath();
+      pctx.fill();
+      pctx.stroke();
+    }
     pctx.restore();
   }
-  function selCommit(x1, y1, x2, y2){
+  function selCommitRect(x1, y1, x2, y2){
     const x = Math.round(Math.min(x1, x2)), y = Math.round(Math.min(y1, y2));
     const w = Math.round(Math.abs(x2 - x1)), h = Math.round(Math.abs(y2 - y1));
     if(w < 3 || h < 3){ selClear(); return; }
+    selClear();
     SEL.rect = { x, y, w, h };
     if(!SEL.antsRAF) SEL.antsRAF = requestAnimationFrame(selDrawAnts);
   }
-  // Deleting the selection clears those pixels on the ACTIVE layer.
+  function selCommitPoly(poly){
+    // Simplify: drop consecutive points less than 2 px apart -- keeps the
+    // marching ants smooth and the point-in-polygon test cheap.
+    if(!poly || poly.length < 3){ selClear(); return; }
+    const simplified = [poly[0]];
+    for(let i=1;i<poly.length;i++){
+      const a = simplified[simplified.length-1], b = poly[i];
+      if(Math.hypot(b.x - a.x, b.y - a.y) >= 2) simplified.push(b);
+    }
+    if(simplified.length < 3){ selClear(); return; }
+    selClear();
+    SEL.poly = simplified;
+    if(!SEL.antsRAF) SEL.antsRAF = requestAnimationFrame(selDrawAnts);
+  }
+  // Deleting the selection clears those pixels on the ACTIVE layer. For a
+  // rectangle we clearRect(); for a polygon we clip() to the path and then
+  // clearRect the whole layer bounds so only the inside of the shape wipes.
   function selDelete(){
-    if(!SEL.rect){ flash('No selection'); return; }
+    if(!SEL.rect && !SEL.poly){ flash('No selection'); return; }
     pushU(snap());
     const L = frameActive(frames[cur]);
-    L.canvas.getContext('2d').clearRect(SEL.rect.x, SEL.rect.y, SEL.rect.w, SEL.rect.h);
+    const g = L.canvas.getContext('2d');
+    if(SEL.rect){
+      g.clearRect(SEL.rect.x, SEL.rect.y, SEL.rect.w, SEL.rect.h);
+    } else {
+      g.save();
+      g.beginPath();
+      g.moveTo(SEL.poly[0].x, SEL.poly[0].y);
+      for(let i=1;i<SEL.poly.length;i++) g.lineTo(SEL.poly[i].x, SEL.poly[i].y);
+      g.closePath();
+      g.clip();
+      g.clearRect(0, 0, L.canvas.width, L.canvas.height);
+      g.restore();
+    }
     bumpFrame(frames[cur]);
     render();
     if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
@@ -2212,16 +2299,25 @@
     nSel._kids.appendChild(k);
     return k;
   }
-  const kSelRect = selAct('@select', 'Rect', (k)=>{
-    if(SEL.mode === 'rect'){ SEL.mode = null; selClear(); k.classList.remove('on');
-      flash('Select off'); return; }
-    SEL.mode = 'rect'; selClear();
-    k.classList.add('on');
-    // Turn off other modal tools so the input router isn't confused.
+  function setSelMode(m, k){
+    // Turn off any other Select-orb kids' 'on' state.
+    if(typeof kSelRect  !== 'undefined') kSelRect .classList.remove('on');
+    if(typeof kSelLasso !== 'undefined') kSelLasso.classList.remove('on');
+    if(SEL.mode === m){ SEL.mode = null; selClear(); return; }
+    SEL.mode = m; selClear();
+    if(k) k.classList.add('on');
+    // Modal tools are exclusive with each other.
     if(typeof constellationOn !== 'undefined' && constellationOn){
       constellationOn = false; kConst && kConst.classList.remove('on');
     }
-    flash('Rectangle select · drag to marquee, tap outside to deselect');
+  }
+  const kSelRect = selAct('@select', 'Rect', (k)=>{
+    setSelMode('rect', k);
+    flash(SEL.mode ? 'Rectangle select · drag to marquee' : 'Select off');
+  });
+  const kSelLasso = selAct('@lasso', 'Lasso', (k)=>{
+    setSelMode('lasso', k);
+    flash(SEL.mode ? 'Lasso · draw freehand, lift to close' : 'Select off');
   });
   selAct('@clear',  'Delete',   ()=>selDelete());
   selAct('@qshape', 'Deselect', ()=>{ selClear(); flash('Deselected'); });
