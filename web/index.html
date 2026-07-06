@@ -329,10 +329,13 @@
 </div>
 <button id="collapseBtn" class="glass" title="Collapse all circles" aria-label="Collapse all circles"></button>
 
-<!-- GIF encoder — pure JS, no deps. Loaded here so it's on window.GifEncoder
-     for the main-thread fallback path (the WebView often blocks Worker() from
-     file://; the export module tries the worker first and falls back to this). -->
+<!-- Sibling modules loaded before the app so their globals (InkFrameAutosave,
+     InkFrameBrushMath, GifEncoder) are ready when the IIFE below runs. Each
+     is pure-logic + UMD-lite; loading them from index.html keeps the WebView
+     happy on file:// where ES imports are locked down. -->
 <script src="gif-encoder.js"></script>
+<script src="autosave.js"></script>
+<script src="brush-math.js"></script>
 
 <script>
 (function(){
@@ -631,24 +634,16 @@
     else if(e.altitudeAngle!=null){ az=(e.azimuthAngle||0); flat=Math.min(1,1-(e.altitudeAngle/(Math.PI/2))); }
     return {x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height),
             p:e.pressure&&e.pressure>0?e.pressure:0.5, az, flat, type:e.pointerType};};
-  const hexA=(h,a)=>{const n=parseInt(h.slice(1),16);return`rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;};
-
-  // ===== Paper grain — a real tooth the dry media (pencil/marker) bites into =====
-  // A tiling value-noise field locked to canvas coordinates, so re-passing a stroke
-  // reveals the same tooth (like graphite catching on paper fibres).
-  const GW=256; let grain=null;
-  function buildGrain(){
-    const raw=new Float32Array(GW*GW);
-    for(let i=0;i<raw.length;i++) raw[i]=Math.random();
-    grain=new Float32Array(GW*GW);
-    for(let y=0;y<GW;y++)for(let x=0;x<GW;x++){     // soft clumps (blur) + fine fibre (raw)
-      let s=0; for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)
-        s+=raw[(((y+dy)+GW)%GW)*GW+(((x+dx)+GW)%GW)];
-      grain[y*GW+x]=(s/9)*0.6 + raw[y*GW+x]*0.4;
-    }
+  // Colour + grain + angle helpers live in web/brush-math.js (pure math, unit-testable).
+  // Bind local shims so the paint-engine call sites stay short and readable.
+  const _BM = window.InkFrameBrushMath;
+  const hexA = _BM.hexWithAlpha;
+  const GW   = _BM.GRAIN_SIZE;
+  let grain  = null;
+  function grainAt(x, y){
+    if(!grain) grain = _BM.buildGrain(GW);
+    return _BM.sampleGrain(grain, x, y, GW);
   }
-  function grainAt(x,y){ if(!grain)buildGrain();
-    const ix=(((x|0)%GW)+GW)%GW, iy=(((y|0)%GW)+GW)%GW; return grain[iy*GW+ix]; }
 
   const NIB=-0.7;   // fixed chisel-marker holder angle (radians)
   // Each brush has its own nib character: graphite tooth biting paper, velocity-tapered
@@ -749,8 +744,8 @@
       gr.addColorStop(0,color); gr.addColorStop(.7,hexA(color,opacity)); gr.addColorStop(1,hexA(color,0));
       g.fillStyle=gr; g.beginPath();g.arc(x,y,r,0,7);g.fill(); g.restore(); });
   }
-  // shortest-path angle ease (handles wrap-around so the nib never spins the long way)
-  function easeAng(cur,tgt,k){ let dA=((tgt-cur+Math.PI)%(2*Math.PI))-Math.PI; return cur+dA*k; }
+  // Shortest-path angle ease lives in web/brush-math.js as easeAngle().
+  const easeAng = _BM.easeAngle;
 
   // ===== Catmull-Rom spline stroke =====
   // A per-brush "point history" of the last few stabilized samples. Rather than
@@ -784,18 +779,14 @@
     const st=Math.max(1,size*_bpS), steps=Math.max(1,Math.ceil(dist/st));
     const livingLine=(brush.id==='ink'||brush.id==='pencil');
     const angTgt=(az!=null)?az:PEN_ANGLE;
-    // Cache p0/p3 tangent-frame constants (centripetal parameterization simplified
-    // to uniform — good enough at this sample density and much cheaper).
+    // Centripetal parameterization simplified to uniform — good enough at
+    // this sample density and much cheaper. Basis lives in brush-math.js.
     let px=x1, py=y1, pang=Math.atan2(dy,dx);
+    const P0=[x0,y0], P1=[x1,y1], P2=[x2,y2], P3=[x3,y3];
     for(let i=1;i<=steps;i++){
-      const t=i/steps, tt=t*t, ttt=tt*t;
-      // Standard Catmull-Rom basis (tension 0.5)
-      const b0 = -0.5*ttt +     tt - 0.5*t;
-      const b1 =  1.5*ttt - 2.5*tt         + 1;
-      const b2 = -1.5*ttt + 2.0*tt + 0.5*t;
-      const b3 =  0.5*ttt - 0.5*tt;
-      const x = b0*x0 + b1*x1 + b2*x2 + b3*x3;
-      const y = b0*y0 + b1*y1 + b2*y2 + b3*y3;
+      const t=i/steps;
+      const pt = _BM.catmullRom(t, P0, P1, P2, P3);
+      const x = pt[0], y = pt[1];
       const ang=Math.atan2(y-py, x-px);
       let d=null, reveal=1;
       if(livingLine){
@@ -2514,187 +2505,31 @@
   // On boot, if a snapshot exists, we rehydrate `projects[]` in place before the
   // first render. Failing gracefully is important: any error at any step just
   // falls back to a blank session (no user-facing crash).
-  const AUTOSAVE = (() => {
-    const DB_NAME = 'inkframe';
-    const DB_VER  = 1;
-    const STORE   = 'sessions';
-    const KEY     = 'current';
-    const SAVE_DELAY_MS = 800;
-
-    // ---- IDB helpers (small hand-rolled wrapper; no deps) ----
-    function openDB(){
-      return new Promise((resolve,reject)=>{
-        if(!('indexedDB' in window)){ reject(new Error('no idb')); return; }
-        const req=indexedDB.open(DB_NAME, DB_VER);
-        req.onupgradeneeded=()=>{
-          const db=req.result;
-          if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
-        };
-        req.onsuccess=()=>resolve(req.result);
-        req.onerror =()=>reject(req.error);
-      });
-    }
-    async function idbPut(value){
-      const db=await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx=db.transaction(STORE,'readwrite');
-        tx.objectStore(STORE).put(value, KEY);
-        tx.oncomplete=()=>{ db.close(); resolve(); };
-        tx.onerror   =()=>{ db.close(); reject(tx.error); };
-      });
-    }
-    async function idbGet(){
-      const db=await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx=db.transaction(STORE,'readonly');
-        const rq=tx.objectStore(STORE).get(KEY);
-        rq.onsuccess=()=>{ db.close(); resolve(rq.result||null); };
-        rq.onerror  =()=>{ db.close(); reject(rq.error); };
-      });
-    }
-    async function idbDel(){
-      const db=await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx=db.transaction(STORE,'readwrite');
-        tx.objectStore(STORE).delete(KEY);
-        tx.oncomplete=()=>{ db.close(); resolve(); };
-        tx.onerror   =()=>{ db.close(); reject(tx.error); };
-      });
-    }
-
-    // ---- Serialize a live projects[] into a plain, IDB-safe payload ----
-    // Frames are captured as PNG Blobs (structured-cloneable) rather than
-    // ImageData buffers, which would balloon storage 4x for the alpha channel.
-    function frameToBlob(cnv){
-      return new Promise(res=>{
-        if(cnv.toBlob) cnv.toBlob(b=>res(b), 'image/png');
-        else{
-          // Fallback for the (very rare) contexts without HTMLCanvasElement.toBlob.
-          const url=cnv.toDataURL('image/png');
-          fetch(url).then(r=>r.blob()).then(res).catch(()=>res(null));
-        }
-      });
-    }
-    async function serialize(){
-      // save scalar state into the currently-active project before snapshotting
-      const p=projects[pi]; if(p){ p.cur=cur; p.fps=fps; p.w=W; p.h=H; }
-      const payload={
-        v:2, savedAt:Date.now(), pi,
-        projects: await Promise.all(projects.map(async P=>({
-          name:P.name||'Canvas', w:P.w, h:P.h, cur:P.cur||0, fps:P.fps||12,
-          holds:(P.holds||P.frames.map(()=>1)).slice(),
-          // v2: each frame is { active, layers:[{name,visible,opacity,blend,blob}] }.
-          frames: await Promise.all(P.frames.map(async fr=>{
-            const F = upgradeFrame(fr, P.w, P.h);
-            return {
-              active: F.active|0,
-              layers: await Promise.all(F.layers.map(async L=>({
-                name:L.name, visible:!!L.visible, opacity:+L.opacity, blend:L.blend||'source-over',
-                blob: await frameToBlob(L.canvas),
-              }))),
-            };
-          })),
-        }))),
-      };
-      return payload;
-    }
-
-    // ---- Turn a stored payload back into live canvases ----
-    function blobToCanvas(blob, w, h){
-      return new Promise(res=>{
-        if(!blob){ const c=document.createElement('canvas'); c.width=w; c.height=h; res(c); return; }
-        const url=URL.createObjectURL(blob);
-        const img=new Image();
-        img.onload =()=>{ const c=document.createElement('canvas'); c.width=w; c.height=h;
-          c.getContext('2d').drawImage(img,0,0); URL.revokeObjectURL(url); res(c); };
-        img.onerror=()=>{ URL.revokeObjectURL(url); const c=document.createElement('canvas');
-          c.width=w; c.height=h; res(c); };
-        img.src=url;
-      });
-    }
-    async function restore(payload){
-      if(!payload || !payload.projects || !payload.projects.length) return false;
-      const restored=[];
-      for(const P of payload.projects){
-        const w=P.w||W0, h=P.h||H0;
-        // Accept both payload versions:
-        //   v1: frames = [Blob, Blob, ...]                   (flat, pre-layers)
-        //   v2: frames = [{active, layers:[{...,blob}]}, ...] (layer-aware)
-        const fr = [];
-        for(const item of P.frames){
-          if(item && Array.isArray(item.layers)){
-            const layers = await Promise.all(item.layers.map(async sL=>({
-              id:__lid++, name:sL.name||'Layer',
-              visible: sL.visible!==false,
-              opacity: typeof sL.opacity==='number' ? sL.opacity : 1,
-              blend: sL.blend || 'source-over',
-              canvas: await blobToCanvas(sL.blob, w, h),
-            })));
-            if(!layers.length) layers.push(newLayer(w,h,'Layer 1'));
-            fr.push({ layers, active: Math.min(item.active|0, layers.length-1),
-                      _comp:null, _compV:-1, _v:0 });
-          } else {
-            const canvas = await blobToCanvas(item, w, h);
-            fr.push({ layers:[{ id:__lid++, name:'Layer 1', visible:true, opacity:1,
-                                blend:'source-over', canvas }], active:0,
-                      _comp:null, _compV:-1, _v:0 });
-          }
-        }
-        restored.push({
-          frames: fr.length ? fr : [newFrame(w,h)],
-          holds: (P.holds && P.holds.length===fr.length) ? P.holds.slice() : fr.map(()=>1),
-          cur:   Math.min(Math.max(0, P.cur|0), Math.max(0, fr.length-1)),
-          undo:  [], redo:[],
-          w, h, fps:P.fps||12, name:P.name||'Canvas',
-        });
-      }
-      // splice into the pre-existing projects array so all the outer aliases stay valid
-      projects.length=0; for(const P of restored) projects.push(P);
-      const targetPi = Math.min(Math.max(0, payload.pi|0), projects.length-1);
+  // Autosave -- IndexedDB persistence for the full session.
+  // The heavy lifting lives in web/autosave.js (see that file for the payload
+  // format and back-compat notes). We inject an env object so the module can
+  // read/write our live projects[] array and useProject() the restored index
+  // without owning any app state itself.
+  const AUTOSAVE = window.InkFrameAutosave.createAutosave({
+    getProjects: () => projects,
+    getActive:   () => ({ pi, cur, fps, W, H }),
+    setActive:   ({ pi:targetPi, W:tw, H:th }) => {
       useProject(targetPi);
-      // update the top-level canvas element to match the restored project's size
-      canvas.width=W; canvas.height=H;
-      return true;
-    }
-
-    // ---- Debounced save + flush-on-hide/unload ----
-    let scheduled=0, savingNow=false, lastSavedAt=0, lastError=null;
-    async function flush(){
-      if(savingNow) return;
-      savingNow=true;
-      try{
-        const payload=await serialize();
-        await idbPut(payload);
-        lastSavedAt=payload.savedAt; lastError=null;
-      }catch(e){
-        lastError=e; console.warn('[autosave] failed', e);
-      }finally{
-        savingNow=false;
-      }
-    }
-    function schedule(){
-      if(scheduled) return;
-      scheduled=setTimeout(()=>{ scheduled=0; flush(); }, SAVE_DELAY_MS);
-    }
-    function flushNow(){
-      if(scheduled){ clearTimeout(scheduled); scheduled=0; }
-      // fire-and-forget; the page may be unloading — the async tx will still complete
-      flush();
-    }
-
-    // Hide/unload hooks: use both events for maximum coverage across browsers +
-    // Android WebView (which fires 'pagehide' more reliably than 'beforeunload').
-    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushNow(); });
-    window.addEventListener('pagehide', flushNow);
-    window.addEventListener('beforeunload', flushNow);
-
-    return {
-      schedule, flushNow, restore,
-      loadPayload: idbGet,
-      clear: idbDel,
-      status: ()=>({ lastSavedAt, savingNow, lastError }),
-    };
-  })();
+      // Resize the on-screen <canvas> to match the restored project so the
+      // first render post-restore doesnt smear pixels.
+      canvas.width = tw; canvas.height = th;
+    },
+    replaceProjects: (list) => {
+      // Keep object identity of the outer projects[] array so every module-
+      // local alias in the app (frames, holds, undoStack, ...) stays valid.
+      projects.length = 0; for (const P of list) projects.push(P);
+    },
+    newLayer:      newLayer,
+    newFrame:      newFrame,
+    upgradeFrame:  upgradeFrame,
+    nextLayerId:   () => __lid++,
+    W0, H0,
+  });
 
   // Wire the autosave debounce into every place a project actually mutates.
   // These wrappers preserve the original callers' return values.
