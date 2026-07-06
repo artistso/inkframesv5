@@ -119,6 +119,11 @@ Or grab a fresh debug APK from any completed Android CI run in
 See `BUILD.md` for release signing and `RELEASING.md` for the Play Store
 pipeline.
 
+## Release/testing helpers
+
+- `RELEASE_CHECKLIST.md` — tablet/browser/APK smoke-test flow: backup archive → CI artifact → install → verify exports and stylus behavior.
+- `RELEASE_NOTES.md` — current release summary for testers and GitHub Releases.
+
 ## Repository layout
 
 ```
