@@ -552,11 +552,12 @@
 <div id="startPanel" role="dialog" aria-label="Start a project">
   <div class="card">
     <h2>Start</h2>
-    <div class="tag">Choose a canvas · begin drawing</div>
-    <p>Pick a starter below, or open the full project manager for custom sizes, archives, and recovery.</p>
+    <div class="tag">Choose a canvas · restore work · begin drawing</div>
+    <p>Pick a starter, import a saved `.inkframe` archive, or open the full project manager for custom sizes and recovery.</p>
     <div id="startTemplates"></div>
     <div id="startActions">
       <button id="startBlank" type="button" class="primary">Blank canvas</button>
+      <button id="startImport" type="button">Import archive</button>
       <button id="startManage" type="button">Project manager</button>
       <button id="startSkip" type="button">Skip</button>
       <button id="startNever" type="button">Don’t show again</button>
@@ -3921,7 +3922,7 @@
   }
 
   const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave'), projectTemplates=$('projectTemplates');
-  const startPanel=$('startPanel'), startTemplates=$('startTemplates'), startBlank=$('startBlank'), startManage=$('startManage'), startSkip=$('startSkip'), startNever=$('startNever');
+  const startPanel=$('startPanel'), startTemplates=$('startTemplates'), startBlank=$('startBlank'), startImport=$('startImport'), startManage=$('startManage'), startSkip=$('startSkip'), startNever=$('startNever');
   const projectClose=$('projectClose'), projectNew=$('projectNew'), projectSave=$('projectSave'), projectClearSave=$('projectClearSave');
   const projectExport=$('projectExport'), projectImport=$('projectImport'), projectImportFile=$('projectImportFile');
 
@@ -4148,6 +4149,7 @@
     startPanel.classList.add('show');
   }
   if(startBlank) startBlank.addEventListener('click',()=>{ closeStartPanel(); flash('Blank canvas ready'); });
+  if(startImport) startImport.addEventListener('click',()=>{ projectImportFile.click(); });
   if(startManage) startManage.addEventListener('click',()=>{ closeStartPanel(); openProjectPanel(); });
   if(startSkip) startSkip.addEventListener('click',()=>closeStartPanel());
   if(startNever) startNever.addEventListener('click',()=>{ setStartDismissed(); closeStartPanel(); flash('Start screen hidden'); });
@@ -4266,7 +4268,7 @@
       });
       projects.length=0; for(const P of restored.projects.slice(0,MAX_PROJECTS)) projects.push(P);
       bindProjectDirect(Math.min(restored.active, projects.length-1));
-      repaintProjectShell(); renderProjectPanel();
+      repaintProjectShell(); renderProjectPanel(); closeStartPanel();
       AUTOSAVE.schedule(); Promise.resolve(AUTOSAVE.flushNow && AUTOSAVE.flushNow()).catch(()=>{});
       flash('Archive imported · '+projects.length+' canvas'+(projects.length===1?'':'es'));
     }catch(e){ console.error('[project] import failed', e); renderProjectPanel(); flash('Archive import failed: '+(e.message||e)); }
