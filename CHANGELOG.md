@@ -6,6 +6,39 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — reference image import
+- **Import action on the Layers orb** — opens a file picker (PNG / JPEG /
+  GIF / WebP), fits the image inside the canvas preserving aspect ratio,
+  and drops it as a fresh layer at the BOTTOM of the stack at 40 % opacity
+  under the name `Ref · <filename>`. Everything else about it is a normal
+  layer (move up/down, opacity, visibility, delete, undo, autosave, PNG /
+  GIF / video export all Just Work).
+- **Drag-and-drop** an image file anywhere on the canvas triggers the same
+  import path.
+
+### Web build — Brush Lab (custom brush editor)
+- **Long-press any brush kid** to open a floating panel with sliders for
+  size, opacity, hardness, spacing, and jitter. Values persist per brush
+  via the existing prefs layer; a live preview strip inside the panel
+  re-paints on every input change through the real `dab()` engine so the
+  stroke you see is exactly what will paint.
+- Hardness became a real user control (previously fixed per brush). New
+  Spacing pref replaces the hardcoded `0.14` dab step. New Jitter pref
+  perturbs each dab's position by up to `size * jitter * 0.5`, so any
+  brush can be turned into charcoal / spatter / gouache instantly.
+- Reset button restores the brush's shipped defaults.
+
+### Web build — MP4 / WebM video export
+- **New Video action** next to GIF. Records the timeline through
+  `MediaRecorder` off an offscreen `<canvas>`, feature-detecting codecs
+  in order: MP4 (H.264 baseline), WebM (VP9), WebM (VP8). Filename
+  extension matches the actual codec chosen.
+- Uses `canvas.captureStream(0)` + `track.requestFrame()` for manual
+  frame pacing so per-frame Holds are honoured exactly (not real-time
+  captured — the video is frame-accurate).
+- Same overlay + Cancel button as GIF; a running video export is torn
+  down cleanly if cancelled.
+
 ### Web build — buttery-smooth perf pass
 - **Canvas resize (corner + side handles) is rAF-coalesced**: every pointermove
   used to run `applyCanvas()` + `startWires()` synchronously, meaning a 120 Hz

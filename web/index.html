@@ -1254,6 +1254,8 @@
     export:  S+'<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 18h14" class="soft"/>'+E,
     // GIF: film-strip badge with tiny "GIF" letterforms
     gif:     S+'<rect x="3.5" y="5.5" width="17" height="13" rx="1.6"/><path d="M3.5 8.5h17M3.5 15.5h17" class="soft"/><path d="M6 7v-1M9 7v-1M12 7v-1M15 7v-1M18 7v-1M6 18v-1M9 18v-1M12 18v-1M15 18v-1M18 18v-1" class="soft"/><path d="M9 10.5v3h1.5v-1H10M13 10.5v3M15.5 10.5v3M15.5 12h1.5" stroke-width="1.4"/>'+E,
+    // Video: film camera silhouette with a play triangle on the body.
+    video:   S+'<rect x="3" y="7" width="13" height="10" rx="1.6"/><path d="M16 10l5-2v8l-5-2z"/><path d="M7 11l4 2-4 2z" class="fill"/>'+E,
     // Layers orb glyphs -- kept in the same rose-quartz line style as the rest
     layers:  S+'<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4" class="soft"/><path d="M4 16l8 4 8-4" class="soft"/>'+E,
     layerAdd:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M18 14v6M15 17h6" stroke-width="1.6"/>'+E,
@@ -1603,6 +1605,9 @@
   // GIF — animated, loops, respects per-frame holds and current FPS.
   // Encoding runs in a Web Worker so the UI stays responsive even for long timelines.
   actKid('@gif','GIF',()=>exportAnimatedGif());
+  // MP4 (H.264) if the platform supports it; VP9/VP8 WebM otherwise.
+  // Same overlay + cancel as GIF; the underlying codec is auto-detected.
+  actKid('@video','Video',()=>exportVideo());
   const kStylus=actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);savePrefs();flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');}); kStylus.classList.toggle('on',stylusOnly);
   const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);savePrefs();flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
   const kFull=actKid('@full','Full',k=>{ if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||(()=>{})).call(document.documentElement); document.body.classList.add('zen'); k.classList.add('on'); }
@@ -2376,9 +2381,124 @@
       return (n/1048576).toFixed(1) + ' MB';
     }
 
-    return { exportAnimatedGif };
+    // ============================================================
+    // Video export — MediaRecorder over an offscreen <canvas>
+    // ============================================================
+    // Strategy:
+    //   1. Feature-detect codecs in order: MP4 H.264, WebM VP9, WebM VP8.
+    //   2. Create an offscreen canvas the size of the project and capture a
+    //      MediaStream from it via canvas.captureStream(0). The 0 fps hint
+    //      means "I'll call requestFrame() manually", so we control timing
+    //      exactly rather than trusting the browser's real-time capture.
+    //   3. For each frame: draw the composite onto the offscreen canvas,
+    //      call track.requestFrame(), then wait (Hold ticks * (1000/fps)) ms
+    //      before advancing. This gives a video whose in-editor timing
+    //      matches playback perfectly, honouring per-frame holds.
+    //   4. On the last frame, stop() the recorder and download the resulting
+    //      Blob. Filename extension matches the codec that was actually used.
+    let videoRec = null;
+    let videoCancelled = false;
+
+    // First supported mime wins. h264 fails on Firefox and older Chrome,
+    // WebM VP9/VP8 fall back cleanly. Chrome/Edge/Safari 14+ ship H.264.
+    function pickVideoMime(){
+      const candidates = [
+        {mime:'video/mp4;codecs=avc1.42E01F,mp4a.40.2', ext:'mp4'},
+        {mime:'video/mp4;codecs=avc1.42E01E',           ext:'mp4'},
+        {mime:'video/mp4',                              ext:'mp4'},
+        {mime:'video/webm;codecs=vp9',                  ext:'webm'},
+        {mime:'video/webm;codecs=vp8',                  ext:'webm'},
+        {mime:'video/webm',                             ext:'webm'},
+      ];
+      for(const c of candidates){
+        if(typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c.mime)) return c;
+      }
+      return null;
+    }
+
+    async function exportVideo(opts = {}){
+      if(videoRec){ flash('Export already running'); return; }
+      if(typeof MediaRecorder === 'undefined'){ flash('Video export not supported here'); return; }
+      const pick = pickVideoMime();
+      if(!pick){ flash('No supported video codec'); return; }
+      const P = projects[pi];
+      if(!P || !P.frames.length){ flash('Nothing to export'); return; }
+
+      videoCancelled = false;
+      const width  = opts.width  || P.w || W;
+      const height = opts.height || P.h || H;
+      const activeFps = opts.fps || P.fps || fps || 12;
+      const spf = 1000 / activeFps;                 // ms per tick
+
+      show(`Rendering ${pick.ext.toUpperCase()}…`);
+      // Prep the offscreen canvas.
+      const off = document.createElement('canvas');
+      off.width = width; off.height = height;
+      const g = off.getContext('2d');
+      // captureStream(0) gives us manual frame control via track.requestFrame().
+      let stream, track;
+      try {
+        stream = off.captureStream(0);
+        track  = stream.getVideoTracks()[0];
+      } catch(e){
+        console.warn('[export] captureStream failed:', e);
+        flash('Video export not supported here'); hide(); return;
+      }
+
+      let rec;
+      try {
+        rec = new MediaRecorder(stream, { mimeType: pick.mime,
+          videoBitsPerSecond: opts.bitrate || 6_000_000 });
+      } catch(e){
+        console.warn('[export] MediaRecorder ctor failed:', e);
+        flash('Video export failed'); hide(); return;
+      }
+      videoRec = rec;
+      const chunks = [];
+      rec.ondataavailable = (ev)=>{ if(ev.data && ev.data.size) chunks.push(ev.data); };
+      const finished = new Promise(resolve=>{ rec.onstop = resolve; });
+
+      rec.start(100);  // gather chunks every 100 ms; keeps memory bounded
+
+      // Draw and cadence each frame.
+      const N = P.frames.length;
+      for(let i=0; i<N; i++){
+        if(videoCancelled){ break; }
+        // Composite onto the offscreen: paper background then frame layers.
+        g.fillStyle = '#fff0f3'; g.fillRect(0,0,width,height);
+        const fr = upgradeFrame(P.frames[i], width, height);
+        g.drawImage(frameComposite(fr, width, height), 0, 0);
+        if(track.requestFrame) track.requestFrame();
+        progress(i+1, N, 'Recording');
+        const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
+        await new Promise(r=>setTimeout(r, spf * hold));
+      }
+
+      // Give the recorder a beat to flush the last frame, then stop.
+      await new Promise(r=>setTimeout(r, 120));
+      try { rec.stop(); } catch(_){}
+      try { track.stop(); } catch(_){}
+      await finished;
+      videoRec = null;
+
+      if(videoCancelled){ hide(); flash('Export cancelled'); return; }
+      const blob = new Blob(chunks, { type: pick.mime.split(';')[0] });
+      triggerDownload(blob, `inkframe-${Date.now()}.${pick.ext}`);
+      hide(); flash(`Exported ${pick.ext.toUpperCase()} · ${humanBytes(blob.size)}`);
+    }
+
+    // Extend the shared Cancel to also stop a live video recording.
+    cancelBtn.addEventListener('click', ()=>{
+      if(videoRec){
+        videoCancelled = true;
+        try { videoRec.stop(); } catch(_){}
+      }
+    });
+
+    return { exportAnimatedGif, exportVideo };
   })();
   const exportAnimatedGif = EXPORT.exportAnimatedGif;
+  const exportVideo       = EXPORT.exportVideo;
 
   // ============================================================
   // Autosave — IndexedDB persistence for the full session
