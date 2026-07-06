@@ -66,22 +66,21 @@ In the installed APK, verify:
 
 ## 6. Version metadata and release notes
 
-Before tagging a release, update:
-
-- `web/metadata.json` `version` — this drives the in-app Studio version and Android `versionName`
-- `web/package.json` `version` — CI verifies it matches `web/metadata.json`
-- `CHANGELOG.md`
-
-Then regenerate notes and verify:
+Before tagging a release, update `CHANGELOG.md`, then bump the version:
 
 ```bash
-node tools/update-release-notes.mjs
-node tools/update-release-notes.mjs --check
+node tools/bump-version.mjs 0.1.1
 ```
 
-CI runs the same release-notes check before building the APK.
+The bump helper updates `web/metadata.json` and `web/package.json`, regenerates `RELEASE_NOTES.md`, and runs the version/release-notes checks. You can set an explicit release date with:
 
-Finally, run the release tag helper:
+```bash
+node tools/bump-version.mjs 0.1.1 --date 2026-07-06
+```
+
+CI runs the same release-notes/version checks before building the APK.
+
+Finally, commit/push the bump and run the release tag helper:
 
 ```bash
 node tools/prepare-release.mjs

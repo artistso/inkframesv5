@@ -123,6 +123,7 @@ pipeline.
 
 - `RELEASE_CHECKLIST.md` — tablet/browser/APK smoke-test flow: backup archive → CI artifact → install → verify exports and stylus behavior.
 - `RELEASE_NOTES.md` — generated tester/GitHub Release summary. Regenerate with `node tools/update-release-notes.mjs` after updating `CHANGELOG.md` / `web/metadata.json`.
+- `tools/bump-version.mjs` — updates `web/metadata.json` + `web/package.json`, regenerates release notes, and runs version checks.
 - `tools/prepare-release.mjs` — verifies release readiness and prints the exact `git tag` / `git push` commands for the metadata version.
 
 ## Repository layout

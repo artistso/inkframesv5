@@ -40,6 +40,9 @@ jobs:
         env:
           NODE_PATH: /tmp/jsdom/node_modules
         run: |
+          node --check tools/update-release-notes.mjs
+          node --check tools/prepare-release.mjs
+          node --check tools/bump-version.mjs
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
           node web/tests/boot-smoke.mjs
