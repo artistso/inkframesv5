@@ -150,6 +150,7 @@ const projectButtonLabels = Array.from(d.querySelectorAll('.projBtn')).map(b => 
 const frameKidCount = d.querySelectorAll('.frameKid').length;
 const frameBoard = d.getElementById('frameBoard');
 const frameSlotCount = d.querySelectorAll('#frameBoard .frameSlot').length;
+const frameCapBadge = d.querySelector('#frameBoard .frameCapBadge');
 const frameActionLabels = Array.from(d.querySelectorAll('.node .kid .sub')).map(s => s.textContent.trim());
 if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
 if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
@@ -170,7 +171,7 @@ if (!readableTextKid) { console.error('❌ #readableTextKid (readability toggle)
 if (!frostBrushKid) { console.error('❌ frost brush tool missing'); failed++; }
 if (!smudgeBrushKid) { console.error('❌ smudge brush tool missing'); failed++; }
 if (frameKidCount < 1) { console.error('❌ frame thumbnail list did not render'); failed++; }
-if (!frameBoard || frameSlotCount < 12) { console.error(`❌ perimeter frame board did not render enough slots (${frameSlotCount})`); failed++; }
+if (!frameBoard || frameSlotCount < 12 || !frameCapBadge) { console.error(`❌ perimeter frame board did not render enough slots/badge (slots=${frameSlotCount}, badge=${!!frameCapBadge})`); failed++; }
 for (const label of ['+4','H+','Twos','Rev','Ping','All','None']) {
   if (!frameActionLabels.includes(label)) { console.error(`❌ frame batch action missing: ${label}`); failed++; }
 }
