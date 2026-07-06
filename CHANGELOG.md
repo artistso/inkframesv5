@@ -6,6 +6,23 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — animated GIF export
+- **New GIF action in the Actions node** (`@gif` glyph) — exports the current
+  project as a looping animated GIF, honouring per-frame Hold ticks and the
+  active FPS. Timing is snapped to centiseconds (the format's resolution) and
+  hold multipliers stretch the delay proportionally.
+- **`web/gif-encoder.js`** — a pure-JS, zero-dependency GIF89a encoder built
+  as a 1:1 port of the existing Kotlin implementation in
+  `core-common/gif/*.kt` (LzwEncoder, MedianCutQuantizer, GifEncoder). The
+  same variable names and control flow are preserved so bug fixes port back
+  and forth trivially. Verified against `file(1)` and `identify(1)`.
+- **Web Worker offload** — encoding runs in a background worker (with an
+  automatic main-thread fallback for the file:// WebView, which blocks
+  Worker() from that origin). Progress messages update a translucent
+  overlay in real time; a Cancel button terminates the worker mid-encode.
+- Frames are transferred to the worker as ArrayBuffer via the `transfer`
+  list so there's zero copy overhead between compositing and encoding.
+
 ### Web build — persistence & PWA
 - **IndexedDB autosave** — the entire session (every project's frames, holds,
   fps, name, canvas size, and the active project index) is persisted 800 ms
