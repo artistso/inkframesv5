@@ -165,6 +165,9 @@ if (frameKidCount < 1) { console.error('❌ frame thumbnail list did not render'
 for (const label of ['+4','H+','Twos','Rev','Ping','All','None']) {
   if (!frameActionLabels.includes(label)) { console.error(`❌ frame batch action missing: ${label}`); failed++; }
 }
+for (const label of ['Merge','Flat']) {
+  if (!frameActionLabels.includes(label)) { console.error(`❌ layer productivity action missing: ${label}`); failed++; }
+}
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }
 
 if (failed) {

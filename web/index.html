@@ -3829,6 +3829,34 @@
     const t=fr.layers[fr.active]; fr.layers[fr.active]=fr.layers[fr.active-1]; fr.layers[fr.active-1]=t;
     fr.active--; bumpFrame(fr); render(); refreshLayers();
   });
+  // Merge active layer DOWN into the layer immediately below, respecting the
+  // active layer's opacity + blend mode, then remove the active layer. This is
+  // the most common "commit this paint pass" action in layer-based workflows.
+  const kLayMerge=lAct('@layerDn','Merge',()=>{
+    const fr=frames[cur]; if(!fr || fr.layers.length<=1 || fr.active<=0){ flash('No layer below'); return; }
+    pushU(structSnap());
+    const top=fr.layers[fr.active], below=fr.layers[fr.active-1];
+    const g=below.canvas.getContext('2d');
+    g.save(); g.globalAlpha=top.opacity; g.globalCompositeOperation=top.blend||'source-over';
+    g.drawImage(top.canvas,0,0); g.restore();
+    below.name=below.name.replace(/\s*\+\s*.*$/,'')+' + '+top.name;
+    fr.layers.splice(fr.active,1); fr.active--;
+    bumpFrame(fr); refreshFctx(); render(); refreshLayers(); flash('Merged down');
+  });
+  // Flatten VISIBLE layers into one transparent layer. Hidden layers are left
+  // out intentionally, matching the mental model of "flatten what I can see".
+  const kLayFlat=lAct('@layers','Flat',()=>{
+    const fr=frames[cur]; if(!fr || fr.layers.length<=1){ flash('Already flat'); return; }
+    pushU(structSnap());
+    const c=mkAt(W,H), g=c.getContext('2d');
+    for(const L of fr.layers){
+      if(!L.visible || L.opacity<=0) continue;
+      g.save(); g.globalAlpha=L.opacity; g.globalCompositeOperation=L.blend||'source-over';
+      g.drawImage(L.canvas,0,0); g.restore();
+    }
+    fr.layers=[{ id:__lid++, name:'Flattened visible', visible:true, opacity:1, blend:'source-over', canvas:c }];
+    fr.active=0; bumpFrame(fr); refreshFctx(); render(); refreshLayers(); flash('Flattened visible layers');
+  });
   // Import an image as a fresh REFERENCE layer at the bottom of the stack.
   // Opens a hidden file picker (JPEG/PNG/GIF/WebP), fits the image inside the
   // canvas preserving aspect ratio, drops it at 40% opacity so it reads as
