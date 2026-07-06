@@ -239,6 +239,44 @@
   #expo button{ font:inherit; color:#fff; background:transparent; border:1px solid var(--stroke);
     padding:6px 14px; border-radius:14px; cursor:pointer; opacity:.85; }
   #expo button:hover{ opacity:1; }
+
+  /* Brush Lab -- floating panel opened via long-press on a brush kid. */
+  #blab{ position:fixed; z-index:65; display:none; min-width:290px; max-width:340px;
+    padding:18px 20px 16px; border-radius:22px; color:var(--text);
+    background:rgba(20,0,14,.78); border:1px solid var(--stroke);
+    box-shadow:var(--shadow), inset 0 1px 0 var(--rim);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+  #blab.show{ display:block; }
+  #blab .hdr{ display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:10px; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--dim); }
+  #blab .hdr b{ color:var(--blush); font-weight:500; letter-spacing:.14em; }
+  #blab .row{ display:flex; align-items:center; gap:10px; margin:9px 0; }
+  #blab .lbl{ flex:0 0 74px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); }
+  #blab .val{ flex:0 0 40px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums;
+    color:var(--blush); }
+  #blab input[type=range]{ flex:1; -webkit-appearance:none; appearance:none;
+    height:6px; border-radius:6px; margin:0; touch-action:none;
+    background:linear-gradient(90deg, var(--accent-deep), var(--rose));
+    outline:none; }
+  #blab input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none;
+    width:20px; height:20px; border-radius:50%;
+    background:linear-gradient(160deg,var(--blush),var(--accent));
+    border:1.5px solid var(--rim); box-shadow:0 0 10px var(--accent); cursor:pointer; }
+  #blab input[type=range]::-moz-range-thumb{ width:20px; height:20px; border-radius:50%;
+    background:linear-gradient(160deg,var(--blush),var(--accent));
+    border:1.5px solid var(--rim); box-shadow:0 0 10px var(--accent); cursor:pointer; }
+  #blab .preview{ margin:8px 0 14px; height:56px; border-radius:14px; overflow:hidden;
+    background:#fff0f3; border:1px solid rgba(247,202,201,.35);
+    box-shadow:inset 0 1px 3px rgba(20,0,14,.15); }
+  #blab .preview canvas{ display:block; width:100%; height:100%; }
+  #blab .btns{ display:flex; gap:8px; margin-top:12px; justify-content:flex-end; }
+  #blab button{ font:inherit; color:#fff; background:transparent; border:1px solid var(--stroke);
+    padding:6px 14px; border-radius:12px; cursor:pointer; opacity:.85; font-size:12px;
+    letter-spacing:.08em; text-transform:uppercase; }
+  #blab button:hover{ opacity:1; }
+  #blab button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent));
+    border-color:var(--rim); }
 </style>
 </head>
 <body>
@@ -270,6 +308,23 @@
     <div class="msg" id="expoMsg">Preparing frames…</div>
     <div class="bar"><div class="fill" id="expoFill"></div></div>
     <button id="expoCancel" type="button">Cancel</button>
+  </div>
+</div>
+<!-- Brush Lab: long-press any brush kid to open. Sliders adjust the brush's
+     size / opacity / hardness / spacing / jitter live; the preview strip
+     shows what a stroke looks like with the current profile. Reset restores
+     the brush's shipped defaults. -->
+<div id="blab" role="dialog" aria-label="Brush lab">
+  <div class="hdr"><b id="blabName">brush</b><span id="blabSub">Long-press · adjust</span></div>
+  <div class="preview"><canvas id="blabPreview"></canvas></div>
+  <div class="row"><span class="lbl">Size</span><input type="range" id="blabSize" min="1" max="120" step="1"><span class="val" id="blabSizeV">0</span></div>
+  <div class="row"><span class="lbl">Opacity</span><input type="range" id="blabOp" min="1" max="100" step="1"><span class="val" id="blabOpV">0</span></div>
+  <div class="row"><span class="lbl">Hardness</span><input type="range" id="blabHard" min="0" max="100" step="1"><span class="val" id="blabHardV">0</span></div>
+  <div class="row"><span class="lbl">Spacing</span><input type="range" id="blabSp" min="2" max="50" step="1"><span class="val" id="blabSpV">0</span></div>
+  <div class="row"><span class="lbl">Jitter</span><input type="range" id="blabJit" min="0" max="100" step="1"><span class="val" id="blabJitV">0</span></div>
+  <div class="btns">
+    <button id="blabReset" type="button">Reset</button>
+    <button id="blabClose" type="button" class="primary">Done</button>
   </div>
 </div>
 <button id="collapseBtn" class="glass" title="Collapse all circles" aria-label="Collapse all circles"></button>
@@ -364,8 +419,25 @@
   // an app restart. LocalStorage is fine here — the payload is tiny and it stays
   // scoped to the WebView's origin (file://) which the Android shell reuses on relaunch.
   const PREF_KEY='inkframe.prefs.v1';
-  const brushPrefs={};   // { pencil:{size,op}, ink:{...}, ... }
-  brushes.forEach(b=>{ brushPrefs[b.id]={size:b.size, op:b.op}; });
+  // Per-brush prefs. Each brush has a mutable "profile" the user can tune:
+  //   size     -- diameter in px
+  //   op       -- 0..1 opacity multiplier
+  //   hard     -- 0..1 nib hardness (1 = solid disc, 0 = soft feather)
+  //   spacing  -- 0.02..0.5 fraction of size between dabs (lower = denser)
+  //   jitter   -- 0..1 random position offset per dab, scaled by size
+  const brushPrefs={};
+  brushes.forEach(b=>{ brushPrefs[b.id]={
+    size:b.size, op:b.op,
+    hard:b.hard, spacing:0.14, jitter:0,
+  }; });
+  // Current-brush accessors used by the paint engine. Cheaper than reading
+  // brushPrefs[brush.id].x every dab, and safe against `brush` swaps.
+  let _bpH=1, _bpS=0.14, _bpJ=0;
+  function refreshBp(){ const p=brushPrefs[brush.id]||{};
+    _bpH = (typeof p.hard==='number') ? p.hard : (brush.hard!=null?brush.hard:0.9);
+    _bpS = (typeof p.spacing==='number') ? p.spacing : 0.14;
+    _bpJ = (typeof p.jitter==='number') ? p.jitter : 0;
+  }
   function loadPrefs(){
     try{ const raw=localStorage.getItem(PREF_KEY); if(!raw) return;
       const p=JSON.parse(raw);
@@ -387,7 +459,13 @@
       brushId:brush.id, brushPrefs,
     })); }catch(_){}
   }, 180); }
-  function rememberBrush(){ brushPrefs[brush.id]={size, op:opacity}; savePrefs(); }
+  function rememberBrush(){
+    // Merge size+opacity onto the profile so hard/spacing/jitter (edited via
+    // the Brush Lab) survive dial nudges.
+    const cur=brushPrefs[brush.id]||{};
+    brushPrefs[brush.id]={ ...cur, size, op:opacity };
+    savePrefs();
+  }
   const mkAt=(w,h)=>{const f=document.createElement('canvas');f.width=w;f.height=h;return f;};
   const mk=()=>mkAt(W,H);
 
@@ -588,6 +666,12 @@
     const rev = (reveal==null)?1:reveal;
     const nibA = (nAng==null)?PEN_ANGLE:nAng;
     const fl = flat||0;
+    // Position jitter (Brush Lab) -- scaled by nib diameter so it stays
+    // proportional across brush sizes. Fires per dab; combined with spacing
+    // this gives dry-media (charcoal, gouache) or spatter behaviour.
+    if(_bpJ>0){ const r=_bpJ*d*0.5;
+      x += (Math.random()-0.5)*r;
+      y += (Math.random()-0.5)*r; }
     // marker bleed: slow + heavy pressure makes ink pool wider and softer
     let bleed=0;
     if(brush.id==='marker'){ bleed=Math.max(0,1-(spd||0)/14)*(0.30+0.70*pr); d*=(1+0.45*bleed); }
@@ -595,8 +679,10 @@
     if(erase){g.globalCompositeOperation='destination-out';g.globalAlpha=1;}
     else{g.globalCompositeOperation='source-over';
          g.globalAlpha=opacity*(brush.id==='pencil'?(.45+.55*pr):1)*rev;}
-    const setFill=rad=>{ if(brush.hard>0.85){g.fillStyle=erase?'#000':color;}
-      else{const gr=g.createRadialGradient(0,0,rad*brush.hard,0,0,rad);
+    // Hardness (Brush Lab) drives the nib profile: >0.85 = solid disc, else
+    // a radial gradient falling off from the hard-core radius to zero.
+    const setFill=rad=>{ if(_bpH>0.85){g.fillStyle=erase?'#000':color;}
+      else{const gr=g.createRadialGradient(0,0,rad*_bpH,0,0,rad);
         gr.addColorStop(0,erase?'#000':color);gr.addColorStop(1,hexA('#000000',0));g.fillStyle=gr;} };
     g.translate(x,y);
     if(brush.id==='ink'){                     // PEN: broad calligraphic nib, swivelling with weight
@@ -695,7 +781,7 @@
     const y3 = n>=4 ? histY[n-1] : 2*y2 - y1;
     const dx=x2-x1, dy=y2-y1, dist=Math.hypot(dx,dy);
     if(dist<0.001) return;
-    const st=Math.max(1,size*.14), steps=Math.max(1,Math.ceil(dist/st));
+    const st=Math.max(1,size*_bpS), steps=Math.max(1,Math.ceil(dist/st));
     const livingLine=(brush.id==='ink'||brush.id==='pencil');
     const angTgt=(az!=null)?az:PEN_ANGLE;
     // Cache p0/p3 tangent-frame constants (centripetal parameterization simplified
@@ -728,7 +814,7 @@
   }
 
   function seg(x0,y0,x1,y1,p,az,flat){const dx=x1-x0,dy=y1-y0,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
-    const st=Math.max(1,size*.14),n=Math.max(1,Math.floor(dist/st));
+    const st=Math.max(1,size*_bpS),n=Math.max(1,Math.floor(dist/st));
     const livingLine=(brush.id==='ink'||brush.id==='pencil');   // pen & pencil get momentum + reveal
     // nib orientation target: real tilt heading if the stylus reports it, else the default hold angle
     const angTgt = (az!=null) ? az : PEN_ANGLE;
@@ -1298,20 +1384,156 @@
 
   // ---- TOOLS node ----
   const nTools=makeNode({glyph:'@tools',label:'Tools',x:24,y:96});
-  brushes.forEach(b=>{ const k=kidEl({glyph:b.ic,sub:b.id});
-    k.dataset.id=b.id; if(b.id===brush.id)k.classList.add('on');
-    k.addEventListener('click',e=>{e.stopPropagation();
-      // Remember the outgoing brush's current dials, then restore the incoming brush's.
-      rememberBrush();
-      brush=b; const bp=brushPrefs[b.id]||{size:b.size,op:b.op};
-      size=bp.size; opacity=bp.op;
-      // Update the dial glyphs so the UI matches the freshly-restored numbers.
+  function selectBrush(b){
+    rememberBrush();
+    brush=b; const bp=brushPrefs[b.id]||{size:b.size,op:b.op};
+    size = (typeof bp.size==='number') ? bp.size : b.size;
+    opacity = (typeof bp.op==='number') ? bp.op : b.op;
+    refreshBp();
+    const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
+    if(sd) sd.textContent=Math.round(size);
+    if(od) od.textContent=Math.round(opacity*100);
+    [...nTools._kids.children].forEach(c=>c.classList.toggle('on',c.dataset.id===b.id));
+    savePrefs();
+  }
+
+  // ===== Brush Lab -- live editor for the current brush profile =====
+  // Opens via long-press on a brush kid. Every slider writes straight into
+  // brushPrefs[brush.id] (which savePrefs() persists) and re-renders a small
+  // preview stroke through the real dab() engine so the artist sees the change
+  // exactly as it will paint. Reset restores the brush's shipped defaults.
+  const BLAB = (() => {
+    const el     = document.getElementById('blab');
+    const nameEl = document.getElementById('blabName');
+    const sSize  = document.getElementById('blabSize'), vSize=document.getElementById('blabSizeV');
+    const sOp    = document.getElementById('blabOp'),   vOp  =document.getElementById('blabOpV');
+    const sHard  = document.getElementById('blabHard'), vHard=document.getElementById('blabHardV');
+    const sSp    = document.getElementById('blabSp'),   vSp  =document.getElementById('blabSpV');
+    const sJit   = document.getElementById('blabJit'),  vJit =document.getElementById('blabJitV');
+    const prev   = document.getElementById('blabPreview');
+    const btnClose = document.getElementById('blabClose');
+    const btnReset = document.getElementById('blabReset');
+
+    // Preview canvas — a fixed-height strip; we paint a horizontal stroke
+    // through it using the actual dab() engine so what you see is what you get.
+    function paintPreview(){
+      const rect = prev.getBoundingClientRect();
+      if(!rect.width) return;
+      prev.width = Math.round(rect.width); prev.height = Math.round(rect.height);
+      const g = prev.getContext('2d');
+      g.fillStyle = '#fff0f3'; g.fillRect(0,0,prev.width, prev.height);
+      // Draw a bezier-ish path across the strip using several dabs.
+      const y = prev.height/2;
+      const N = 42;
+      for(let i=0;i<=N;i++){
+        const t = i/N;
+        const x = 6 + t*(prev.width-12);
+        const yy = y + Math.sin(t*6.28)*prev.height*0.18;
+        const pr = 0.35 + 0.55*Math.sin(t*3.14);   // pressure sweep
+        // Use the current live brush state (size/opacity/_bpH/_bpS/_bpJ).
+        // No dOverride/reveal so we hit the plain painter path.
+        dab(g, x, yy, pr, false, 0, 4, null, 1, null, 0);
+      }
+    }
+
+    function open(){
+      const b = brush;
+      nameEl.textContent = b.id;
+      const bp = brushPrefs[b.id] || {};
+      sSize.value = Math.round(bp.size || size);
+      sOp.value   = Math.round((typeof bp.op==='number'?bp.op:opacity)*100);
+      sHard.value = Math.round(((typeof bp.hard==='number')?bp.hard:(b.hard||0.9))*100);
+      sSp.value   = Math.round(((typeof bp.spacing==='number')?bp.spacing:0.14)*100);
+      sJit.value  = Math.round(((typeof bp.jitter==='number')?bp.jitter:0)*100);
+      syncLabels(); el.classList.add('show');
+      // Position: top-centre-ish so the tools node underneath stays visible.
+      el.style.left = Math.max(12, (window.innerWidth - el.offsetWidth)/2) + 'px';
+      el.style.top  = Math.max(12, Math.min(window.innerHeight - el.offsetHeight - 12, 68)) + 'px';
+      // Paint after the layout settles.
+      requestAnimationFrame(paintPreview);
+    }
+    function close(){ el.classList.remove('show'); }
+    function syncLabels(){
+      vSize.textContent = sSize.value;
+      vOp.textContent   = sOp.value;
+      vHard.textContent = sHard.value;
+      vSp.textContent   = sSp.value;
+      vJit.textContent  = sJit.value;
+    }
+    function commit(){
+      const b = brush; const bp = brushPrefs[b.id] || (brushPrefs[b.id]={});
+      size    = +sSize.value;
+      opacity = (+sOp.value)/100;
+      bp.size    = size;
+      bp.op      = opacity;
+      bp.hard    = (+sHard.value)/100;
+      bp.spacing = Math.max(0.02, (+sSp.value)/100);
+      bp.jitter  = (+sJit.value)/100;
+      refreshBp();
+      // Keep the main Size/Opacity dials in sync.
       const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
       if(sd) sd.textContent=Math.round(size);
       if(od) od.textContent=Math.round(opacity*100);
-      [...nTools._kids.children].forEach(c=>c.classList.toggle('on',c.dataset.id===b.id));
-      savePrefs(); flash(b.id);});
-    nTools._kids.appendChild(k); });
+      savePrefs();
+      syncLabels();
+      paintPreview();
+    }
+    [sSize,sOp,sHard,sSp,sJit].forEach(s=>{
+      s.addEventListener('input', commit);
+      // Slider drags shouldn't propagate to the canvas' pointer listeners.
+      s.addEventListener('pointerdown', e=>e.stopPropagation());
+    });
+    btnClose.addEventListener('click', close);
+    btnReset.addEventListener('click', ()=>{
+      const b = brush;
+      // Restore the brush's shipped defaults from the `brushes` array.
+      const def = brushes.find(x=>x.id===b.id) || {};
+      brushPrefs[b.id] = { size:def.size, op:def.op, hard:def.hard, spacing:0.14, jitter:0 };
+      size = def.size; opacity = def.op;
+      refreshBp();
+      open();       // repopulate sliders + preview
+      savePrefs();
+      flash('Reset · '+b.id);
+    });
+    // Escape / tap-outside dismisses.
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape' && el.classList.contains('show')) close(); });
+    document.addEventListener('pointerdown', e=>{
+      if(!el.classList.contains('show')) return;
+      if(el.contains(e.target)) return;
+      // Also don't close when tapping a tool orb (user might be picking another brush to edit).
+      if(e.target.closest && e.target.closest('.node')) return;
+      close();
+    }, true);
+
+    return { open, close, paintPreview };
+  })();
+  const openBrushLab = ()=>BLAB.open();
+  brushes.forEach(b=>{ const k=kidEl({glyph:b.ic,sub:b.id});
+    k.dataset.id=b.id; if(b.id===brush.id)k.classList.add('on');
+    // Tap = select. Long-press (400 ms) = open the Brush Lab on THIS brush.
+    let lpT=0, moved=false, downX=0, downY=0;
+    k.addEventListener('pointerdown', e=>{ e.stopPropagation();
+      moved=false; downX=e.clientX; downY=e.clientY;
+      lpT=setTimeout(()=>{ if(!moved){
+        // Long-press: switch to this brush first (so the lab shows its profile),
+        // then open the lab panel.
+        if(brush.id!==b.id) selectBrush(b);
+        openBrushLab();
+      } }, 400);
+    });
+    k.addEventListener('pointermove', e=>{
+      if(!moved && Math.hypot(e.clientX-downX, e.clientY-downY)>6){
+        moved=true; clearTimeout(lpT); lpT=0;
+      }
+    });
+    k.addEventListener('pointerup', e=>{
+      if(lpT){ clearTimeout(lpT); lpT=0;
+        if(!moved){ selectBrush(b); flash(b.id); }
+      }
+    });
+    k.addEventListener('pointercancel', ()=>{ clearTimeout(lpT); lpT=0; });
+    nTools._kids.appendChild(k);
+  });
 
   // ---- LINE node (the Living Line: StreamLine smoothing + QuickShape) ----
   const nLine=makeNode({glyph:'@line',label:'Line',x:24,y:230});
@@ -1719,6 +1941,9 @@
   // user last left on. New-install users see the built-in defaults untouched.
   (function bootPrefs(){
     loadPrefs();
+    // Populate _bpH/_bpS/_bpJ from the just-loaded profile so the first stroke
+    // uses the restored hardness/spacing/jitter, not the initial defaults.
+    refreshBp();
     // dial glyphs
     const sd=document.querySelector('#sizeDialGlyph'); if(sd) sd.textContent=Math.round(size);
     const od=document.querySelector('#opDialGlyph'); if(od) od.textContent=Math.round(opacity*100);
