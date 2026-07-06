@@ -203,6 +203,27 @@
     background:rgba(10,0,10,.30); color:var(--text); padding:0 8px; font:inherit; outline:none; }
   .customTemplate input[type=color]{ padding:2px; }
   .customTemplate button{ height:32px; white-space:nowrap; }
+
+  /* First-launch Start overlay. It reuses the same template cards as Gallery
+     Manage, but replaces the initial blank canvas instead of consuming a slot. */
+  #startPanel{ position:fixed; inset:0; z-index:47; display:none; align-items:center; justify-content:center; padding:26px;
+    background:radial-gradient(70% 70% at 50% 42%, rgba(42,0,26,.70), rgba(10,0,10,.92));
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  #startPanel.show{ display:flex; }
+  #startPanel .card{ width:min(780px, calc(100vw - 28px)); max-height:calc(100vh - 42px); overflow:auto;
+    padding:28px; border-radius:28px; color:var(--text);
+    background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(20,0,14,.64));
+    border:1px solid rgba(247,202,201,.32); box-shadow:0 24px 70px rgba(10,0,10,.62), inset 0 1px 0 rgba(255,240,243,.35); }
+  #startPanel h2{ font-family:"Cinzel",Georgia,serif; letter-spacing:.18em; font-size:26px; margin:0 0 4px;
+    background:linear-gradient(180deg,#fff,var(--rose)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #startPanel .tag{ font-size:10px; letter-spacing:.24em; text-transform:uppercase; color:var(--dim); margin-bottom:14px; }
+  #startPanel p{ color:var(--dim); font-size:13px; line-height:1.6; margin:0 0 14px; }
+  #startTemplates{ display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:9px; }
+  #startActions{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:16px; }
+  #startActions button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06);
+    border:1px solid rgba(247,202,201,.30); padding:9px 12px; border-radius:13px; cursor:pointer;
+    font-size:11px; letter-spacing:.10em; text-transform:uppercase; }
+  #startActions button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); border-color:var(--rim); }
   .projRow{ display:grid; grid-template-columns:76px 1fr auto; gap:12px; align-items:center;
     padding:10px; border-radius:18px; background:rgba(255,240,243,.07);
     border:1px solid rgba(247,202,201,.18); }
@@ -225,9 +246,10 @@
   #projectPanel .footer button.primary{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); border-color:var(--rim); }
   @media (max-width:640px){ .projRow{ grid-template-columns:64px 1fr; } .projBtns{ grid-column:1 / -1; justify-content:flex-start; max-width:none; }
     .projThumb{ width:60px; height:46px; } #projectPanel .card{ padding:20px; }
-    #projectTemplates .templateGrid{ grid-template-columns:1fr; }
+    #projectTemplates .templateGrid, #startTemplates{ grid-template-columns:1fr; }
     .customTemplate .customGrid{ grid-template-columns:repeat(2, minmax(90px,1fr)); }
-    .customTemplate button{ grid-column:1 / -1; } }
+    .customTemplate button{ grid-column:1 / -1; }
+    #startPanel .card{ padding:20px; } }
 
   /* Tablet-first touch polish. Pointer-coarse devices get larger orbs, rails,
      slider thumbs, and project buttons without changing desktop density. */
@@ -250,7 +272,7 @@
     #blab .row{ margin:12px 0; }
     #blab input[type=range]{ height:18px; }
     #blab input[type=range]::-webkit-slider-thumb{ width:26px; height:26px; }
-    .projBtn, #projectPanel .footer button, .templateBtn{ padding:10px 12px; font-size:12px; }
+    .projBtn, #projectPanel .footer button, .templateBtn, #startActions button{ padding:10px 12px; font-size:12px; }
   }
 
   /* Stylus diagnostics panel — small, live, and deliberately boring: artists
@@ -522,6 +544,22 @@
       <button id="projectClearSave" type="button">Clear recovery</button>
       <button id="projectClose" type="button">Close</button>
       <input id="projectImportFile" type="file" accept=".inkframe,.json,application/json,application/x-inkframe+json" style="display:none" />
+    </div>
+  </div>
+</div>
+
+<!-- First-launch template picker. Shown only when no local recovery snapshot is restored. -->
+<div id="startPanel" role="dialog" aria-label="Start a project">
+  <div class="card">
+    <h2>Start</h2>
+    <div class="tag">Choose a canvas · begin drawing</div>
+    <p>Pick a starter below, or open the full project manager for custom sizes, archives, and recovery.</p>
+    <div id="startTemplates"></div>
+    <div id="startActions">
+      <button id="startBlank" type="button" class="primary">Blank canvas</button>
+      <button id="startManage" type="button">Project manager</button>
+      <button id="startSkip" type="button">Skip</button>
+      <button id="startNever" type="button">Don’t show again</button>
     </div>
   </div>
 </div>
@@ -3883,6 +3921,7 @@
   }
 
   const projectPanel=$('projectPanel'), projectList=$('projectList'), projectAutosave=$('projectAutosave'), projectTemplates=$('projectTemplates');
+  const startPanel=$('startPanel'), startTemplates=$('startTemplates'), startBlank=$('startBlank'), startManage=$('startManage'), startSkip=$('startSkip'), startNever=$('startNever');
   const projectClose=$('projectClose'), projectNew=$('projectNew'), projectSave=$('projectSave'), projectClearSave=$('projectClearSave');
   const projectExport=$('projectExport'), projectImport=$('projectImport'), projectImportFile=$('projectImportFile');
 
@@ -4076,6 +4115,43 @@
     });
     cg.appendChild(make); projectTemplates.appendChild(custom);
   }
+  const START_PREF_KEY='inkframe.start.dismissed.v1';
+  function closeStartPanel(){ if(startPanel) startPanel.classList.remove('show'); }
+  function setStartDismissed(){ try{ localStorage.setItem(START_PREF_KEY,'1'); }catch(_){} }
+  function startDismissed(){ try{ return localStorage.getItem(START_PREF_KEY)==='1'; }catch(_){ return false; } }
+  function replaceCurrentWithTemplate(t){
+    const P=projectFromTemplate(t);
+    projects[pi]=P;
+    bindProjectDirect(pi);
+    repaintProjectShell(); closeStartPanel(); AUTOSAVE.schedule();
+    flash('Started · '+P.name);
+  }
+  function renderStartTemplates(){
+    if(!startTemplates) return;
+    startTemplates.innerHTML='';
+    PROJECT_TEMPLATES.forEach(t=>{
+      const btn=document.createElement('button'); btn.type='button'; btn.className='templateBtn';
+      btn.appendChild(templatePreviewEl(t));
+      const txt=document.createElement('div');
+      const title=document.createElement('b'); title.textContent=t.name; txt.appendChild(title);
+      const meta=document.createElement('span'); meta.textContent=`${t.w}×${t.h} · ${t.frames||1} frame${(t.frames||1)===1?'':'s'} · ${t.fps||12} fps`; txt.appendChild(meta);
+      const desc=document.createElement('span'); desc.textContent=t.desc||''; txt.appendChild(desc);
+      btn.appendChild(txt);
+      btn.addEventListener('click',()=>replaceCurrentWithTemplate(t));
+      startTemplates.appendChild(btn);
+    });
+  }
+  function openStartPanel(force){
+    if(!startPanel) return;
+    if(!force && startDismissed()) return;
+    renderStartTemplates();
+    startPanel.classList.add('show');
+  }
+  if(startBlank) startBlank.addEventListener('click',()=>{ closeStartPanel(); flash('Blank canvas ready'); });
+  if(startManage) startManage.addEventListener('click',()=>{ closeStartPanel(); openProjectPanel(); });
+  if(startSkip) startSkip.addEventListener('click',()=>closeStartPanel());
+  if(startNever) startNever.addEventListener('click',()=>{ setStartDismissed(); closeStartPanel(); flash('Start screen hidden'); });
+
   function insertProjectCopy(sourceIndex, copy, switchTo){
     const insertAt=Math.min(projects.length, sourceIndex+1);
     projects.splice(insertAt,0,copy);
@@ -4972,11 +5048,13 @@
 
   // ---- Restore any saved session, THEN take the normal boot render path ----
   (async ()=>{
+    let restored=false;
     try{
       const payload = await AUTOSAVE.loadPayload();
       if(payload){
         const ok = await AUTOSAVE.restore(payload);
         if(ok){
+          restored=true;
           // Rebuild the gallery + timeline UI against the restored data.
           rebuildGallery(); refreshFrames(); refreshActions();
           clampCanvas(); applyCanvas(); render();
@@ -4985,6 +5063,11 @@
         }
       }
     }catch(e){ console.warn('[autosave] restore failed', e); }
+    if(!restored){
+      // First-launch onboarding. It waits until recovery had a chance to load,
+      // so returning artists never have the Start picker cover restored work.
+      setTimeout(()=>openStartPanel(false), 180);
+    }
   })();
 
   // Expose the autosave surface on window for debugging / a future Recover UI.

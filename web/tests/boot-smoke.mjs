@@ -118,6 +118,8 @@ const nodeCount = d.querySelectorAll('.node').length;
 const canvasEl = d.getElementById('c');
 const projectPanel = d.getElementById('projectPanel');
 const projectTemplates = d.getElementById('projectTemplates');
+const startPanel = d.getElementById('startPanel');
+const startTemplates = d.getElementById('startTemplates');
 const stylusPanel = d.getElementById('stylusPanel');
 const textureSlider = d.getElementById('blabTex');
 const brushExport = d.getElementById('blabExport');
@@ -127,12 +129,15 @@ const brushLibrary = d.getElementById('blabLibList');
 const barrelKid = d.getElementById('barrelModeKid');
 const manageKid = d.querySelector('[data-manage="1"]');
 if (manageKid) manageKid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles:true, cancelable:true }));
-const templateCount = d.querySelectorAll('.templateBtn').length;
+const templateCount = projectTemplates ? projectTemplates.querySelectorAll('.templateBtn').length : 0;
+const startTemplateCount = startTemplates ? startTemplates.querySelectorAll('.templateBtn').length : 0;
 const customTemplate = d.querySelector('.customTemplate');
 const projectButtonLabels = Array.from(d.querySelectorAll('.projBtn')).map(b => b.textContent.trim());
 if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
 if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
 if (!projectTemplates) { console.error('❌ #projectTemplates (project templates) missing'); failed++; }
+if (!startPanel || !startTemplates) { console.error('❌ first-launch Start panel missing'); failed++; }
+if (startTemplateCount < 6) { console.error(`❌ start templates did not render (templates=${startTemplateCount})`); failed++; }
 if (templateCount < 6 || !customTemplate) { console.error(`❌ project templates did not render (templates=${templateCount}, custom=${!!customTemplate})`); failed++; }
 if (!projectButtonLabels.includes('Scale copy') || !projectButtonLabels.includes('Clear')) { console.error('❌ project duplicate/clear controls missing'); failed++; }
 if (!stylusPanel) { console.error('❌ #stylusPanel (stylus diagnostics) missing'); failed++; }
