@@ -758,7 +758,66 @@
         if(cur+k<frames.length)drawTinted(frameComposite(frames[cur+k]), 0.24*(1-0.45*(fall-1/depth))*reachFade, onionFront, 0.5*fall);
       }
     }
-    ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[cur]),0,0); }
+    ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[cur]),0,0);
+    // A/B compare: after painting the full "after" composite, paint the
+    // "before" (top-layer-hidden) composite CLIPPED to everything left of
+    // the divider. A thin vertical line marks the seam so the artist sees
+    // where before ends and after begins.
+    if(compareMode) drawCompareSplit();
+  }
+
+  // ---- A/B compare (declared BEFORE render so the closure resolves) ----
+  // Built inside a IIFE so the small helpers stay out of the outer scope.
+  let compareMode = false;   // toggled by the Compare kid
+  let compareX    = 0.5;     // divider position as 0..1 across the canvas
+  function drawCompareSplit(){
+    const fr = frames[cur]; if(!fr || fr.layers.length < 2) return;   // nothing to compare
+    // Build a "before" composite: same as frameComposite but the TOP layer
+    // is hidden. We do this on a scratch canvas so we don't perturb the
+    // real per-frame composite cache.
+    const w = fr.layers[0].canvas.width, h = fr.layers[0].canvas.height;
+    if(!drawCompareSplit._scratch){ drawCompareSplit._scratch = mkAt(w, h); }
+    const s = drawCompareSplit._scratch;
+    if(s.width !== w || s.height !== h){ s.width = w; s.height = h; }
+    const sg = s.getContext('2d');
+    sg.clearRect(0, 0, w, h);
+    for(let i = 0; i < fr.layers.length - 1; i++){    // skip the top layer
+      const L = fr.layers[i];
+      if(!L.visible || L.opacity <= 0) continue;
+      sg.globalAlpha = L.opacity;
+      sg.globalCompositeOperation = L.blend;
+      sg.drawImage(L.canvas, 0, 0);
+    }
+    sg.globalAlpha = 1; sg.globalCompositeOperation = 'source-over';
+    // Now clip the ctx to the LEFT half and paint the paper + before.
+    const splitPx = Math.round(compareX * W);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, splitPx, H);
+    ctx.clip();
+    ctx.fillStyle = paper();
+    ctx.fillRect(0, 0, splitPx, H);
+    ctx.drawImage(s, 0, 0);
+    ctx.restore();
+    // Divider seam -- a thin bright line so the split is obvious.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(splitPx, 0); ctx.lineTo(splitPx, H); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(splitPx, 0); ctx.lineTo(splitPx, H); ctx.stroke();
+    ctx.restore();
+  }
+  // Drag the divider horizontally by dragging on the canvas while compare
+  // is on. Wired in pointerdown/move below so it short-circuits the paint
+  // engine while active -- otherwise you'd draw while trying to sweep the
+  // reveal.
+  function compareSeekAt(x){
+    compareX = Math.max(0, Math.min(1, x / W));
+    render();
+  }
+  let _compareDrag = null;   // pointerId currently sweeping the divider
   // ease the reach back down to the resting onion depth when scrubbing stops
   let reachRAF=0;
   function decayReach(){ scrubReach*=0.82; if(scrubReach>0.3){ render(); reachRAF=requestAnimationFrame(decayReach); }
@@ -1193,6 +1252,15 @@
       canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
       return;
     }
+    // Compare modal: swallow paint input; drag = sweep the divider.
+    if(compareMode){
+      e.preventDefault();
+      const c = toC(e);
+      compareSeekAt(c.x);
+      _compareDrag = e.pointerId;
+      canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     // Fill modal: a single tap fills the connected region under it.
     if(fillMode){
       e.preventDefault();
@@ -1285,6 +1353,13 @@
   });
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
+    // Compare-drag: sweep the reveal divider without painting.
+    if(compareMode && _compareDrag === e.pointerId){
+      e.preventDefault();
+      const c = toC(e);
+      compareSeekAt(c.x);
+      return;
+    }
     // Selection-move: user grabbed an existing selection; update the floating
     // pixels' offset and repaint.
     if(SEL.moving && SEL.floating){
@@ -1381,6 +1456,11 @@
       if(moved>3){ qsAnchor={x:penX,y:penY}; qsLastMove=now; clearTimeout(qsTimer);
         qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
   const up=e=>{
+    // Compare-drag release: just clear the drag lock so future taps work.
+    if(compareMode && e && _compareDrag === e.pointerId){
+      _compareDrag = null;
+      return;
+    }
     // Selection-move commit: pixels finish landing at their new location.
     if(SEL.moving && SEL.floating){
       SEL.moving = false;
@@ -1792,6 +1872,8 @@
     fill:    S+'<path d="M4 13l7-7 7 7-7 7z"/><path d="M18 15c1 1.5 2 3 2 4a2 2 0 11-4 0c0-1 1-2.5 2-4z" class="fill"/><path d="M4 13h14" class="soft"/>'+E,
     // EYEDROPPER: slanted glass tube with a hot drop of colour at the tip.
     dropper: S+'<path d="M5 19l3-3 6-6 3 3-6 6-3 3z"/><path d="M15 4l3 3-2 2-3-3z" class="fill"/><circle cx="5" cy="20" r="1" class="fill"/>'+E,
+    // COMPARE: vertical divider with an A/B tag either side.
+    compare: S+'<rect x="4" y="5" width="16" height="14" rx="1.6" fill="none"/><path d="M12 3v18" class="soft"/><path d="M7 12h2M15 12h2" stroke-width="1.4"/>'+E,
     // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
     imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
@@ -2769,6 +2851,26 @@
   // Clear wipes only the ACTIVE layer of the current frame (other layers stay).
   actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);bumpFrame(frames[cur]);render();refreshFrames();});
   const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);savePrefs();render();}); kOnion.classList.toggle('on',onion);
+  // A/B Compare toggle -- reveals a vertical divider showing the current
+  // frame WITH the top layer (right) vs WITHOUT it (left). Perfect for
+  // sanity-checking the effect you just added on a top layer.
+  const kCompare = actKid('@compare','Compare',k=>{
+    compareMode = !compareMode;
+    k.classList.toggle('on', compareMode);
+    if(compareMode){
+      const fr = frames[cur];
+      if(!fr || fr.layers.length < 2){
+        flash('Compare needs 2+ layers · add a layer first');
+        compareMode = false; k.classList.remove('on');
+        return;
+      }
+      compareX = 0.5;   // reset to middle each time compare turns on
+      flash('Compare on · drag on the canvas to sweep the reveal');
+    } else {
+      flash('Compare off');
+    }
+    render();
+  });
   // Paper colour picker (per-project). Hidden native <input type=color> covers
   // the kid so a tap on the orb opens the OS picker; the kid's own colour dot
   // reflects the current paper so the artist sees at a glance whether they're
