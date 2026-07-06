@@ -142,6 +142,8 @@ const templateCount = projectTemplates ? projectTemplates.querySelectorAll('.tem
 const startTemplateCount = startTemplates ? startTemplates.querySelectorAll('.templateBtn').length : 0;
 const customTemplate = d.querySelector('.customTemplate');
 const projectButtonLabels = Array.from(d.querySelectorAll('.projBtn')).map(b => b.textContent.trim());
+const frameKidCount = d.querySelectorAll('.frameKid').length;
+const frameActionLabels = Array.from(d.querySelectorAll('.node .kid .sub')).map(s => s.textContent.trim());
 if (!canvasEl) { console.error('❌ #c (main canvas) missing'); failed++; }
 if (!projectPanel) { console.error('❌ #projectPanel (project browser) missing'); failed++; }
 if (!projectTemplates) { console.error('❌ #projectTemplates (project templates) missing'); failed++; }
@@ -157,6 +159,10 @@ if (!brushSavePreset || !brushLibrary) { console.error('❌ Brush library contro
 if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control) missing'); failed++; }
 if (!readableTextKid) { console.error('❌ #readableTextKid (readability toggle) missing'); failed++; }
 if (!frostBrushKid) { console.error('❌ frost brush tool missing'); failed++; }
+if (frameKidCount < 1) { console.error('❌ frame thumbnail list did not render'); failed++; }
+for (const label of ['H+','Twos','Rev','All','None']) {
+  if (!frameActionLabels.includes(label)) { console.error(`❌ frame batch action missing: ${label}`); failed++; }
+}
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }
 
 if (failed) {

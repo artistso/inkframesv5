@@ -117,6 +117,14 @@
     box-shadow:0 0 18px rgba(187,0,55,.6), inset 0 1px 0 var(--rim) !important; }
   .kid .sub{ position:absolute; top:50px; left:50%; transform:translateX(-50%); font-size:8px; letter-spacing:.12em;
     text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; text-shadow:var(--label-shadow); }
+  .kid.frameKid{ overflow:hidden; border-radius:50%; }
+  .kid.frameKid .frameThumb{ position:absolute; inset:3px; border-radius:50%; background-size:cover; background-position:center;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.22); filter:saturate(1.04); }
+  .kid.frameKid .glyph{ position:relative; z-index:2; min-width:18px; height:18px; padding:0 4px; border-radius:999px;
+    display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800;
+    background:rgba(10,0,10,.48); border:1px solid rgba(255,255,255,.22); }
+  .kid.frameKid.sel{ box-shadow:0 0 0 2px #fff, 0 0 18px var(--accent), inset 0 1px 0 var(--rim) !important; }
+  .kid.frameKid.sel .glyph{ background:linear-gradient(160deg,var(--accent-deep),var(--accent)); }
   /* Readability mode: larger, high-contrast label capsules for tablet glare,
      bright themes, and low-vision use. Toggled from Actions ▸ Text. */
   body.readable #title .sub{ opacity:1; color:var(--text); text-shadow:var(--label-shadow); }
@@ -352,8 +360,11 @@
     border-right:1px solid rgba(42,0,26,.55); box-sizing:border-box; }
   #railTrack .seg.held{ background:linear-gradient(90deg, rgba(187,0,55,.36), rgba(247,202,201,.24));
     box-shadow:inset 0 0 6px rgba(255,150,190,.5); }
+  #railTrack .seg.sel{ background:linear-gradient(90deg, rgba(255,255,255,.34), rgba(247,202,201,.22));
+    box-shadow:inset 0 0 0 1px var(--rim), 0 0 8px rgba(255,255,255,.22); }
   #railTrack .bead{ position:absolute; top:50%; width:5px; height:5px; margin:-2.5px 0 0 -2.5px; border-radius:50%;
     background:var(--rose); opacity:.55; transition:opacity .18s, transform .18s; }
+  #railTrack .bead.sel{ opacity:1; transform:scale(1.45); background:#fff; box-shadow:0 0 8px var(--rim); }
   #railTrack .bead.on{ opacity:1; transform:scale(1.7); background:var(--blush);
     box-shadow:0 0 8px var(--accent); }
   #playhead{ position:absolute; top:50%; width:20px; height:20px; margin:-10px 0 0 -10px; border-radius:50%;
@@ -1998,6 +2009,7 @@
     // The stroke wrote to fctx (active layer) -- bump the frame version so
     // the composite cache invalidates before render() reads it.
     bumpFrame(frames[cur]);
+    if(typeof refreshCurrentThumb === 'function') refreshCurrentThumb();
     // Frame count / holds didn't change during a stroke -- skip the O(n) frame
     // list + rail rebuild that refreshFrames() would trigger. render() alone
     // is enough to reflect the new pixels.
@@ -3585,39 +3597,102 @@
   const kPlay=frameAct('@play','Play',k=>{playing=!playing;k.querySelector('.glyph').innerHTML=ICONS[playing?'pause':'play'];k.classList.toggle('on',playing);
     if(playing){ playT0=performance.now(); nFrames._timer=requestAnimationFrame(playLoop); }
     else{ cancelAnimationFrame(nFrames._timer); render(); refreshFrames(); syncRail(); }});
+  // Timeline selection + batch editing. Long-press a frame thumbnail to enter
+  // selection mode; once anything is selected, taps toggle selection instead of
+  // seeking. Batch actions below operate on selection or the current frame.
+  const selectedFrames=new Set();
+  const selectedSorted=()=>[...selectedFrames].filter(i=>i>=0&&i<frames.length).sort((a,b)=>a-b);
+  const selectedOrCurrent=()=>selectedFrames.size?selectedSorted():[cur];
+  function clearFrameSelection(){ selectedFrames.clear(); refreshFrames(); flash('Frame selection cleared'); }
+  function toggleFrameSelection(i){
+    if(selectedFrames.has(i)) selectedFrames.delete(i); else selectedFrames.add(i);
+    refreshFrames(); flash(selectedFrames.size?`${selectedFrames.size} frame${selectedFrames.size===1?'':'s'} selected`:'Frame selection cleared');
+  }
+  function copyFrame(src){ return {
+    layers: src.layers.map(L=>{ const c=mkAt(L.canvas.width,L.canvas.height);
+      c.getContext('2d').drawImage(L.canvas,0,0);
+      return { id:__lid++, name:L.name, visible:L.visible, opacity:L.opacity, blend:L.blend, canvas:c };
+    }),
+    active:src.active, _comp:null, _compV:-1, _v:0,
+  }; }
+  function frameThumbData(fr){
+    const sig=(fr._v||0)+':'+paper()+':'+(fr.layers||[]).map(L=>`${L.id}:${L.visible!==false}:${L.opacity}:${L.blend}`).join('|');
+    if(fr._thumb && fr._thumbSig===sig) return fr._thumb;
+    const t=mkAt(56,42), g=t.getContext('2d');
+    g.fillStyle=paper(); g.fillRect(0,0,t.width,t.height);
+    try{ g.drawImage(frameComposite(fr),0,0,t.width,t.height); }catch(_){ }
+    fr._thumb=t.toDataURL(); fr._thumbSig=sig; return fr._thumb;
+  }
+  function refreshCurrentThumb(){
+    const k=framesBranch && framesBranch._kids && framesBranch._kids.querySelector(`[data-frame="${cur}"] .frameThumb`);
+    if(k) k.style.backgroundImage=`url(${frameThumbData(frames[cur])})`;
+  }
+  function duplicateFrameSequence(){
+    const idxs=selectedOrCurrent(); if(!idxs.length) return;
+    const insertAt=idxs[idxs.length-1]+1;
+    const copies=idxs.map(i=>copyFrame(frames[i]));
+    const holdCopies=idxs.map(i=>hOf(i));
+    frames.splice(insertAt,0,...copies); holds.splice(insertAt,0,...holdCopies);
+    selectedFrames.clear(); copies.forEach((_,j)=>selectedFrames.add(insertAt+j));
+    setCur(insertAt); render(); refreshFrames(); flash(`Duplicated ${copies.length} frame${copies.length===1?'':'s'}`);
+  }
+  function deleteFrameSelection(){
+    const idxs=selectedOrCurrent(); if(!idxs.length) return;
+    if(frames.length<=idxs.length){ frames.length=0; holds.length=0; frames.push(newFrame(W,H)); holds.push(1); setCur(0); selectedFrames.clear(); render(); refreshFrames(); flash('Timeline reset'); return; }
+    for(const i of idxs.slice().sort((a,b)=>b-a)){ frames.splice(i,1); holds.splice(i,1); }
+    const next=Math.min(idxs[0],frames.length-1); selectedFrames.clear(); setCur(Math.max(0,next)); render(); refreshFrames(); flash(`Deleted ${idxs.length} frame${idxs.length===1?'':'s'}`);
+  }
+  function clearFramePixels(){
+    const idxs=selectedOrCurrent();
+    idxs.forEach(i=>{ frames[i]=newFrame(W,H); });
+    selectedFrames.clear(); setCur(Math.min(cur,frames.length-1)); refreshFctx(); render(); refreshFrames(); flash(`Cleared ${idxs.length} frame${idxs.length===1?'':'s'}`);
+  }
+  function reverseFrameSelection(){
+    const idxs=selectedSorted(); if(idxs.length<2){ flash('Select 2+ frames to reverse'); return; }
+    const fs=idxs.map(i=>frames[i]).reverse(), hs=idxs.map(i=>holds[i]).reverse();
+    idxs.forEach((i,j)=>{ frames[i]=fs[j]; holds[i]=hs[j]; });
+    setCur(idxs[0]); render(); refreshFrames(); flash(`Reversed ${idxs.length} frames`);
+  }
+  function adjustHolds(delta){
+    const idxs=selectedOrCurrent(); idxs.forEach(i=>holds[i]=Math.max(1,Math.min(8,hOf(i)+delta)));
+    refreshFrames(); buildRail(); flash(`Hold ${delta>0?'+':'−'} · ${idxs.length} frame${idxs.length===1?'':'s'}`);
+  }
+  function setOnTwos(){ const idxs=selectedOrCurrent(); idxs.forEach(i=>holds[i]=2); refreshFrames(); buildRail(); flash(`On twos · ${idxs.length} frame${idxs.length===1?'':'s'}`); }
+
   // Add: blank single-layer frame after the current one.
-  frameAct('@add','Add',()=>{frames.splice(cur+1,0,newFrame(W,H));holds.splice(cur+1,0,1);setCur(cur+1);render();refreshFrames();});
-  // Dup: copy the whole layer stack of the current frame (props + pixels).
-  frameAct('@dup','Dup',()=>{
-    const src=frames[cur], copy={
-      layers: src.layers.map(L=>{ const c=mkAt(L.canvas.width,L.canvas.height);
-        c.getContext('2d').drawImage(L.canvas,0,0);
-        return { id:__lid++, name:L.name, visible:L.visible, opacity:L.opacity, blend:L.blend, canvas:c };
-      }),
-      active:src.active, _comp:null, _compV:-1, _v:0,
-    };
-    frames.splice(cur+1,0,copy); holds.splice(cur+1,0,holds[cur]||1);
-    setCur(cur+1); render(); refreshFrames();
-  });
-  frameAct('@del','Del',()=>{if(frames.length<=1)return;frames.splice(cur,1);holds.splice(cur,1);setCur(Math.max(0,cur-1));render();refreshFrames();});
+  frameAct('@add','Add',()=>{selectedFrames.clear();frames.splice(cur+1,0,newFrame(W,H));holds.splice(cur+1,0,1);setCur(cur+1);render();refreshFrames();});
+  frameAct('@dup','Dup',()=>duplicateFrameSequence());
+  frameAct('@del','Del',()=>deleteFrameSelection());
   const fpsDial=kidEl({cls:'dial',glyph:'12',sub:'FPS',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
   makeDial(fpsDial,1,24,()=>fps,v=>{fps=Math.round(v);fpsDial.querySelector('.glyph').textContent=fps;},'FPS');
   nFrames._kids.appendChild(fpsDial);
   // Nolan: per-frame HOLD — how many ticks the current drawing lingers (animation timing)
   const holdDial=kidEl({cls:'dial',glyph:'1',sub:'Hold',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
-  makeDial(holdDial,1,8,()=>hOf(cur),v=>{holds[cur]=Math.round(v);holdDial.querySelector('.glyph').textContent=Math.round(v);buildRail();},'Hold');
+  makeDial(holdDial,1,8,()=>hOf(cur),v=>{selectedOrCurrent().forEach(i=>holds[i]=Math.round(v));holdDial.querySelector('.glyph').textContent=Math.round(v);buildRail();refreshFrames();},'Hold');
   nFrames._kids.appendChild(holdDial);
   function refreshHold(){ const g=holdDial.querySelector('.glyph'); if(g) g.textContent=hOf(cur); if(holdDial._upd) holdDial._upd(); }
+  frameAct('@hold','H+',()=>adjustHolds(+1));
+  frameAct('@hold','H−',()=>adjustHolds(-1));
+  frameAct('@hold','Twos',()=>setOnTwos());
+  frameAct('@loop','Rev',()=>reverseFrameSelection());
+  frameAct('@clear','Clear',()=>clearFramePixels());
+  frameAct('@list','All',()=>{selectedFrames.clear(); frames.forEach((_,i)=>selectedFrames.add(i)); refreshFrames(); flash(`Selected ${frames.length} frames`);});
+  frameAct('@clear','None',()=>clearFrameSelection());
   const kDissolve=frameAct('@dissolve','Dissolve',k=>{dissolve=!dissolve;k.classList.toggle('on',dissolve);flash(dissolve?'Dissolve playback ON':'Hard-cut playback');}); kDissolve.classList.toggle('on',dissolve);
   const kMblur=frameAct('@mblur','Blur',k=>{motionBlur=!motionBlur;k.classList.toggle('on',motionBlur);flash(motionBlur?'Motion-blur trails ON':'Motion-blur off');}); kMblur.classList.toggle('on',motionBlur);
   const kLoop=frameAct('@loop','Loop',k=>{ loopOn=!loopOn;
     if(loopOn){ loopIn=0; loopOut=frames.length-1; }   // start spanning the whole timeline, then drag handles in
     k.classList.toggle('on',loopOn); syncRail(); flash(loopOn?'Loop range ON · drag the handles':'Loop off'); }); kLoop.classList.toggle('on',loopOn);
-  // frame list as a branch of small circles
+  // frame list as a branch of thumbnail circles
   const framesBranch=makeBranchKid('@list','List'); nFrames._kids.appendChild(framesBranch);
   function refreshFrames(){ const wrap=framesBranch._kids; wrap.innerHTML='';
-    frames.forEach((f,i)=>{ const k=kidEl({glyph:String(i+1)}); k.style.width='38px';k.style.height='38px';k.style.margin='-19px 0 0 -19px';
-      if(i===cur)k.classList.add('on'); k.addEventListener('click',e=>{e.stopPropagation();setCur(i);render();refreshFrames();});
+    frames.forEach((f,i)=>{ const k=kidEl({build(el){ const im=document.createElement('div'); im.className='frameThumb'; im.style.backgroundImage=`url(${frameThumbData(f)})`; el.appendChild(im); const num=document.createElement('span'); num.className='glyph'; num.textContent=String(i+1); el.appendChild(num); }});
+      k.classList.add('frameKid'); k.dataset.frame=String(i); k.style.width='46px';k.style.height='46px';k.style.margin='-23px 0 0 -23px';
+      if(i===cur)k.classList.add('on'); if(selectedFrames.has(i))k.classList.add('sel');
+      let lp=0,longed=false;
+      k.addEventListener('pointerdown',e=>{ e.stopPropagation(); longed=false; clearTimeout(lp); lp=setTimeout(()=>{ longed=true; toggleFrameSelection(i); },520); });
+      ['pointerup','pointercancel','pointerleave'].forEach(t=>k.addEventListener(t,()=>clearTimeout(lp)));
+      k.addEventListener('click',e=>{e.stopPropagation(); if(longed)return; if(selectedFrames.size){toggleFrameSelection(i);return;} setCur(i);render();refreshFrames();});
       wrap.appendChild(k); });
     if(framesBranch.classList.contains('open')) framesBranch._relayout();
     if(typeof buildRail==='function') buildRail();
@@ -4555,8 +4630,8 @@
       const a=tickStart(i)/tot, w=hOf(i)/tot;
       const seg=document.createElement('div'); seg.className='seg';   // physical duration block
       seg.style.left=(a*100)+'%'; seg.style.width=(w*100)+'%';
-      if(hOf(i)>1) seg.classList.add('held'); railTrack.appendChild(seg);
-      const b=document.createElement('div'); b.className='bead'+(i===cur?' on':'');
+      if(hOf(i)>1) seg.classList.add('held'); if(selectedFrames && selectedFrames.has(i)) seg.classList.add('sel'); railTrack.appendChild(seg);
+      const b=document.createElement('div'); b.className='bead'+(i===cur?' on':'')+((selectedFrames&&selectedFrames.has(i))?' sel':'');
       b.style.left=((a+w/2)*100)+'%'; railTrack.appendChild(b);
     }
     if(loopOut>=n) loopOut=n-1;
