@@ -1,0 +1,14 @@
+--- engine-gl/src/main/kotlin/com/inkframe/engine/gl/StrokeProcessor.kt
++++ engine-gl/src/main/kotlin/com/inkframe/engine/gl/StrokeProcessor.kt
+@@ -124,10 +124,10 @@
+         // Velocity tapering: fast strokes thin the dab by up to 40%.
+         // Clamp velocity to a sensible max (20 px/ms ≈ very fast stroke).
+         val velocityFactor = (1f - (velocity / 20f).coerceIn(0f, 1f) * 0.4f)
+-        val diameter = brush.diameterForPressure(avgPressure)
++        val diameter = brush.diameterForPressure(avgPressure) * velocityFactor
+
+-        val step = max(1f, brush.spacing * diameter)
++        val step = max(1f, brush.spacing * diameter)
+         val subdiv = max(1, (approxLen / step).toInt() * 2)
+
+         var t = 0f

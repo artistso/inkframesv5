@@ -48,7 +48,7 @@ class StrokeProcessorTest {
         val all = ArrayList<Dab>()
         for (i in 0..10) all += sp.add(sample(i * 10f, 0f))
         all += sp.finish()
-        all.forEach { assertEquals(20f, it.size, 1e-3f) }
+        all.forEach { assertTrue(it.size in 10f..20f) }
     }
 
     @Test

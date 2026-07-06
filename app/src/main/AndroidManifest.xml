@@ -1,18 +1,19 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Needed only if the WebView ever tries to fetch a remote URL; the bundled
-         app is fully offline, but include it so future features (e.g. cloud
-         export) don't require a manifest change. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Save exported PNGs to shared storage on pre-Q devices. On Android 10+
-         MediaStore doesn't need this permission at all. -->
+    <!-- Storage permission for exports on Android 9 and below. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- Phones + tablets both welcome; the app is landscape-first. -->
+    <!-- OpenGL ES 3.0 requirement declaration for Play Store filtering. -->
+    <uses-feature
+        android:glEsVersion="0x00030000"
+        android:required="true" />
+
+    <!-- Stylus / S-Pen feature declarations (not required; improves Play Store discoverability). -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen.multitouch.jazzhand" android:required="false" />
+
     <supports-screens
         android:largeScreens="true"
         android:xlargeScreens="true"
@@ -37,6 +38,13 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Allow opening .inkframe project files from Files / Drive. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
     </application>

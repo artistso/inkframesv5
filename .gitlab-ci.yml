@@ -1,0 +1,150 @@
+# InkFrame Studio — GitLab CI/CD
+#
+# Mirrors the GitHub Actions workflows (android.yml + release.yml) so the
+# full build, test, and Play Store publish pipeline runs natively on GitLab.
+#
+# STAGES
+#   test          — JVM unit tests on every push / MR
+#   build-debug   — Debug APK on every push to main/master
+#   release       — Signed AAB + APK + Play Store publish on v* tags
+#
+# REQUIRED CI/CD VARIABLES (Settings → CI/CD → Variables)
+#   KEYSTORE_BASE64             base64-encoded .jks  →  base64 -w0 inkframe-release.jks
+#   INKFRAME_KEYSTORE_PASSWORD  keystore password
+#   INKFRAME_KEY_ALIAS          key alias (e.g. inkframe)
+#   INKFRAME_KEY_PASSWORD       key password
+#
+# OPTIONAL — enables automatic Play Store upload on release tags:
+#   PLAY_SERVICE_ACCOUNT_JSON   full JSON content of a Play Console service account
+#
+# versionCode is driven by CI_PIPELINE_IID (GitLab's auto-incrementing pipeline number).
+# Set INKFRAME_VERSION_CODE in CI/CD variables to override.
+
+default:
+  image: eclipse-temurin:17-jdk
+  # Cache the Gradle home and Android SDK between jobs on the same runner.
+  cache:
+    key:
+      files:
+        - gradle/libs.versions.toml
+        - gradle/wrapper/gradle-wrapper.properties
+    paths:
+      - .gradle/
+      - /root/.gradle/caches/
+      - /root/.gradle/wrapper/
+      - /opt/android-sdk/
+
+stages:
+  - test
+  - build-debug
+  - release
+
+# ---------------------------------------------------------------------------
+# Shared setup script — installs the Android SDK and makes gradlew executable.
+# Referenced via YAML anchors in each job.
+# ---------------------------------------------------------------------------
+.android-setup: &android-setup
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq wget unzip > /dev/null
+    - |
+      if [ ! -d "/opt/android-sdk/cmdline-tools/latest" ]; then
+        echo "Installing Android command-line tools..."
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdtools.zip
+        mkdir -p /opt/android-sdk/cmdline-tools
+        unzip -q /tmp/cmdtools.zip -d /opt/android-sdk/cmdline-tools
+        mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest
+        rm /tmp/cmdtools.zip
+      fi
+    - export ANDROID_HOME=/opt/android-sdk
+    - export ANDROID_SDK_ROOT=/opt/android-sdk
+    - export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+    - yes | sdkmanager --licenses > /dev/null 2>&1 || true
+    - sdkmanager "platforms;android-35" "build-tools;35.0.0" > /dev/null
+    - chmod +x ./gradlew
+
+# ---------------------------------------------------------------------------
+# JVM unit tests — runs on every push and every MR.
+# ---------------------------------------------------------------------------
+unit-tests:
+  stage: test
+  <<: *android-setup
+  script:
+    - ./gradlew test --stacktrace
+  artifacts:
+    when: always
+    paths:
+      - "**/build/reports/tests/"
+    expire_in: 14 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+# ---------------------------------------------------------------------------
+# Debug APK — built on every push to main or master.
+# ---------------------------------------------------------------------------
+build-debug-apk:
+  stage: build-debug
+  <<: *android-setup
+  script:
+    - ./gradlew :app:assembleDebug --stacktrace
+  artifacts:
+    paths:
+      - app/build/outputs/apk/debug/*.apk
+    expire_in: 30 days
+    name: "inkframe-debug-${CI_COMMIT_SHORT_SHA}"
+  needs:
+    - unit-tests
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+
+# ---------------------------------------------------------------------------
+# Release — signed AAB + APK, triggered by a v* tag (e.g. v1.0.0).
+# Optionally publishes straight to the Play Store internal track.
+# ---------------------------------------------------------------------------
+build-release:
+  stage: release
+  <<: *android-setup
+  script:
+    # Decode the keystore from the CI variable.
+    - |
+      if [ -n "$KEYSTORE_BASE64" ]; then
+        echo "$KEYSTORE_BASE64" | base64 -d > /tmp/inkframe-release.jks
+        export INKFRAME_KEYSTORE=/tmp/inkframe-release.jks
+        echo "Keystore decoded — building signed release."
+      else
+        echo "WARNING: KEYSTORE_BASE64 not set — building debug-signed (NOT Play-valid)."
+      fi
+    # Use the GitLab pipeline IID as the versionCode so it always increments.
+    - export INKFRAME_VERSION_CODE=$CI_PIPELINE_IID
+    # Build the signed App Bundle (for Play) and APK (for sideload smoke test).
+    - ./gradlew :app:bundleRelease :app:assembleRelease --stacktrace
+    # Collect artifacts into a flat release/ directory.
+    - mkdir -p release
+    - |
+      cp app/build/outputs/bundle/release/app-release.aab \
+         "release/InkFrame-${CI_COMMIT_TAG}.aab" 2>/dev/null || true
+      cp app/build/outputs/apk/release/app-release.apk \
+         "release/InkFrame-${CI_COMMIT_TAG}.apk" 2>/dev/null || true
+      ls -la release/
+    # Optional: publish AAB to Play Store internal track.
+    - |
+      if [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+        echo "$PLAY_SERVICE_ACCOUNT_JSON" > /tmp/play-sa.json
+        export PLAY_SERVICE_ACCOUNT_JSON_FILE=/tmp/play-sa.json
+        export PLAY_TRACK=internal
+        echo "Publishing to Play Store internal track..."
+        ./gradlew :app:publishReleaseBundle --stacktrace
+      else
+        echo "PLAY_SERVICE_ACCOUNT_JSON not set — skipping Play Store upload."
+        echo "Upload release/InkFrame-${CI_COMMIT_TAG}.aab manually via Play Console."
+      fi
+  artifacts:
+    paths:
+      - release/
+    expire_in: 90 days
+    name: "inkframe-release-${CI_COMMIT_TAG}"
+  environment:
+    name: production
+    url: https://play.google.com/store/apps/details?id=com.inkframe.studio
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v/'

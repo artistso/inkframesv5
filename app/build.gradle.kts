@@ -6,10 +6,6 @@ plugins {
     alias(libs.plugins.play.publisher)
 }
 
-// --- Shared app metadata ---------------------------------------------------
-// web/metadata.json is the single source for the human version and Android SDK
-// surface that both the Web UI and APK build expose. Keep parsing dependency-free
-// so Gradle configuration stays fast and works before any app dependencies exist.
 val webMetadataFile = rootProject.file("web/metadata.json")
 fun webMetadataString(key: String): String? =
     Regex("\\\"$key\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
@@ -20,7 +16,6 @@ fun webMetadataInt(key: String): Int? =
         .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
         ?.groupValues?.getOrNull(1)?.toIntOrNull()
 
-// --- Versioning ------------------------------------------------------------
 val baseVersionName = webMetadataString("version") ?: "0.1.0"
 val metadataTargetSdk = webMetadataInt("targetSdk") ?: 35
 val metadataMinSdk = webMetadataInt("minSdk") ?: 26
@@ -31,7 +26,6 @@ val resolvedVersionCode: Int = run {
     if (ci != null) versionCodeBase + ci else versionCodeBase
 }
 
-// --- Release signing -------------------------------------------------------
 val keystorePropsFile = rootProject.file("keystore.properties")
 val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
@@ -69,8 +63,6 @@ android {
 
     buildTypes {
         release {
-            // The WebView shell has no meaningful Kotlin surface to shrink, and
-            // R8 would strip nothing but risk breaking the JS bridge — keep it off.
             isMinifyEnabled = false
             isShrinkResources = false
             signingConfig = if (hasReleaseSigning) {
@@ -91,10 +83,13 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    // The web app lives at /web in the repo. We stage just the runtime files
-    // (HTML + any bundled assets) into build/generated/webAssets and add that
-    // to `assets` — so no build-time cruft (package.json, vite config, …)
-    // ends up in the APK.
+    // Kotlin 1.9.x enables Compose via the compiler extension
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
+    buildFeatures { compose = true }
+
     sourceSets {
         getByName("main") {
             assets.srcDir(layout.buildDirectory.dir("generated/webAssets"))
@@ -106,22 +101,17 @@ android {
     }
 }
 
-// Stage the web build into a clean directory that becomes the APK's asset root.
-// Only runtime files are included — the Vite/npm scaffolding stays behind.
 val stageWebAssets by tasks.registering(Copy::class) {
     val webDir = rootProject.file("web")
     from(webDir) {
-        // Everything that the running app actually needs at runtime.
         include(
             "index.html",
             "**/*.js", "**/*.css",
             "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg",
             "**/*.mp3", "**/*.wav", "**/*.mp4",
             "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.otf",
-            // PWA + service-worker files (no-ops inside the WebView, but harmless)
             "**/*.webmanifest", "manifest.json", "metadata.json", "sw.js",
         )
-        // Explicitly skip build scaffolding that isn't served to the WebView.
         exclude(
             "package.json", "package-lock.json", "yarn.lock",
             "vite.config.js",
@@ -131,9 +121,6 @@ val stageWebAssets by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("generated/webAssets"))
 }
 
-// Belt-and-braces: hook the copy in front of any asset-touching task, regardless
-// of variant name, so `merge…Assets`, `package…Assets`, and `generate…Assets`
-// always see a populated folder.
 tasks.matching {
     val n = it.name
     n.startsWith("merge") && n.endsWith("Assets") ||
@@ -143,17 +130,26 @@ tasks.matching {
 }.configureEach { dependsOn(stageWebAssets) }
 
 dependencies {
-    // Minimal AndroidX surface — just what the WebView shell needs.
+    implementation(project(":feature-canvas"))
+    implementation(project(":engine-gl"))
+    implementation(project(":core-model"))
+    implementation(project(":core-common"))
+
     implementation(libs.androidx.core.ktx)
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.9.0")
-    implementation("androidx.webkit:webkit:1.11.0")
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.androidx.activity.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
 }
 
-// --- Google Play publishing (Triple-T Gradle Play Publisher) ----------------
 run {
     val saJson = System.getenv("PLAY_SERVICE_ACCOUNT_JSON_FILE")
         ?: rootProject.file("play-service-account.json").takeIf { it.exists() }?.absolutePath

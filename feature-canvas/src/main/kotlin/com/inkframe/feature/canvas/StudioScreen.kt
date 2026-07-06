@@ -375,6 +375,18 @@ fun StudioScreen(state: StudioState = viewModel()) {
         SidePanel(state = state, onChanged = { canvasView?.requestRender() })
     }
 
+    // Autosave: save every 60 s to internal storage while the screen is active.
+    val autoSaveManager = remember { AutoSaveManager(context) }
+    LaunchedEffect(canvasView) {
+        val view = canvasView ?: return@LaunchedEffect
+        autoSaveManager.start(
+            canvasView = view,
+            projectProvider = { state.project },
+            onSaved = { /* silent autosave — no status noise */ },
+            onError = { /* swallow autosave errors; user's explicit save is the source of truth */ },
+        )
+    }
+
     // Forward Activity lifecycle to the GL view so it can pause/resume rendering and back
     // up artwork before the EGL context may be destroyed.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -389,6 +401,7 @@ fun StudioScreen(state: StudioState = viewModel()) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            autoSaveManager.stop()
             state.stop()
         }
     }
