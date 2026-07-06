@@ -71,7 +71,15 @@ Before tagging a release, update:
 - `web/metadata.json` `version` — this drives the in-app Studio version and Android `versionName`
 - `web/package.json` `version` — CI verifies it matches `web/metadata.json`
 - `CHANGELOG.md`
-- `RELEASE_NOTES.md`
+
+Then regenerate notes and verify:
+
+```bash
+node tools/update-release-notes.mjs
+node tools/update-release-notes.mjs --check
+```
+
+CI runs the same release-notes check before building the APK.
 
 Then tag:
 

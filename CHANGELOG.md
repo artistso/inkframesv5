@@ -17,7 +17,8 @@ semantic versioning once it reaches a public release.
 - **First-launch Start overlay.** If no local recovery snapshot is restored, InkFrame now opens with a tablet-friendly template picker directly over the canvas, plus Blank canvas, Import archive, Project manager, Skip, and Don’t show again actions.
 - **Start-screen archive import.** Returning users on a new browser/device can now restore a `.inkframe` archive directly from the Start overlay before creating anything.
 - **Studio release/about panel.** The Studio overlay now shows version/runtime/license/privacy/release-smoke notes plus direct Backup archive, Projects, and Start screen actions.
-- **Release helper docs.** Added `RELEASE_CHECKLIST.md` for tablet/APK smoke testing and `RELEASE_NOTES.md` for tester-facing release summaries.
+- **Release helper docs.** Added `RELEASE_CHECKLIST.md` for tablet/APK smoke testing and generated `RELEASE_NOTES.md` for tester-facing release summaries.
+- **Release-notes generator.** `tools/update-release-notes.mjs` rebuilds `RELEASE_NOTES.md` from `CHANGELOG.md` `[Unreleased]` + `web/metadata.json`, and CI checks the file is current.
 - **Single-source version metadata.** `web/metadata.json` now drives the in-app Studio version/package/SDK display and the Android Gradle `versionName`/SDK values; CI runs a no-dependency version smoke check to prevent drift.
 - **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
 - **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
