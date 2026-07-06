@@ -37,7 +37,7 @@ as an Android APK via a thin WebView shell. That means:
 - **Same code, browser and tablet** — the APK is a WebView that loads the same
   `index.html`, so what you draw in Chrome and what you draw on your tablet
   behave identically.
-- **Free**, as in beer *and* as in speech. MIT-style intent (see `LICENSE`).
+- **Free**, as in beer *and* as in speech. Released under the MIT License (see `LICENSE`).
 
 ## The feature list
 
@@ -173,7 +173,11 @@ Meaningful changes should update `CHANGELOG.md`.
 
 ## License
 
-Free to use, modify, and redistribute. See `LICENSE` (once added).
+Free to use, modify, and redistribute under the MIT License. See `LICENSE`.
+
+## Privacy
+
+InkFrame is designed to run offline. See `PRIVACY.md` for the Play Store/data-safety notes.
 
 <div align="center">
 

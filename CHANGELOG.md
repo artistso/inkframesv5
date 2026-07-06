@@ -6,6 +6,12 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Release readiness — Play target SDK, exports, and legal docs
+- **Target SDK bump to Android 15 / API 35.** `compileSdk` and `targetSdk` now target API 35, and CI installs the matching platform/build-tools before assembling APK/AAB artifacts.
+- **Android WebView export bridge.** Blob-based GIF/video exports now pass through a small `InkFrameAndroidBridge` instead of handing `blob:` URLs to `DownloadManager` (which cannot fetch renderer-local blobs). Browser exports still use the normal `<a download>` path.
+- **MIME-aware MediaStore saving.** PNG/GIF/WebP/JPEG exports save to `Pictures/InkFrame`; MP4/WebM exports save to `Movies/InkFrame`; future non-media exports route to Downloads.
+- **Added `LICENSE` and `PRIVACY.md`.** README now points to the MIT License and offline/privacy notes for Play Store data-safety preparation.
+
 ### Web build — brush engine part 2 (stroke feel)
 Three long-planned improvements plus two safety nets.
 

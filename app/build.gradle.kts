@@ -29,12 +29,12 @@ val hasReleaseSigning = releaseStorePath != null
 
 android {
     namespace = "com.inkframe.studio"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.inkframe.studio"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = resolvedVersionCode
         versionName = baseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

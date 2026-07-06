@@ -3944,11 +3944,43 @@
     }
 
     function triggerDownload(blob, name) {
+      // Android WebView cannot hand renderer-local blob: URLs to DownloadManager.
+      // The APK shell exposes a tiny bridge; browsers keep the normal <a download>
+      // path. Convert only on Android, so desktop exports stay zero-copy.
+      const bridge = window.InkFrameAndroidBridge;
+      if (bridge && typeof bridge.saveBase64 === 'function' && typeof FileReader !== 'undefined') {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          try {
+            const dataUrl = String(reader.result || '');
+            const comma = dataUrl.indexOf(',');
+            const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+            bridge.saveBase64(base64, name, blob.type || mimeFromExportName(name));
+          } catch (e) {
+            console.warn('[export] Android bridge failed, falling back to blob download:', e);
+            browserDownload(blob, name);
+          }
+        };
+        reader.onerror = () => browserDownload(blob, name);
+        reader.readAsDataURL(blob);
+        return;
+      }
+      browserDownload(blob, name);
+    }
+    function browserDownload(blob, name){
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = name;
       document.body.appendChild(a); a.click();
       setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
+    }
+    function mimeFromExportName(name){
+      const n = String(name || '').toLowerCase();
+      if(n.endsWith('.gif')) return 'image/gif';
+      if(n.endsWith('.mp4')) return 'video/mp4';
+      if(n.endsWith('.webm')) return 'video/webm';
+      if(n.endsWith('.png')) return 'image/png';
+      return 'application/octet-stream';
     }
     function humanBytes(n){
       if (n < 1024) return n + ' B';

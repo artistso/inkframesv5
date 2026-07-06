@@ -6,7 +6,7 @@ A copy-paste checklist for shipping. Two phases: a **one-time setup**, then a fa
 | | |
 |---|---|
 | Application ID | `com.inkframe.studio` |
-| Min / Target SDK | 26 (Android 8.0) / 34 |
+| Min / Target SDK | 26 (Android 8.0) / 35 |
 | Upload format | **`.aab`** (App Bundle) — `.apk` is for sideload testing only |
 | Marketing version | `versionName` in `app/build.gradle.kts` (e.g. `0.1.0`) |
 | Build number | `versionCode` — **auto-incremented in CI**, never hand-edit |

@@ -17,11 +17,11 @@ automatically on the first build.
 |--------------------|---------------------------------------------------|
 | Android Studio     | **Koala (2024.1)** or newer (bundles JDK 17)      |
 | JDK                | **17** (Android Studio ships one; or install Temurin 17) |
-| Android SDK        | Platform **API 34**, Build-Tools 34.x             |
+| Android SDK        | Platform **API 35**, Build-Tools 35.x             |
 | Min device         | Android 8.0 (API 26)+, OpenGL ES 3.0 (any modern phone/tablet) |
 
 Versions already pinned in the project: Gradle **8.9**, AGP **8.5.2**, Kotlin **1.9.24**,
-compileSdk **34**, minSdk **26**.
+compileSdk **35**, targetSdk **35**, minSdk **26**.
 
 ---
 
@@ -56,7 +56,7 @@ machine but git.
 ## Option A — Android Studio (easiest to *develop*)
 
 1. **Open** Android Studio → *File ▸ Open* → select the `InkFrame/` folder.
-2. Studio will sync Gradle and offer to install any missing SDK bits (API 34,
+2. Studio will sync Gradle and offer to install any missing SDK bits (API 35,
    Build-Tools) — accept. First sync downloads AndroidX/Compose (a few minutes).
 3. Plug in a device (USB debugging on) or start an emulator (API 26+).
 4. Press **Run ▶** (or *Build ▸ Build Bundle(s) / APK(s) ▸ Build APK(s)*).
@@ -199,7 +199,7 @@ git tag v0.1.1 && git push origin v0.1.1
 | `Unsupported class file major version` / Gradle JDK error | Use **JDK 17** (Studio: Gradle JDK = jbr-17). |
 | `SDK location not found` | Create `local.properties` with `sdk.dir=...` (Option B step 1). |
 | First sync is slow / offline failure | First build needs internet to fetch AndroidX/Compose from Google Maven. |
-| `Failed to find Build Tools` / `platform 34` | Let Studio install them, or `sdkmanager "platforms;android-34" "build-tools;34.0.0"`. |
+| `Failed to find Build Tools` / `platform 35` | Let Studio install them, or `sdkmanager "platforms;android-35" "build-tools;35.0.0"`. |
 | Preview/canvas looks blank in Studio Preview | Expected — the GL canvas only renders on a real device/emulator. |
 
 ---
