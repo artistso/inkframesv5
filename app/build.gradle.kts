@@ -102,6 +102,8 @@ val stageWebAssets by tasks.registering(Copy::class) {
             "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg",
             "**/*.mp3", "**/*.wav", "**/*.mp4",
             "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.otf",
+            // PWA + service-worker files (no-ops inside the WebView, but harmless)
+            "**/*.webmanifest", "manifest.json", "sw.js",
         )
         // Explicitly skip build scaffolding that isn't served to the WebView.
         exclude(

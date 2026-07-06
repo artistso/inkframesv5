@@ -3,6 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#1a001a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="InkFrame" />
+<meta name="mobile-web-app-capable" content="yes" />
+<!-- PWA manifest: makes "Install to Home Screen" work in real browsers.
+     Ignored (harmlessly) inside the Android WebView shell where the page
+     loads over file:// and there's no host to register against. -->
+<link rel="manifest" href="manifest.webmanifest" />
 <title>InkFrame · The Glass Horizon</title>
 <style>
   :root{
@@ -1577,6 +1586,202 @@
       const any=document.querySelector('.node.open,.kidwrap.open')||pinLayer.children.length;
       if(any){ collapseAll(); flash('Collapsed · clean canvas'); } });
   }
+
+  // ============================================================
+  // Autosave — IndexedDB persistence for the full session
+  // ============================================================
+  // Every project (frames + holds + fps + name + canvas size + active index) is
+  // written into an IndexedDB store as PNG blobs (much smaller than raw ImageData
+  // and cheap for Canvas 2D to re-decode into a fresh <canvas>).
+  //
+  // Writes happen a) 800 ms after each accepted stroke/edit and b) whenever the
+  // page is hidden or unloaded — so a phone lock, an app switch, or an accidental
+  // browser refresh never loses the last minute of work.
+  //
+  // On boot, if a snapshot exists, we rehydrate `projects[]` in place before the
+  // first render. Failing gracefully is important: any error at any step just
+  // falls back to a blank session (no user-facing crash).
+  const AUTOSAVE = (() => {
+    const DB_NAME = 'inkframe';
+    const DB_VER  = 1;
+    const STORE   = 'sessions';
+    const KEY     = 'current';
+    const SAVE_DELAY_MS = 800;
+
+    // ---- IDB helpers (small hand-rolled wrapper; no deps) ----
+    function openDB(){
+      return new Promise((resolve,reject)=>{
+        if(!('indexedDB' in window)){ reject(new Error('no idb')); return; }
+        const req=indexedDB.open(DB_NAME, DB_VER);
+        req.onupgradeneeded=()=>{
+          const db=req.result;
+          if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+        };
+        req.onsuccess=()=>resolve(req.result);
+        req.onerror =()=>reject(req.error);
+      });
+    }
+    async function idbPut(value){
+      const db=await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx=db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).put(value, KEY);
+        tx.oncomplete=()=>{ db.close(); resolve(); };
+        tx.onerror   =()=>{ db.close(); reject(tx.error); };
+      });
+    }
+    async function idbGet(){
+      const db=await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx=db.transaction(STORE,'readonly');
+        const rq=tx.objectStore(STORE).get(KEY);
+        rq.onsuccess=()=>{ db.close(); resolve(rq.result||null); };
+        rq.onerror  =()=>{ db.close(); reject(rq.error); };
+      });
+    }
+    async function idbDel(){
+      const db=await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx=db.transaction(STORE,'readwrite');
+        tx.objectStore(STORE).delete(KEY);
+        tx.oncomplete=()=>{ db.close(); resolve(); };
+        tx.onerror   =()=>{ db.close(); reject(tx.error); };
+      });
+    }
+
+    // ---- Serialize a live projects[] into a plain, IDB-safe payload ----
+    // Frames are captured as PNG Blobs (structured-cloneable) rather than
+    // ImageData buffers, which would balloon storage 4x for the alpha channel.
+    function frameToBlob(cnv){
+      return new Promise(res=>{
+        if(cnv.toBlob) cnv.toBlob(b=>res(b), 'image/png');
+        else{
+          // Fallback for the (very rare) contexts without HTMLCanvasElement.toBlob.
+          const url=cnv.toDataURL('image/png');
+          fetch(url).then(r=>r.blob()).then(res).catch(()=>res(null));
+        }
+      });
+    }
+    async function serialize(){
+      // save scalar state into the currently-active project before snapshotting
+      const p=projects[pi]; if(p){ p.cur=cur; p.fps=fps; p.w=W; p.h=H; }
+      const payload={
+        v:1, savedAt:Date.now(), pi,
+        projects: await Promise.all(projects.map(async P=>({
+          name:P.name||'Canvas', w:P.w, h:P.h, cur:P.cur||0, fps:P.fps||12,
+          holds:(P.holds||P.frames.map(()=>1)).slice(),
+          frames: await Promise.all(P.frames.map(frameToBlob)),
+        }))),
+      };
+      return payload;
+    }
+
+    // ---- Turn a stored payload back into live canvases ----
+    function blobToCanvas(blob, w, h){
+      return new Promise(res=>{
+        if(!blob){ const c=document.createElement('canvas'); c.width=w; c.height=h; res(c); return; }
+        const url=URL.createObjectURL(blob);
+        const img=new Image();
+        img.onload =()=>{ const c=document.createElement('canvas'); c.width=w; c.height=h;
+          c.getContext('2d').drawImage(img,0,0); URL.revokeObjectURL(url); res(c); };
+        img.onerror=()=>{ URL.revokeObjectURL(url); const c=document.createElement('canvas');
+          c.width=w; c.height=h; res(c); };
+        img.src=url;
+      });
+    }
+    async function restore(payload){
+      if(!payload || !payload.projects || !payload.projects.length) return false;
+      const restored=[];
+      for(const P of payload.projects){
+        const w=P.w||W0, h=P.h||H0;
+        const fr=await Promise.all(P.frames.map(b=>blobToCanvas(b,w,h)));
+        restored.push({
+          frames:fr.length?fr:[document.createElement('canvas')],
+          holds: (P.holds && P.holds.length===fr.length) ? P.holds.slice() : fr.map(()=>1),
+          cur:   Math.min(Math.max(0, P.cur|0), Math.max(0, fr.length-1)),
+          undo:  [], redo:[],
+          w, h, fps:P.fps||12, name:P.name||'Canvas',
+        });
+      }
+      // splice into the pre-existing projects array so all the outer aliases stay valid
+      projects.length=0; for(const P of restored) projects.push(P);
+      const targetPi = Math.min(Math.max(0, payload.pi|0), projects.length-1);
+      useProject(targetPi);
+      // update the top-level canvas element to match the restored project's size
+      canvas.width=W; canvas.height=H;
+      return true;
+    }
+
+    // ---- Debounced save + flush-on-hide/unload ----
+    let scheduled=0, savingNow=false, lastSavedAt=0, lastError=null;
+    async function flush(){
+      if(savingNow) return;
+      savingNow=true;
+      try{
+        const payload=await serialize();
+        await idbPut(payload);
+        lastSavedAt=payload.savedAt; lastError=null;
+      }catch(e){
+        lastError=e; console.warn('[autosave] failed', e);
+      }finally{
+        savingNow=false;
+      }
+    }
+    function schedule(){
+      if(scheduled) return;
+      scheduled=setTimeout(()=>{ scheduled=0; flush(); }, SAVE_DELAY_MS);
+    }
+    function flushNow(){
+      if(scheduled){ clearTimeout(scheduled); scheduled=0; }
+      // fire-and-forget; the page may be unloading — the async tx will still complete
+      flush();
+    }
+
+    // Hide/unload hooks: use both events for maximum coverage across browsers +
+    // Android WebView (which fires 'pagehide' more reliably than 'beforeunload').
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushNow(); });
+    window.addEventListener('pagehide', flushNow);
+    window.addEventListener('beforeunload', flushNow);
+
+    return {
+      schedule, flushNow, restore,
+      loadPayload: idbGet,
+      clear: idbDel,
+      status: ()=>({ lastSavedAt, savingNow, lastError }),
+    };
+  })();
+
+  // Wire the autosave debounce into every place a project actually mutates.
+  // These wrappers preserve the original callers' return values.
+  (function hookAutosave(){
+    const origPushU=pushU, origSetCur=setCur;
+    // pushU fires at the tail of every accepted stroke, undo/redo, and clear — perfect trigger.
+    pushU = function(s){ const r=origPushU(s); AUTOSAVE.schedule(); return r; };
+    // setCur runs on frame-change and prev/next scrubs; cheap and worth persisting.
+    setCur = function(i){ const r=origSetCur(i); AUTOSAVE.schedule(); return r; };
+  })();
+
+  // ---- Restore any saved session, THEN take the normal boot render path ----
+  (async ()=>{
+    try{
+      const payload = await AUTOSAVE.loadPayload();
+      if(payload){
+        const ok = await AUTOSAVE.restore(payload);
+        if(ok){
+          // Rebuild the gallery + timeline UI against the restored data.
+          rebuildGallery(); refreshFrames(); refreshActions();
+          clampCanvas(); applyCanvas(); render();
+          const mins=Math.max(1, Math.round((Date.now()-payload.savedAt)/60000));
+          flash(`Restored · last saved ${mins} min ago`);
+        }
+      }
+    }catch(e){ console.warn('[autosave] restore failed', e); }
+  })();
+
+  // Expose the autosave surface on window for debugging / a future Recover UI.
+  //   window.INKFRAME_AUTOSAVE.status() -> {lastSavedAt, savingNow, lastError}
+  //   window.INKFRAME_AUTOSAVE.clear()  -> wipe the IDB snapshot (returns Promise)
+  window.INKFRAME_AUTOSAVE = AUTOSAVE;
 
   applyTheme(0); render(); refreshFrames(); refreshActions(); startWires();
   flash('Tap a circle to spiral open · double-tap canvas to collapse all · ◌ Studio');

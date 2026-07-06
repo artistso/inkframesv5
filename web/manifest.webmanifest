@@ -1,0 +1,27 @@
+{
+  "name": "InkFrame Studio",
+  "short_name": "InkFrame",
+  "description": "A 2D animation and drawing studio: brushes, timeline with onion skinning, playback, and PNG export.",
+  "id": "/",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#1a001a",
+  "theme_color": "#1a001a",
+  "categories": ["graphics", "productivity", "entertainment"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3CradialGradient id='g' cx='50%25' cy='0%25' r='120%25'%3E%3Cstop offset='0%25' stop-color='%23ffd9e2'/%3E%3Cstop offset='30%25' stop-color='%23f7cac9'/%3E%3Cstop offset='60%25' stop-color='%23a52766'/%3E%3Cstop offset='100%25' stop-color='%231a001a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='96' fill='url(%23g)'/%3E%3Cg transform='translate(256 260)' fill='none' stroke='%23fff0f3' stroke-width='22' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M-120 60 Q-40 -100 40 40 T160 -20'/%3E%3Ccircle cx='170' cy='-24' r='16' fill='%23fff0f3'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='0' fill='%231a001a'/%3E%3Cg transform='translate(256 260)' fill='none' stroke='%23fff0f3' stroke-width='22' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M-120 60 Q-40 -100 40 40 T160 -20'/%3E%3Ccircle cx='170' cy='-24' r='16' fill='%23fff0f3'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

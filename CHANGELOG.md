@@ -6,6 +6,22 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — persistence & PWA
+- **IndexedDB autosave** — the entire session (every project's frames, holds,
+  fps, name, canvas size, and the active project index) is persisted 800 ms
+  after every accepted edit and flushed synchronously on `visibilitychange` /
+  `pagehide` / `beforeunload`. Frames are stored as PNG blobs (about 4x smaller
+  than raw ImageData). On launch the previous session is silently restored;
+  a phone lock, an app switch, or an accidental refresh no longer wipes work.
+- **PWA manifest** (`manifest.webmanifest`) — `display: standalone`,
+  landscape, violet theme colour, embedded SVG icons (regular + maskable).
+  Makes "Install to Home Screen" work when the HTML is served over http(s);
+  ignored (harmlessly) inside the file:// WebView shell.
+- Autosave surface exposed as `window.INKFRAME_AUTOSAVE` (`status()` / `clear()`)
+  so a future Recover UI can plug in without touching the IDB layer.
+- APK asset pipeline: `stageWebAssets` also copies `*.webmanifest` and `sw.js`
+  so any future service-worker file bundles automatically.
+
 ### Web build — brush engine polish
 - **Catmull-Rom spline strokes** — the drawing engine now paints a smoothed
   curve through the last four stabilized samples (tension 0.5) instead of a
