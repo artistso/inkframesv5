@@ -21,6 +21,8 @@
     --stroke: rgba(247,202,201,0.40);
     --rim: rgba(255,240,243,0.6);
     --text:#fff0f3; --dim:#e8b9c6;
+    --label-bg:rgba(10,0,10,.46); --label-border:rgba(255,240,243,.20);
+    --label-shadow:0 1px 2px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.45);
     --shadow: 0 14px 50px rgba(20,0,14,0.55);
     --bg: radial-gradient(120% 82% at 50% -12%, #ffd9e2 0%, #f7cac9 14%, #d77fa0 38%, #a52766 64%, #4d0a33 86%, #1a001a 100%);
   }
@@ -30,7 +32,8 @@
      -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
      -webkit-touch-callout:none; -webkit-user-drag:none; }
   html,body{ margin:0; height:100%; overflow:hidden; touch-action:none; overscroll-behavior:none;
-    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); }
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); font-weight:500;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
   /* Editable fields (colour picker, any future rename inputs) get selection back. */
   input,textarea,[contenteditable]{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 
@@ -113,7 +116,22 @@
   .kid.on{ background:linear-gradient(160deg, var(--accent), var(--accent-deep)) !important; border-color:var(--rim) !important;
     box-shadow:0 0 18px rgba(187,0,55,.6), inset 0 1px 0 var(--rim) !important; }
   .kid .sub{ position:absolute; top:50px; left:50%; transform:translateX(-50%); font-size:8px; letter-spacing:.12em;
-    text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+    text-transform:uppercase; color:var(--dim); white-space:nowrap; pointer-events:none; text-shadow:var(--label-shadow); }
+  /* Readability mode: larger, high-contrast label capsules for tablet glare,
+     bright themes, and low-vision use. Toggled from Actions ▸ Text. */
+  body.readable #title .sub{ opacity:1; color:var(--text); text-shadow:var(--label-shadow); }
+  body.readable .orb .lbl, body.readable .kid .sub{
+    color:var(--text); opacity:1; font-weight:800; letter-spacing:.11em;
+    background:var(--label-bg); border:1px solid var(--label-border);
+    border-radius:999px; padding:3px 7px; text-shadow:var(--label-shadow);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+  body.readable .orb .lbl{ font-size:10px; }
+  body.readable .kid .sub{ top:54px; font-size:9px; }
+  body.readable #railCount, body.readable .projStats, body.readable .templateBtn span,
+  body.readable .brushPreset .meta, body.readable #stylusReadout, body.readable #projectAutosave{
+    color:var(--text); text-shadow:var(--label-shadow); }
+  body.readable #studio p, body.readable #studio details, body.readable #startPanel p{
+    color:var(--text); font-size:14px; }
 
   /* dial gauge ring */
   .kid.dial .ring{ position:absolute; inset:-3px; border-radius:50%; pointer-events:none;
@@ -352,8 +370,8 @@
   .railStep svg{ width:16px; height:16px; fill:none; stroke:var(--text); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
   /* Frame counter tucked to the right of the last step button. */
   #railCount{ flex:0 0 auto; min-width:52px; text-align:center;
-    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
-    color:var(--dim); font-variant-numeric:tabular-nums; }
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; font-weight:700;
+    color:var(--dim); font-variant-numeric:tabular-nums; text-shadow:var(--label-shadow); }
   /* Loop range visualization (existing feature -- restyled to match). */
   #loopRegion{ position:absolute; top:2px; height:10px; border-radius:5px; display:none;
     background:linear-gradient(90deg, rgba(187,0,55,.38), rgba(247,202,201,.48));
@@ -412,8 +430,8 @@
      side wins by accident. */
   .hint{ position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:40; font-size:12px; letter-spacing:.06em;
     color:var(--text); background:color-mix(in srgb, var(--violet) 72%, transparent);
-    padding:7px 16px; border-radius:16px; border:1px solid var(--stroke);
-    pointer-events:none; opacity:0; transition:opacity .4s; backdrop-filter:blur(8px); }
+    padding:7px 16px; border-radius:16px; border:1px solid var(--stroke); font-weight:700;
+    text-shadow:var(--label-shadow); pointer-events:none; opacity:0; transition:opacity .4s; backdrop-filter:blur(8px); }
 
   /* Export overlay — GIF encoding is offloaded to a worker; this shows progress. */
   #expo{ position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center;
@@ -747,10 +765,14 @@
     const lum = (0.30*r + 0.59*g + 0.11*b) / 255;
     if(lum < 0.35){
       // Dark theme -> keep cream text at full opacity, dim = warm rose-quartz.
-      return { text: '#fff0f3', dim: 'rgba(255,240,243,.72)', rim: 'rgba(255,240,243,.55)' };
+      return { text: '#fff0f3', dim: 'rgba(255,240,243,.78)', rim: 'rgba(255,240,243,.55)',
+        labelBg:'rgba(10,0,10,.54)', labelBorder:'rgba(255,240,243,.22)',
+        labelShadow:'0 1px 2px rgba(0,0,0,.90), 0 0 10px rgba(0,0,0,.50)' };
     }
     // Pale theme -> use a dark ink for text, so it's readable over the pastel bg.
-    return { text: '#1a0f16', dim: 'rgba(26,15,22,.62)', rim: 'rgba(26,15,22,.30)' };
+    return { text: '#1a0f16', dim: 'rgba(26,15,22,.72)', rim: 'rgba(26,15,22,.30)',
+      labelBg:'rgba(255,255,255,.58)', labelBorder:'rgba(26,15,22,.16)',
+      labelShadow:'0 1px 0 rgba(255,255,255,.72), 0 0 7px rgba(255,255,255,.55)' };
   }
   function applyTheme(i){
     const t=themes[i]; themeIdx=i; palette=t.sw.slice();
@@ -764,6 +786,9 @@
     r.setProperty('--text', ct.text);
     r.setProperty('--dim',  ct.dim);
     r.setProperty('--rim',  ct.rim);
+    r.setProperty('--label-bg', ct.labelBg);
+    r.setProperty('--label-border', ct.labelBorder);
+    r.setProperty('--label-shadow', ct.labelShadow);
     document.getElementById('bg').style.background=t.bg;
     if(!palette.includes(color)) color=t.a;
     rebuildSwatches(); rebuildThemes();
@@ -786,7 +811,7 @@
     {id:'star',ic:'@star',size:22,op:1,hard:1},
     {id:'eraser',ic:'@eraser',size:40,op:1,hard:.8,erase:true},
   ];
-  let brush=brushes[1], color='#bb0037', size=14, opacity=1, onion=true, playing=false, fps=12, stylusOnly=false;
+  let brush=brushes[1], color='#bb0037', size=14, opacity=1, onion=true, playing=false, fps=12, stylusOnly=false, readableText=false;
   // Pen barrel / secondary button behavior. Android tablets vary: S-Pen side
   // button may arrive as button=2/buttons&2, or not at all. When it does,
   // let the artist choose Pick (eyedropper), Erase (temporary eraser), or Off.
@@ -868,6 +893,7 @@
       if(typeof p.streamline==='number') streamline=p.streamline;
       if(typeof p.stylusOnly==='boolean') stylusOnly=p.stylusOnly;
       if(typeof p.palmReject==='boolean') palmReject=p.palmReject;
+      if(typeof p.readableText==='boolean') readableText=p.readableText;
       if(typeof p.barrelMode==='string' && BARREL_MODES.includes(p.barrelMode)) barrelMode=p.barrelMode;
       if(typeof p.onion==='boolean') onion=p.onion;
       if(typeof p.qsEnabled==='boolean') qsEnabled=p.qsEnabled;
@@ -889,7 +915,7 @@
   let savePrefsT=0;
   function savePrefs(){ clearTimeout(savePrefsT); savePrefsT=setTimeout(()=>{
     try{ localStorage.setItem(PREF_KEY, JSON.stringify({
-      color, streamline, stylusOnly, palmReject, barrelMode, onion, qsEnabled,
+      color, streamline, stylusOnly, palmReject, readableText, barrelMode, onion, qsEnabled,
       brushId:brush.id, brushPrefs, brushLibrary,
     })); }catch(_){}
   }, 180); }
@@ -3447,8 +3473,11 @@
   // MP4 (H.264) if the platform supports it; VP9/VP8 WebM otherwise.
   // Same overlay + cancel as GIF; the underlying codec is auto-detected.
   actKid('@video','Video',()=>exportVideo());
+  function applyReadability(){ document.body.classList.toggle('readable', readableText); }
   const kStylus=actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);savePrefs();flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');}); kStylus.classList.toggle('on',stylusOnly);
   const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);savePrefs();flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
+  const kText=actKid('@list','Text',k=>{readableText=!readableText;applyReadability();k.classList.toggle('on',readableText);savePrefs();flash(readableText?'Readable text ON · high contrast labels':'Readable text off');});
+  kText.id='readableTextKid'; kText.classList.toggle('on',readableText); applyReadability();
   function syncBarrelKid(){
     if(!kBarrel) return;
     const sub=kBarrel.querySelector('.sub');
@@ -4389,6 +4418,7 @@
     kOnion.classList.toggle('on', onion);
     kPalm.classList.toggle('on', palmReject);
     kStylus.classList.toggle('on', stylusOnly);
+    kText.classList.toggle('on', readableText); applyReadability();
     syncBarrelKid();
     kQS.classList.toggle('on', qsEnabled);
     refreshSwatches();

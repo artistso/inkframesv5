@@ -134,6 +134,7 @@ const brushImport = d.getElementById('blabImport');
 const brushSavePreset = d.getElementById('blabSavePreset');
 const brushLibrary = d.getElementById('blabLibList');
 const barrelKid = d.getElementById('barrelModeKid');
+const readableTextKid = d.getElementById('readableTextKid');
 const manageKid = d.querySelector('[data-manage="1"]');
 if (manageKid) manageKid.dispatchEvent(new dom.window.MouseEvent('click', { bubbles:true, cancelable:true }));
 const templateCount = projectTemplates ? projectTemplates.querySelectorAll('.templateBtn').length : 0;
@@ -153,6 +154,7 @@ if (!textureSlider) { console.error('❌ #blabTex (texture slider) missing'); fa
 if (!brushExport || !brushImport) { console.error('❌ Brush Lab import/export controls missing'); failed++; }
 if (!brushSavePreset || !brushLibrary) { console.error('❌ Brush library controls missing'); failed++; }
 if (!barrelKid) { console.error('❌ #barrelModeKid (barrel-button mode control) missing'); failed++; }
+if (!readableTextKid) { console.error('❌ #readableTextKid (readability toggle) missing'); failed++; }
 if (nodeCount < 9) { console.error(`❌ expected >=9 .node orbs, got ${nodeCount}`); failed++; }
 
 if (failed) {

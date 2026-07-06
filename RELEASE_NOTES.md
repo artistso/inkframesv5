@@ -19,6 +19,7 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 
 ## Web build — tablet, stylus, brush texture, and gallery perf
 - **Tablet-first coarse-pointer polish.** Touch devices get larger orbs, kid buttons, rail controls, slider thumbs, project buttons, and a wider Brush Lab without changing desktop density.
+- **Readable text mode.** Actions ▸ Text toggles high-contrast label capsules, stronger shadows, heavier weights, and brighter secondary text for glare/low-vision tablet use; the preference persists.
 - **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor ship with toothy defaults; neon/star/glow stay smooth.
 - **Portable brush profiles.** Brush Lab can export/import `.inkbrush` profile JSON for the current brush, making custom brush settings easy to back up and share.
 - **Custom brush library.** Brush Lab now has a per-brush saved preset list: save named presets, tap **Use** to apply them, export a saved preset, or delete old experiments. Imported `.inkbrush` files are added to the library automatically.
