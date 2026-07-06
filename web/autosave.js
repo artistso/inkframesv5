@@ -135,6 +135,7 @@ function createAutosave(env) {
       v: 2, savedAt: Date.now(), pi: a.pi,
       projects: await Promise.all(projects.map(async P => ({
         name: P.name || 'Canvas', w: P.w, h: P.h, cur: P.cur || 0, fps: P.fps || 12,
+        paper: P.paper || '#fff0f3',
         holds: (P.holds || P.frames.map(() => 1)).slice(),
         frames: await Promise.all(P.frames.map(async fr => {
           const F = env.upgradeFrame(fr, P.w, P.h);
@@ -187,6 +188,7 @@ function createAutosave(env) {
         cur: Math.min(Math.max(0, P.cur | 0), Math.max(0, fr.length - 1)),
         undo: [], redo: [],
         w, h, fps: P.fps || 12, name: P.name || 'Canvas',
+        paper: P.paper || '#fff0f3',
       });
     }
     env.replaceProjects(restored);

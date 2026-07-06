@@ -576,8 +576,23 @@
 
   // ===== Gallery: a few independent projects, each with its own layers/timeline/size =====
   const MAX_PROJECTS=4;   // keep it focused; deeper archives live in a future Gallery view
+  // Paper colour is per-project so neon-on-black work lives happily beside
+  // classic cream-paper sketches. Default matches the original --blush so
+  // existing projects look unchanged after this refactor.
+  const DEFAULT_PAPER = '#fff0f3';
   function newProject(w,h){ w=w||W0; h=h||H0; return {
-    frames:[newFrame(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12, name:'Canvas' }; }
+    frames:[newFrame(w,h)], holds:[1], cur:0, undo:[], redo:[], w, h, fps:12,
+    name:'Canvas', paper:DEFAULT_PAPER }; }
+  // Fast getter used by every render / composite / export path so we don't
+  // read `projects[pi]` inside hot loops.
+  function paper(){ const P=projects[pi]; return (P && P.paper) || DEFAULT_PAPER; }
+  // Reflect paper colour onto the actual <canvas id="c"> element style so the
+  // rounded-corner backdrop matches whatever the project uses (dark for neon,
+  // cream for classic ink). Called after every paper change / project switch.
+  function applyPaperBg(){
+    const c = document.getElementById('c');
+    if(c) c.style.background = paper();
+  }
   let projects=[newProject()], pi=0;
   // live aliases into the active project (kept in sync by useProject)
   let frames=projects[0].frames, holds=projects[0].holds, cur=0, undoStack=projects[0].undo, redoStack=projects[0].redo;
@@ -592,7 +607,11 @@
     // Lazily upgrade any legacy single-canvas frames (autosave v1 payloads).
     P.frames = P.frames.map(f=>upgradeFrame(f, P.w, P.h));
     frames=P.frames; holds=P.holds; cur=P.cur; undoStack=P.undo; redoStack=P.redo; fps=P.fps; W=P.w; H=P.h;
+    if(!P.paper) P.paper = DEFAULT_PAPER;    // back-compat for pre-paper projects
     refreshFctx();
+    if(typeof applyPaperBg==='function') applyPaperBg();
+    // Paper-picker kid may not exist yet at first useProject() during boot.
+    if(typeof kPaper!=='undefined' && kPaper._syncDot) kPaper._syncDot();
   }
   // Fast snap (per-stroke): captures ONLY the active layer's pixels + its index.
   // This is what pen-down calls; heavy structural snaps live in structSnap() below.
@@ -656,7 +675,7 @@
   // with falling opacity, so you feel the whole arc of motion sweep past.
   let scrubbing=false, scrubReach=0;       // scrubReach grows while scrubbing, decays after
   const SCRUB_REACH=5;                      // max frames each side during a scrub
-  function render(){ ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
+  function render(){ ctx.clearRect(0,0,W,H); ctx.fillStyle=paper(); ctx.fillRect(0,0,W,H);
     if(onion&&!playing){
       const depth = Math.max(onionDepth, Math.round(scrubReach));
       for(let k=depth;k>=1;k--){           // farther frames are fainter & more tinted (depth fog)
@@ -1063,7 +1082,7 @@
       const preds = (e.getPredictedEvents && e.getPredictedEvents()) || [];
       pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
       pctx.save();
-      pctx.strokeStyle = brush.erase ? '#fff0f3' : color;
+      pctx.strokeStyle = brush.erase ? paper() : color;
       pctx.globalAlpha = opacity * 0.7;   // slightly translucent -- reads as "predicted"
       pctx.lineWidth = Math.max(1, (nibW || size) * 0.5);
       pctx.lineCap = 'round'; pctx.lineJoin = 'round';
@@ -1449,6 +1468,8 @@
     // Layers orb glyphs -- kept in the same rose-quartz line style as the rest
     layers:  S+'<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4" class="soft"/><path d="M4 16l8 4 8-4" class="soft"/>'+E,
     layerAdd:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M18 14v6M15 17h6" stroke-width="1.6"/>'+E,
+    // Paper: a small dog-eared sheet with a corner fold, plus a droplet of colour on top.
+    paper:   S+'<path d="M6 4h9l3 3v13H6z"/><path d="M15 4v3h3" class="soft"/><circle cx="12" cy="13" r="2.4" class="fill"/>'+E,
     // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
     imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
@@ -1855,8 +1876,49 @@
   // Clear wipes only the ACTIVE layer of the current frame (other layers stay).
   actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);bumpFrame(frames[cur]);render();refreshFrames();});
   const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);savePrefs();render();}); kOnion.classList.toggle('on',onion);
+  // Paper colour picker (per-project). Hidden native <input type=color> covers
+  // the kid so a tap on the orb opens the OS picker; the kid's own colour dot
+  // reflects the current paper so the artist sees at a glance whether they're
+  // on cream (classic) or dark (neon). Also honours 4 preset presses (long-
+  // tap the kid cycles: cream -> off-white -> jet -> deep violet -> back).
+  const PAPER_PRESETS = ['#fff0f3','#f5f5f0','#0a0a10','#160018'];
+  const kPaper = kidEl({glyph:'@paper', sub:'Paper',
+    build(k){
+      // Paint the icon's droplet with the current paper colour.
+      const dot = k.querySelector('circle.fill');
+      const syncDot = () => { if(dot) dot.setAttribute('fill', paper()); };
+      k._syncDot = syncDot;
+      // Hidden native picker overlaid on the whole kid.
+      const inp = document.createElement('input'); inp.type='color'; inp.value=paper();
+      inp.addEventListener('input', e => {
+        projects[pi].paper = e.target.value;
+        applyPaperBg(); syncDot(); render();
+        AUTOSAVE.schedule();
+      });
+      k.appendChild(inp);
+      // Long-press = cycle through the presets so a keyboardless tablet can
+      // reach dark canvases without opening the OS picker.
+      let lpT=0;
+      k.addEventListener('pointerdown', ()=>{
+        clearTimeout(lpT);
+        lpT = setTimeout(()=>{
+          const cur = paper();
+          const idx = PAPER_PRESETS.indexOf(cur);
+          const next = PAPER_PRESETS[(idx+1) % PAPER_PRESETS.length];
+          projects[pi].paper = next; inp.value = next;
+          applyPaperBg(); syncDot(); render();
+          AUTOSAVE.schedule();
+          flash('Paper · '+next);
+        }, 500);
+      });
+      k.addEventListener('pointerup',     ()=>clearTimeout(lpT));
+      k.addEventListener('pointercancel', ()=>clearTimeout(lpT));
+      syncDot();
+    }
+  });
+  nAct._kids.appendChild(kPaper);
   // PNG — the current frame, flattened over the paper background.
-  actKid('@export','PNG',()=>{const o=mk(),oc=o.getContext('2d');oc.fillStyle='#fff0f3';oc.fillRect(0,0,W,H);oc.drawImage(frameComposite(frames[cur]),0,0);
+  actKid('@export','PNG',()=>{const o=mk(),oc=o.getContext('2d');oc.fillStyle=paper();oc.fillRect(0,0,W,H);oc.drawImage(frameComposite(frames[cur]),0,0);
     const a=document.createElement('a');a.download='inkframe-'+(cur+1)+'.png';a.href=o.toDataURL('image/png');a.click();flash('Exported PNG');});
   // GIF — animated, loops, respects per-frame holds and current FPS.
   // Encoding runs in a Web Worker so the UI stays responsive even for long timelines.
@@ -1884,7 +1946,7 @@
   // Cameron: ghost the trailing frame so fast motion smears like a real shutter.
   // Strength rises with frame rate (fast playback => longer trail).
   function blurAmt(){ return motionBlur ? Math.max(0, Math.min(.5, (fps-10)/40)) : 0; }
-  function drawComposite(idx){ ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
+  function drawComposite(idx){ ctx.clearRect(0,0,W,H); ctx.fillStyle=paper(); ctx.fillRect(0,0,W,H);
     ctx.globalAlpha=1; ctx.drawImage(frameComposite(frames[idx%frames.length]),0,0); }
   function playLoop(t){ if(!playing)return;
     const spf=1000/Math.max(1,fps), prog=(t-playT0)/spf;
@@ -1896,7 +1958,7 @@
     let tick=prog%total, idx=lo, f=0;
     for(let j=lo;j<=hi;j++){ const h=hOf(j); if(tick<h){ idx=j; f=tick/h; break; } tick-=h; }
     setCur(idx);
-    ctx.clearRect(0,0,W,H); ctx.fillStyle='#fff0f3'; ctx.fillRect(0,0,W,H);
+    ctx.clearRect(0,0,W,H); ctx.fillStyle=paper(); ctx.fillRect(0,0,W,H);
     const mb=blurAmt();
     if(mb>0 && frames.length>1){                    // trailing ghost (shutter smear)
       const prev = idx>lo ? idx-1 : hi;
@@ -2119,7 +2181,7 @@
   // ===== GALLERY node — up to 10 canvases, each its own project; tap = fluid switch =====
   const nGallery=makeNode({glyph:'@gallery',label:'Gallery',x:140,y:0}); nGallery.dataset.bottom='1';
   function thumbOf(P){ const t=mkAt(64,Math.round(64*P.h/P.w)); const tc=t.getContext('2d');
-    tc.fillStyle='#fff0f3'; tc.fillRect(0,0,t.width,t.height);
+    tc.fillStyle=(P.paper||'#fff0f3'); tc.fillRect(0,0,t.width,t.height);
     const fr=upgradeFrame(P.frames[P.cur||0], P.w, P.h);
     tc.drawImage(frameComposite(fr), 0,0, t.width, t.height); return t.toDataURL(); }
   function switchProject(i){
@@ -2495,7 +2557,7 @@
       const off = document.createElement('canvas');
       off.width = width; off.height = height;
       const g = off.getContext('2d');
-      g.fillStyle = '#fff0f3';           // paper — matches render() clearRect fill
+      g.fillStyle = paper();             // paper -- matches render() clearRect fill
       g.fillRect(0, 0, width, height);
       // Accept both new {layers,...} frames and legacy raw canvases (v1 autosave).
       const fr = upgradeFrame(frame, width, height);
@@ -2722,7 +2784,7 @@
       for(let i=0; i<N; i++){
         if(videoCancelled){ break; }
         // Composite onto the offscreen: paper background then frame layers.
-        g.fillStyle = '#fff0f3'; g.fillRect(0,0,width,height);
+        g.fillStyle = paper(); g.fillRect(0,0,width,height);
         const fr = upgradeFrame(P.frames[i], width, height);
         g.drawImage(frameComposite(fr, width, height), 0, 0);
         if(track.requestFrame) track.requestFrame();
@@ -2845,6 +2907,7 @@
   window.INKFRAME_AUTOSAVE = AUTOSAVE;
 
   syncPredictedSize();
+  applyPaperBg();
   applyTheme(0); render(); refreshFrames(); refreshLayers(); refreshActions(); startWires();
   flash('Tap a circle to spiral open · double-tap canvas to collapse all · ◌ Studio');
 })();
