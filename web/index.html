@@ -24,9 +24,15 @@
     --shadow: 0 14px 50px rgba(20,0,14,0.55);
     --bg: radial-gradient(120% 82% at 50% -12%, #ffd9e2 0%, #f7cac9 14%, #d77fa0 38%, #a52766 64%, #4d0a33 86%, #1a001a 100%);
   }
-  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent;
+     /* Kill every browser default that stomps on stylus drawing: text selection
+        highlight, iOS press-and-hold callout, image drag ghost, tap zoom. */
+     -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
+     -webkit-touch-callout:none; -webkit-user-drag:none; }
   html,body{ margin:0; height:100%; overflow:hidden; touch-action:none; overscroll-behavior:none;
     font-family:-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text); }
+  /* Editable fields (colour picker, any future rename inputs) get selection back. */
+  input,textarea,[contenteditable]{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 
   #bg{ position:fixed; inset:0; z-index:0; background:var(--bg); transition:background .6s ease; }
   #rays{ position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.42; mix-blend-mode:screen; filter:blur(2px);
@@ -276,6 +282,27 @@
 <script>
 (function(){
   "use strict";
+
+  // ===== Stylus-safe input hygiene =====
+  // Even with the CSS above, WebViews and some browsers still fire text-selection,
+  // context menus, and image-drag events on long pen presses. Cancel them at
+  // capture so nothing downstream ever sees them. Real inputs get an escape.
+  const OK_SELECT = new Set(['INPUT','TEXTAREA']);
+  const isEditable = (el)=> el && (OK_SELECT.has(el.tagName) || el.isContentEditable);
+  ['contextmenu','selectstart','dragstart','gesturestart','gesturechange','gestureend']
+    .forEach(evt=>window.addEventListener(evt, e=>{
+      if(isEditable(e.target)) return; e.preventDefault();
+    }, {capture:true, passive:false}));
+  // Kill iOS Safari double-tap zoom (touch-action:none covers most cases; this
+  // catches very old WebKits and dev-tools remote surfaces).
+  let _lastTap=0;
+  document.addEventListener('touchend', e=>{
+    if(isEditable(e.target)) return;
+    const now=performance.now();
+    if(now-_lastTap<350) e.preventDefault();
+    _lastTap=now;
+  }, {passive:false});
+
   const W0=1024,H0=768;          // default document size
   let W=W0,H=H0;                  // current document size (mutable: side handles reshape it)
   const canvas=document.getElementById('c'), ctx=canvas.getContext('2d',{willReadFrequently:true});
