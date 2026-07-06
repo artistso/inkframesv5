@@ -80,8 +80,11 @@ class StudioState : ViewModel() {
 
     // Persistence status surfaced to the UI (e.g. a snackbar / title suffix).
     var statusMessage by mutableStateOf<String?>(null)
-    var isBusy by mutableStateOf(false)
-        private set
+    // Backing state is kept separate from the public `isBusy` property so the
+    // getter (`isBusy`) and the `setBusy(...)` helper don't both emit a
+    // `setBusy(Z)V` JVM method — that name clash broke the release build.
+    private var _isBusy by mutableStateOf(false)
+    val isBusy: Boolean get() = _isBusy
 
     /** Current viewport zoom as a percentage, shown in the toolbar. */
     var zoomPercent by mutableStateOf(100)
@@ -175,7 +178,7 @@ class StudioState : ViewModel() {
             tintStrength = tintStrength,
         )
 
-    fun setBusy(busy: Boolean) { isBusy = busy }
+    fun setBusy(busy: Boolean) { _isBusy = busy }
 
     /**
      * Replaces the in-memory document after a successful load. Resets the editing context
