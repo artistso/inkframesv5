@@ -9,7 +9,8 @@ InkFrame Studio is an offline-first 2D drawing and frame-by-frame animation app 
 ### Android and release readiness
 
 - Target SDK updated to Android 15 / API 35.
-- CI installs Android platform/build-tools 35 before APK/AAB builds.
+- `web/metadata.json` is the single source for in-app version/package/SDK display and Android Gradle `versionName`/SDK values.
+- CI installs Android platform/build-tools 35 before APK/AAB builds and runs a version metadata smoke test.
 - Android WebView Blob export bridge added for GIF/video exports.
 - MIME-aware MediaStore routing:
   - images → `Pictures/InkFrame`

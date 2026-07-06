@@ -6,8 +6,24 @@ plugins {
     alias(libs.plugins.play.publisher)
 }
 
+// --- Shared app metadata ---------------------------------------------------
+// web/metadata.json is the single source for the human version and Android SDK
+// surface that both the Web UI and APK build expose. Keep parsing dependency-free
+// so Gradle configuration stays fast and works before any app dependencies exist.
+val webMetadataFile = rootProject.file("web/metadata.json")
+fun webMetadataString(key: String): String? =
+    Regex("\\\"$key\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+        .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
+        ?.groupValues?.getOrNull(1)
+fun webMetadataInt(key: String): Int? =
+    Regex("\\\"$key\\\"\\s*:\\s*(\\d+)")
+        .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
+        ?.groupValues?.getOrNull(1)?.toIntOrNull()
+
 // --- Versioning ------------------------------------------------------------
-val baseVersionName = "0.1.0"
+val baseVersionName = webMetadataString("version") ?: "0.1.0"
+val metadataTargetSdk = webMetadataInt("targetSdk") ?: 35
+val metadataMinSdk = webMetadataInt("minSdk") ?: 26
 val versionCodeBase = 1
 val resolvedVersionCode: Int = run {
     System.getenv("INKFRAME_VERSION_CODE")?.toIntOrNull()?.let { return@run it }
@@ -29,12 +45,12 @@ val hasReleaseSigning = releaseStorePath != null
 
 android {
     namespace = "com.inkframe.studio"
-    compileSdk = 35
+    compileSdk = metadataTargetSdk
 
     defaultConfig {
-        applicationId = "com.inkframe.studio"
-        minSdk = 26
-        targetSdk = 35
+        applicationId = webMetadataString("packageName") ?: "com.inkframe.studio"
+        minSdk = metadataMinSdk
+        targetSdk = metadataTargetSdk
         versionCode = resolvedVersionCode
         versionName = baseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -103,12 +119,12 @@ val stageWebAssets by tasks.registering(Copy::class) {
             "**/*.mp3", "**/*.wav", "**/*.mp4",
             "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.otf",
             // PWA + service-worker files (no-ops inside the WebView, but harmless)
-            "**/*.webmanifest", "manifest.json", "sw.js",
+            "**/*.webmanifest", "manifest.json", "metadata.json", "sw.js",
         )
         // Explicitly skip build scaffolding that isn't served to the WebView.
         exclude(
             "package.json", "package-lock.json", "yarn.lock",
-            "vite.config.js", "metadata.json",
+            "vite.config.js",
             "node_modules/**", "dist/**",
         )
     }

@@ -36,10 +36,12 @@ jobs:
           node-version: '20'
       - name: Install jsdom (transient)
         run: npm install --no-save --prefix /tmp/jsdom jsdom
-      - name: Run boot smoke
+      - name: Run web smoke checks
         env:
           NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/boot-smoke.mjs
+        run: |
+          node web/tests/version-smoke.mjs
+          node web/tests/boot-smoke.mjs
 
   test:
     name: Unit tests (JVM)

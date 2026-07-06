@@ -18,6 +18,7 @@ semantic versioning once it reaches a public release.
 - **Start-screen archive import.** Returning users on a new browser/device can now restore a `.inkframe` archive directly from the Start overlay before creating anything.
 - **Studio release/about panel.** The Studio overlay now shows version/runtime/license/privacy/release-smoke notes plus direct Backup archive, Projects, and Start screen actions.
 - **Release helper docs.** Added `RELEASE_CHECKLIST.md` for tablet/APK smoke testing and `RELEASE_NOTES.md` for tester-facing release summaries.
+- **Single-source version metadata.** `web/metadata.json` now drives the in-app Studio version/package/SDK display and the Android Gradle `versionName`/SDK values; CI runs a no-dependency version smoke check to prevent drift.
 - **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
 - **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
 - **Cached gallery thumbnails.** Gallery/project-browser thumbnails now reuse a signature cache keyed by project/frame/layer versions, avoiding needless recompositing while browsing projects.

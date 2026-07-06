@@ -531,9 +531,9 @@
     <p><b>InkFrame Studio</b> is a professional drawing &amp; animation studio.</p>
     <p>Free &amp; ad-free. No account. No data collected. No AI in your artwork.</p>
     <div class="metaGrid">
-      <div><b>Version</b>0.1.0 · Web/PWA build</div>
-      <div><b>Runtime</b>Offline-first browser + Android WebView</div>
-      <div><b>Android</b>API 35 target · tablet/stylus focused</div>
+      <div><b>Version</b><span id="studioVersion">loading…</span> · Web/PWA build</div>
+      <div><b>Runtime</b><span id="studioRuntime">Offline-first browser + Android WebView</span></div>
+      <div><b>Android</b><span id="studioAndroid">API target · tablet/stylus focused</span></div>
       <div><b>License</b>MIT · free to use, modify, and share</div>
     </div>
     <div class="backup" id="studioBackupNote"><b>Backup reminder:</b> export a `.inkframe` archive before clearing browser storage, switching devices, or installing a new APK.</div>
@@ -648,6 +648,26 @@
 <script>
 (function(){
   "use strict";
+
+  // ===== Shared app metadata =====
+  // web/metadata.json is the single source for version/package/SDK surface. The
+  // APK bundles it as an asset; browsers load it next to index.html. If a
+  // sandbox/browser blocks fetch, the UI degrades to "dev" instead of crashing.
+  const APP_META = { name:'InkFrame Studio', version:'dev', packageName:'com.inkframe.studio', targetSdk:null, minSdk:null };
+  function applyAppMeta(meta){
+    Object.assign(APP_META, meta || {});
+    const v=document.getElementById('studioVersion'); if(v) v.textContent=APP_META.version || 'dev';
+    const a=document.getElementById('studioAndroid'); if(a) a.textContent=`${APP_META.packageName || 'com.inkframe.studio'}${APP_META.targetSdk ? ' · API '+APP_META.targetSdk+' target' : ''}`;
+  }
+  async function loadAppMeta(){
+    try{
+      if(typeof fetch==='function'){
+        const r=await fetch('metadata.json', {cache:'no-store'});
+        if(r && r.ok) applyAppMeta(await r.json()); else applyAppMeta(null);
+      } else applyAppMeta(null);
+    }catch(_){ applyAppMeta(null); }
+  }
+  applyAppMeta(null); loadAppMeta();
 
   // ===== Stylus-safe input hygiene =====
   // Even with the CSS above, WebViews and some browsers still fire text-selection,

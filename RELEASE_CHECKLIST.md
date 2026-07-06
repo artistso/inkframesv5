@@ -64,13 +64,14 @@ In the installed APK, verify:
 - App pause/resume does not lose work.
 - Rotate/background/lock-screen recovery behaves acceptably.
 
-## 6. Release notes
+## 6. Version metadata and release notes
 
 Before tagging a release, update:
 
+- `web/metadata.json` `version` — this drives the in-app Studio version and Android `versionName`
+- `web/package.json` `version` — CI verifies it matches `web/metadata.json`
 - `CHANGELOG.md`
 - `RELEASE_NOTES.md`
-- `app/build.gradle.kts` `baseVersionName` for meaningful releases
 
 Then tag:
 
