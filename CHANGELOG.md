@@ -6,6 +6,52 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — stroke terminals (no more blob-at-start / blob-at-end)
+Real diagnosis of five separate causes shipping a "digital-feeling" stroke,
+each fixed at the smallest possible layer:
+
+* **Pressure seat-in** (4-sample window). Cheap styli and capacitive touch
+  report a default pressure of 0.5 on the very first sample, which stamped
+  the entry dab at half nib width no matter your actual touch. Now the
+  smoothed pressure starts at a hairline (0.15 blended 60/40 with the
+  raw reading) and ramps to real pressure over PSEAT_N samples via a
+  variable-strength ease.
+* **Removed the double-dab on pen-down.** The old code stamped fctx AND
+  ctx at the same (x, y) with the same pressure -- literally two dabs of
+  ink at one point. Now the entry dab is single-stamped.
+* **Entry dab honours the taper-in envelope** (reveal = 0 when taperIn > 0)
+  so the stroke actually starts from nothing instead of stamping a
+  full-width dab and then fading in the *next* few dabs on top of it.
+* **`inkPool()` is gated on the new `entryPool` pref**, off by default
+  for every brush except ink (which ships at 0.35). Ink-brush users
+  keep their calligraphic entry pool; sketch brushes stop pooling.
+* **Fixed the flick-taper spacing.** The old exit taper laid dabs at
+  `size * 0.35 * t * 3` which left them 3x too far apart -- a visible
+  hook at the end. New spacing matches the brush's own dab spacing
+  (`_bpS`) so it reads as a continuous taper.
+
+### Web build — full user control over terminals (Brush Lab expansion)
+Four new per-brush prefs, each with a slider in the Brush Lab and each
+persisted through the existing prefs layer:
+
+* **Taper in** (px, 0..60) -- length of the entry taper. 0 = start at
+  full width. Replaces the old hardcoded 22 px REVEAL_LEN constant.
+* **Taper out** (px, 0..60) -- length of the exit taper on a fast lift.
+* **Entry pool** (0..100 %) -- how much ink to pool on pen-down. Only
+  meaningful for the ink brush; the row greys out on other brushes so
+  the UI doesn't lie about what will happen.
+* **Exit pool** (0..100 %) -- how much ink to pool on a slow lift.
+
+Shipped-defaults per brush live in a new `DEFAULT_PROFILE` table so a
+fresh install picks values that make sense per brush (ink calligraphic,
+pencil light-tapered, watercolour long-entry, glow/eraser flat).
+Reset restores from that same table (was previously restoring only
+size/op/hard/spacing/jitter and losing the taper knobs).
+
+Live preview strip in the Brush Lab now paints the terminal envelopes
+too -- so you see the entry pool / taper-in / taper-out / exit pool
+without leaving the panel.
+
 ### Repo / marketing
 - **New README** — hero image, animated demo GIF, honest feature list, layout
   guide, contribution instructions. Replaces the tiny stub that described

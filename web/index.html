@@ -322,6 +322,10 @@
   <div class="row"><span class="lbl">Hardness</span><input type="range" id="blabHard" min="0" max="100" step="1"><span class="val" id="blabHardV">0</span></div>
   <div class="row"><span class="lbl">Spacing</span><input type="range" id="blabSp" min="2" max="50" step="1"><span class="val" id="blabSpV">0</span></div>
   <div class="row"><span class="lbl">Jitter</span><input type="range" id="blabJit" min="0" max="100" step="1"><span class="val" id="blabJitV">0</span></div>
+  <div class="row"><span class="lbl">Taper in</span><input type="range" id="blabTin" min="0" max="60" step="1"><span class="val" id="blabTinV">0</span></div>
+  <div class="row"><span class="lbl">Taper out</span><input type="range" id="blabTout" min="0" max="60" step="1"><span class="val" id="blabToutV">0</span></div>
+  <div class="row"><span class="lbl">Entry pool</span><input type="range" id="blabEP" min="0" max="100" step="1"><span class="val" id="blabEPV">0</span></div>
+  <div class="row"><span class="lbl">Exit pool</span><input type="range" id="blabXP" min="0" max="100" step="1"><span class="val" id="blabXPV">0</span></div>
   <div class="btns">
     <button id="blabReset" type="button">Reset</button>
     <button id="blabClose" type="button" class="primary">Done</button>
@@ -428,18 +432,46 @@
   //   hard     -- 0..1 nib hardness (1 = solid disc, 0 = soft feather)
   //   spacing  -- 0.02..0.5 fraction of size between dabs (lower = denser)
   //   jitter   -- 0..1 random position offset per dab, scaled by size
+  //   taperIn  -- px length of the entry taper (0 = start at full width; on by
+  //               default so pen-down never blobs. Longer = softer entry.)
+  //   taperOut -- px length of the exit taper on a fast lift
+  //   entryPool -- 0..1 how much ink to pool on pen-down (0 = never; 1 = full).
+  //                Only respected by brushes that call inkPool() (ink brush).
+  //   exitPool -- 0..1 how much ink to pool on a slow lift (see entryPool).
   const brushPrefs={};
-  brushes.forEach(b=>{ brushPrefs[b.id]={
-    size:b.size, op:b.op,
-    hard:b.hard, spacing:0.14, jitter:0,
-  }; });
+  // Sensible defaults per brush. Ink keeps its calligraphic personality (entry
+  // + exit pools ON) so it still feels like a real pen; every other brush
+  // ships with pools OFF so a normal sketch stroke never blobs.
+  const DEFAULT_PROFILE={
+    pencil:  { spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0,    exitPool:0    },
+    ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55 },
+    marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0    },
+    water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0    },
+    glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0    },
+    eraser:  { spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0    },
+  };
+  brushes.forEach(b=>{ const d=DEFAULT_PROFILE[b.id]||{};
+    brushPrefs[b.id]={
+      size:b.size, op:b.op, hard:b.hard,
+      spacing:  (typeof d.spacing==='number')  ? d.spacing  : 0.14,
+      jitter:   (typeof d.jitter==='number')   ? d.jitter   : 0,
+      taperIn:  (typeof d.taperIn==='number')  ? d.taperIn  : 6,
+      taperOut: (typeof d.taperOut==='number') ? d.taperOut : 6,
+      entryPool:(typeof d.entryPool==='number')? d.entryPool: 0,
+      exitPool: (typeof d.exitPool==='number') ? d.exitPool : 0,
+    };
+  });
   // Current-brush accessors used by the paint engine. Cheaper than reading
   // brushPrefs[brush.id].x every dab, and safe against `brush` swaps.
-  let _bpH=1, _bpS=0.14, _bpJ=0;
+  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0;
   function refreshBp(){ const p=brushPrefs[brush.id]||{};
-    _bpH = (typeof p.hard==='number') ? p.hard : (brush.hard!=null?brush.hard:0.9);
-    _bpS = (typeof p.spacing==='number') ? p.spacing : 0.14;
-    _bpJ = (typeof p.jitter==='number') ? p.jitter : 0;
+    _bpH   = (typeof p.hard==='number')      ? p.hard      : (brush.hard!=null?brush.hard:0.9);
+    _bpS   = (typeof p.spacing==='number')   ? p.spacing   : 0.14;
+    _bpJ   = (typeof p.jitter==='number')    ? p.jitter    : 0;
+    _bpTin = (typeof p.taperIn==='number')   ? p.taperIn   : 6;
+    _bpTout= (typeof p.taperOut==='number')  ? p.taperOut  : 6;
+    _bpEP  = (typeof p.entryPool==='number') ? p.entryPool : 0;
+    _bpXP  = (typeof p.exitPool==='number')  ? p.exitPool  : 0;
   }
   function loadPrefs(){
     try{ const raw=localStorage.getItem(PREF_KEY); if(!raw) return;
@@ -618,6 +650,10 @@
   let nibAng=-0.5;       // current nib ORIENTATION — also has inertia (the nib swivels with weight)
   let nibFlat=0;         // current tilt "flatness" 0..1 (eased) — pencil shades broad when laid flat
   let strokeLen=0;       // distance travelled this stroke — drives the reveal envelope (Spielberg)
+  let pSeat=0;           // pressure seat-in counter: samples 0..PSEAT_N average toward
+                          // running mean so cheap styli / capacitive touch (which report
+                          // a default 0.5) don't blob the first dab at half nib width.
+  const PSEAT_N=4;
   let strokePath=[];     // recorded screen-space path of the current stroke (for the catch-light glint)
   let lastP={x:0,y:0};   // last raw pen sample, for the live Lens
   let drawPid=null, drawPidType=null;  // pointerId/type that owns the active stroke (so a palm can't hijack it)
@@ -625,7 +661,8 @@
   const PEN_ANGLE=-0.5;  // default broad-nib holding angle when no tilt is reported (radians)
   const WLAG=0.35;       // how fast nib width eases to target (lower = heavier momentum)
   const ALAG=0.22;       // how fast nib orientation eases (lower = heavier swivel inertia)
-  const REVEAL_LEN=22;   // px over which a stroke fades in from nothing (the "reveal")
+  // Legacy fallback (used when a brush profile lacks a taperIn value).
+  const REVEAL_LEN=22;
   const toC=e=>{const r=canvas.getBoundingClientRect();
     // tilt → a heading (azimuth) and a "flatness" 0..1 (0 = upright, 1 = laid flat for shading)
     let az=null, flat=0;
@@ -796,7 +833,13 @@
         if(flat!=null) nibFlat += (flat-nibFlat)*0.25;
         d=nibW;
         strokeLen += Math.hypot(x-px,y-py);
-        reveal=Math.min(1, strokeLen/REVEAL_LEN);
+        // Taper-in envelope (per-brush). taperIn=0 means "start at full width".
+        reveal = _bpTin>0 ? Math.min(1, strokeLen/_bpTin) : 1;
+      } else if(_bpTin>0){
+        // Non-livingLine brushes (marker, water, glow, eraser) also get a
+        // taper-in when the brush profile asks for one.
+        strokeLen += Math.hypot(x-px,y-py);
+        reveal = Math.min(1, strokeLen/_bpTin);
       }
       dab(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
       if(!brush.erase) dab(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);
@@ -817,8 +860,8 @@
         nibAng = easeAng(nibAng, angTgt, ALAG);  // Nolan: orientation also swivels with momentum
         if(flat!=null) nibFlat += (flat-nibFlat)*0.25;
         d=nibW;
-        strokeLen += dist/n;               // advance the reveal envelope along the path
-        reveal=Math.min(1, strokeLen/REVEAL_LEN);   // Spielberg: the line reveals into being
+        strokeLen += dist/n;                                // advance the reveal envelope along the path
+        reveal = _bpTin>0 ? Math.min(1, strokeLen/_bpTin) : 1;
       }
       dab(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
       if(!brush.erase)dab(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);}}
@@ -857,24 +900,57 @@
     if(!allow(e))return;
     e.preventDefault();drawing=true;drawPid=e.pointerId;drawPidType=e.pointerType;pend=snap();
     const c=toC(e);
-    nibW=targetWidth(c.p, 0); strokeLen=0;                  // reset Living-Line state
-    nibAng=(c.az!=null)?c.az:PEN_ANGLE; nibFlat=c.flat||0;  // seat the nib at its true starting tilt
-    strokePath=[{x:c.x,y:c.y}];                             // record path for the Spielberg catch-light
-    qsActive=false; qsShape=null; qsAnchor={x:c.x,y:c.y}; clearTimeout(qsTimer);  // reset QuickShape
-    lx=c.x;ly=c.y;penX=c.x;penY=c.y;smoothP=c.p;drawVel=0;lastMoveT=e.timeStamp||performance.now();
-    resetHistory(); pushSample(c.x,c.y,c.p,c.az,c.flat);
-    // ink lays a small entry pool where the nib first presses into the paper
-    if(brush.id==='ink') inkPool(c.x,c.y,c.p,0.45);
-    dab(fctx,c.x,c.y,smoothP,brush.erase,0,0);
+    // ---- Pressure seat-in ----
+    // Cheap styli and capacitive touch report a default pressure of 0.5 on the
+    // very first sample, which makes the entry dab print at half nib width
+    // regardless of intent -- a classic "blob at the start" symptom. We ramp
+    // the effective pressure from a low seed toward the running mean over the
+    // first PSEAT_N samples so the first dab is always a hairline. Real active
+    // pens with true pressure just fold in immediately.
+    pSeat = 0;
+    const seatSeed = 0.15;         // hairline start; grows to real pressure over ~4 samples
+    smoothP = seatSeed * 0.6 + c.p * 0.4;
+    // Reset Living-Line + reveal state.
+    strokeLen = 0;
+    nibW  = targetWidth(smoothP, 0);
+    nibAng = (c.az!=null) ? c.az : PEN_ANGLE;
+    nibFlat = c.flat || 0;
+    strokePath = [{x:c.x, y:c.y}];
+    qsActive = false; qsShape = null; qsAnchor = {x:c.x, y:c.y}; clearTimeout(qsTimer);
+    lx=c.x; ly=c.y; penX=c.x; penY=c.y;
+    drawVel=0; lastMoveT = e.timeStamp || performance.now();
+    resetHistory(); pushSample(c.x, c.y, smoothP, c.az, c.flat);
+    // Optional entry pool (Brush Lab · Entry pool). Off by default; ink brush
+    // ships at 0.35. Scales by the seat-in pressure so a light tap pools less.
+    if(_bpEP > 0 && brush.id === 'ink' && !brush.erase){
+      inkPool(c.x, c.y, smoothP, _bpEP * (0.3 + 0.7 * smoothP));
+    }
+    // Entry dab: reveal=0 when a taper-in is configured, so the stroke truly
+    // starts from nothing instead of stamping a full-width dab and then fading
+    // the *next* dabs in on top of it. Single dab (was double-dabbed before,
+    // which literally doubled the ink laid at the start point).
+    const entryReveal = _bpTin > 0 ? 0 : 1;
+    dab(fctx, c.x, c.y, smoothP, brush.erase, 0, 0, null, entryReveal, nibAng, nibFlat);
     if(brush.erase){ bumpFrame(frames[cur]); render(); }
-    else dab(ctx,c.x,c.y,smoothP,false,0,0);});
+    else dab(ctx, c.x, c.y, smoothP, false, 0, 0, null, entryReveal, nibAng, nibFlat);
+  });
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
     if(!drawing||e.pointerId!==drawPid)return;    // only the owning pointer extends the stroke
     e.preventDefault();
     const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
     for(const ev of evs){const c=toC(ev);
-      smoothP+=(c.p-smoothP)*PSTAB;            // eased pressure
+      // Pressure smoothing. During the seat-in window we ease FAST toward the
+      // real reading so seat_seed (a hairline) becomes true pressure over ~4
+      // samples. After that we use the normal PSTAB damping (kills jitter).
+      if(pSeat < PSEAT_N){
+        pSeat++;
+        // Blend factor climbs 0.35 -> ~0.95 across the window.
+        const k = 0.35 + 0.6 * (pSeat / PSEAT_N);
+        smoothP += (c.p - smoothP) * k;
+      } else {
+        smoothP += (c.p - smoothP) * PSTAB;
+      }
       const ox=penX,oy=penY;
       penX+=(c.x-penX)*stab; penY+=(c.y-penY)*stab;   // StreamLine: stabilized (trailing) point
       const step=Math.hypot(penX-ox,penY-oy);
@@ -900,22 +976,34 @@
         qsTimer=setTimeout(tryQuickShape, QS_HOLD); } }});
   const up=e=>{if(!drawing)return; if(e&&e.pointerId!=null&&e.pointerId!==drawPid)return;  // ignore a palm lifting
     drawing=false; drawPid=null; hideLens(); clearTimeout(qsTimer);
-    // ink: a slow lift gathers a pool (calligraphic terminal); a fast flick tapers to nothing
-    if(brush.id==='ink' && !qsActive){
-      const dwell=Math.max(0,1-drawVel/9);
-      if(dwell>0.12){
-        // slow lift → ink pools into a calligraphic terminal
-        inkPool(lx,ly,smoothP,dwell*0.8);
-      } else if(drawVel>4 && histN>=2){
-        // fast flick → taper: extend the stroke a few px along the last heading with a shrinking nib
-        const ang=lastAng, N=6;
-        for(let i=1;i<=N;i++){ const t=i/N;
-          const x=lx+Math.cos(ang)*size*0.35*t*3;
-          const y=ly+Math.sin(ang)*size*0.35*t*3;
-          const shrink=1-t;
-          const d=nibW*shrink;
-          dab(fctx,x,y,smoothP*shrink,false,ang,drawVel,d,1,nibAng,nibFlat);
-          if(!brush.erase) dab(ctx,x,y,smoothP*shrink,false,ang,drawVel,d,1,nibAng,nibFlat);
+    // Stroke terminals -- both are per-brush controls (Brush Lab):
+    //   * A SLOW lift + Exit-pool > 0 -> ink pools into a calligraphic terminal
+    //     (only meaningful for the ink brush; guarded by inkPool() being defined
+    //     for it). Strength scales by (a) how slow the lift was and (b) the
+    //     Exit-pool pref.
+    //   * A FAST lift + Taper-out > 0 -> extend the stroke along the last
+    //     heading with a shrinking nib. Dab spacing matches the brush profile
+    //     so the taper doesn't leave a visible hook the way the old fixed
+    //     0.35*t*3 spacing did.
+    if(!qsActive && !brush.erase){
+      const dwell = Math.max(0, 1 - drawVel/9);   // 1 = fully still, 0 = fast flick
+      if(_bpXP > 0 && dwell > 0.12 && brush.id === 'ink'){
+        // Slow lift, ink pool: strength = exit pool pref * how still it was.
+        inkPool(lx, ly, smoothP, _bpXP * dwell);
+      } else if(_bpTout > 0 && drawVel > 3 && histN >= 2){
+        // Fast lift, taper. Extend by taperOut px along the last heading,
+        // dab-spaced at the brush's own spacing pref so it looks continuous.
+        const ang = lastAng;
+        const step = Math.max(1, size * _bpS);
+        const N = Math.max(2, Math.round(_bpTout / step));
+        for(let i=1; i<=N; i++){
+          const t = i / N;
+          const x = lx + Math.cos(ang) * step * i;
+          const y = ly + Math.sin(ang) * step * i;
+          const shrink = 1 - t;             // width -> 0, pressure -> 0
+          const d = Math.max(0.4, nibW * shrink);
+          dab(fctx, x, y, smoothP * shrink, false, ang, drawVel, d, 1, nibAng, nibFlat);
+          dab(ctx,  x, y, smoothP * shrink, false, ang, drawVel, d, 1, nibAng, nibFlat);
         }
       }
     }
@@ -1403,29 +1491,63 @@
     const sHard  = document.getElementById('blabHard'), vHard=document.getElementById('blabHardV');
     const sSp    = document.getElementById('blabSp'),   vSp  =document.getElementById('blabSpV');
     const sJit   = document.getElementById('blabJit'),  vJit =document.getElementById('blabJitV');
+    const sTin   = document.getElementById('blabTin'),  vTin =document.getElementById('blabTinV');
+    const sTout  = document.getElementById('blabTout'), vTout=document.getElementById('blabToutV');
+    const sEP    = document.getElementById('blabEP'),   vEP  =document.getElementById('blabEPV');
+    const sXP    = document.getElementById('blabXP'),   vXP  =document.getElementById('blabXPV');
     const prev   = document.getElementById('blabPreview');
     const btnClose = document.getElementById('blabClose');
     const btnReset = document.getElementById('blabReset');
 
     // Preview canvas — a fixed-height strip; we paint a horizontal stroke
     // through it using the actual dab() engine so what you see is what you get.
+    // The preview simulates a real stroke's terminals so Taper-in / Taper-out /
+    // Entry-pool / Exit-pool are visible without leaving the panel.
     function paintPreview(){
       const rect = prev.getBoundingClientRect();
       if(!rect.width) return;
       prev.width = Math.round(rect.width); prev.height = Math.round(rect.height);
       const g = prev.getContext('2d');
       g.fillStyle = '#fff0f3'; g.fillRect(0,0,prev.width, prev.height);
-      // Draw a bezier-ish path across the strip using several dabs.
       const y = prev.height/2;
-      const N = 42;
+      const W = prev.width, N = 64;
+      // Cumulative arc length so taper-in/taper-out can use real px distances.
+      const pts = [];
+      let px = 6, py = y, totalLen = 0;
       for(let i=0;i<=N;i++){
         const t = i/N;
-        const x = 6 + t*(prev.width-12);
+        const x = 6 + t*(W-12);
         const yy = y + Math.sin(t*6.28)*prev.height*0.18;
-        const pr = 0.35 + 0.55*Math.sin(t*3.14);   // pressure sweep
-        // Use the current live brush state (size/opacity/_bpH/_bpS/_bpJ).
-        // No dOverride/reveal so we hit the plain painter path.
-        dab(g, x, yy, pr, false, 0, 4, null, 1, null, 0);
+        const seg = i===0 ? 0 : Math.hypot(x-px, yy-py);
+        totalLen += seg;
+        pts.push({x, y:yy, len:totalLen, t});
+        px=x; py=yy;
+      }
+      // Entry pool: soft blob near the start when Entry-pool > 0 (ink brush only).
+      if(_bpEP>0 && brush.id==='ink'){
+        const gp = g;
+        gp.save(); gp.globalAlpha = _bpEP*0.6;
+        const gr = gp.createRadialGradient(pts[0].x, pts[0].y, 0, pts[0].x, pts[0].y, size*0.6);
+        gr.addColorStop(0, color); gr.addColorStop(1, hexA(color, 0));
+        gp.fillStyle = gr; gp.beginPath(); gp.arc(pts[0].x, pts[0].y, size*0.6, 0, 7); gp.fill();
+        gp.restore();
+      }
+      // Paint the stroke with taper-in / taper-out envelopes.
+      for(const p of pts){
+        const rIn  = _bpTin  > 0 ? Math.min(1, p.len/_bpTin) : 1;
+        const rOut = _bpTout > 0 ? Math.min(1, (totalLen-p.len)/_bpTout) : 1;
+        const reveal = Math.min(rIn, rOut);
+        const pr = 0.35 + 0.55*Math.sin(p.t*3.14);
+        dab(g, p.x, p.y, pr, false, 0, 4, null, reveal, null, 0);
+      }
+      // Exit pool: soft blob near the end when Exit-pool > 0 (ink brush only).
+      if(_bpXP>0 && brush.id==='ink'){
+        const gp = g; const last = pts[pts.length-1];
+        gp.save(); gp.globalAlpha = _bpXP*0.6;
+        const gr = gp.createRadialGradient(last.x, last.y, 0, last.x, last.y, size*0.6);
+        gr.addColorStop(0, color); gr.addColorStop(1, hexA(color, 0));
+        gp.fillStyle = gr; gp.beginPath(); gp.arc(last.x, last.y, size*0.6, 0, 7); gp.fill();
+        gp.restore();
       }
     }
 
@@ -1438,6 +1560,17 @@
       sHard.value = Math.round(((typeof bp.hard==='number')?bp.hard:(b.hard||0.9))*100);
       sSp.value   = Math.round(((typeof bp.spacing==='number')?bp.spacing:0.14)*100);
       sJit.value  = Math.round(((typeof bp.jitter==='number')?bp.jitter:0)*100);
+      sTin.value  = Math.round((typeof bp.taperIn==='number')  ? bp.taperIn  : 6);
+      sTout.value = Math.round((typeof bp.taperOut==='number') ? bp.taperOut : 6);
+      sEP.value   = Math.round(((typeof bp.entryPool==='number')?bp.entryPool:0)*100);
+      sXP.value   = Math.round(((typeof bp.exitPool==='number') ?bp.exitPool :0)*100);
+      // Ink brush is the only one that meaningfully honours entry/exit pools
+      // today (they're gated by brush.id==='ink' in pen-down/up), so grey the
+      // rows out for other brushes rather than lie to the user.
+      const inky = (b.id === 'ink');
+      sEP.disabled = !inky; sXP.disabled = !inky;
+      sEP.parentElement.style.opacity = inky ? '1' : '0.4';
+      sXP.parentElement.style.opacity = inky ? '1' : '0.4';
       syncLabels(); el.classList.add('show');
       // Position: top-centre-ish so the tools node underneath stays visible.
       el.style.left = Math.max(12, (window.innerWidth - el.offsetWidth)/2) + 'px';
@@ -1452,6 +1585,10 @@
       vHard.textContent = sHard.value;
       vSp.textContent   = sSp.value;
       vJit.textContent  = sJit.value;
+      vTin.textContent  = sTin.value;
+      vTout.textContent = sTout.value;
+      vEP.textContent   = sEP.value;
+      vXP.textContent   = sXP.value;
     }
     function commit(){
       const b = brush; const bp = brushPrefs[b.id] || (brushPrefs[b.id]={});
@@ -1462,6 +1599,10 @@
       bp.hard    = (+sHard.value)/100;
       bp.spacing = Math.max(0.02, (+sSp.value)/100);
       bp.jitter  = (+sJit.value)/100;
+      bp.taperIn = Math.max(0, +sTin.value);
+      bp.taperOut= Math.max(0, +sTout.value);
+      bp.entryPool = (+sEP.value)/100;
+      bp.exitPool  = (+sXP.value)/100;
       refreshBp();
       // Keep the main Size/Opacity dials in sync.
       const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
@@ -1471,7 +1612,7 @@
       syncLabels();
       paintPreview();
     }
-    [sSize,sOp,sHard,sSp,sJit].forEach(s=>{
+    [sSize,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP].forEach(s=>{
       s.addEventListener('input', commit);
       // Slider drags shouldn't propagate to the canvas' pointer listeners.
       s.addEventListener('pointerdown', e=>e.stopPropagation());
@@ -1479,9 +1620,17 @@
     btnClose.addEventListener('click', close);
     btnReset.addEventListener('click', ()=>{
       const b = brush;
-      // Restore the brush's shipped defaults from the `brushes` array.
       const def = brushes.find(x=>x.id===b.id) || {};
-      brushPrefs[b.id] = { size:def.size, op:def.op, hard:def.hard, spacing:0.14, jitter:0 };
+      const shipped = DEFAULT_PROFILE[b.id] || {};
+      brushPrefs[b.id] = {
+        size:def.size, op:def.op, hard:def.hard,
+        spacing:  (typeof shipped.spacing==='number')  ? shipped.spacing  : 0.14,
+        jitter:   (typeof shipped.jitter==='number')   ? shipped.jitter   : 0,
+        taperIn:  (typeof shipped.taperIn==='number')  ? shipped.taperIn  : 6,
+        taperOut: (typeof shipped.taperOut==='number') ? shipped.taperOut : 6,
+        entryPool:(typeof shipped.entryPool==='number')? shipped.entryPool: 0,
+        exitPool: (typeof shipped.exitPool==='number') ? shipped.exitPool : 0,
+      };
       size = def.size; opacity = def.op;
       refreshBp();
       open();       // repopulate sliders + preview
