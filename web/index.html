@@ -204,6 +204,45 @@
   @media (max-width:640px){ .projRow{ grid-template-columns:64px 1fr; } .projBtns{ grid-column:1 / -1; justify-content:flex-start; max-width:none; }
     .projThumb{ width:60px; height:46px; } #projectPanel .card{ padding:20px; } }
 
+  /* Tablet-first touch polish. Pointer-coarse devices get larger orbs, rails,
+     slider thumbs, and project buttons without changing desktop density. */
+  @media (pointer:coarse){
+    .orb{ width:66px; height:66px; }
+    .kids{ left:33px; top:33px; }
+    .orb .lbl{ top:70px; font-size:10px; }
+    .kid{ width:56px; height:56px; margin:-28px 0 0 -28px; }
+    .kid .sub{ top:58px; font-size:9px; }
+    .glyph svg{ width:29px; height:29px; }
+    .kid .glyph svg{ width:24px; height:24px; }
+    #rail{ height:54px; border-radius:27px; padding:0 14px; }
+    .railStep{ width:40px; height:40px; }
+    #railTrack{ height:18px; }
+    #railTrack .seg, #loopRegion{ top:3px; height:12px; }
+    #playhead{ width:24px; height:24px; margin:-12px 0 0 -12px; }
+    #railCount{ min-width:64px; font-size:12px; }
+    #collapseBtn{ width:58px; height:58px; }
+    #blab{ min-width:min(380px, calc(100vw - 24px)); max-width:calc(100vw - 24px); }
+    #blab .row{ margin:12px 0; }
+    #blab input[type=range]{ height:18px; }
+    #blab input[type=range]::-webkit-slider-thumb{ width:26px; height:26px; }
+    .projBtn, #projectPanel .footer button{ padding:10px 12px; font-size:12px; }
+  }
+
+  /* Stylus diagnostics panel — small, live, and deliberately boring: artists
+     can confirm pressure/tilt/barrel-button data without leaving the canvas. */
+  #stylusPanel{ position:fixed; z-index:66; right:14px; top:14px; width:min(360px, calc(100vw - 28px)); display:none;
+    padding:18px; border-radius:20px; color:var(--text);
+    background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(20,0,14,.62));
+    border:1px solid rgba(247,202,201,.30);
+    box-shadow:0 18px 44px rgba(10,0,10,.55), inset 0 1px 0 rgba(255,240,243,.30); }
+  #stylusPanel.show{ display:block; }
+  #stylusPanel .hdr{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  #stylusPanel b{ letter-spacing:.14em; text-transform:uppercase; font-size:12px; color:var(--blush); }
+  #stylusPanel button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06); border:1px solid rgba(247,202,201,.30);
+    padding:6px 10px; border-radius:11px; cursor:pointer; font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
+  #stylusReadout{ font-size:12px; line-height:1.65; color:var(--dim); font-variant-numeric:tabular-nums; }
+  #stylusReadout span{ color:var(--text); }
+
   /* ===== Node-graph connector wires ===== */
   #wires{ position:fixed; inset:0; z-index:18; pointer-events:none; width:100%; height:100%; }
   #wires path.glow{ stroke:var(--rose); stroke-width:6; fill:none; stroke-linecap:round; opacity:.16; filter:blur(3px); }
@@ -474,11 +513,16 @@
   <div class="row"><span class="lbl">Taper out</span><input type="range" id="blabTout" min="0" max="60" step="1"><span class="val" id="blabToutV">0</span></div>
   <div class="row"><span class="lbl">Entry pool</span><input type="range" id="blabEP" min="0" max="100" step="1"><span class="val" id="blabEPV">0</span></div>
   <div class="row"><span class="lbl">Exit pool</span><input type="range" id="blabXP" min="0" max="100" step="1"><span class="val" id="blabXPV">0</span></div>
+  <div class="row"><span class="lbl">Texture</span><input type="range" id="blabTex" min="0" max="100" step="1"><span class="val" id="blabTexV">0</span></div>
   <div class="row"><span class="lbl">Response</span><input type="range" id="blabResp" min="-100" max="100" step="1"><span class="val" id="blabRespV">0</span></div>
   <div class="btns">
     <button id="blabReset" type="button">Reset</button>
     <button id="blabClose" type="button" class="primary">Done</button>
   </div>
+</div>
+<div id="stylusPanel" role="dialog" aria-label="Stylus diagnostics">
+  <div class="hdr"><b>Stylus diagnostics</b><button id="stylusClose" type="button">Close</button></div>
+  <div id="stylusReadout">Touch the canvas with your pen to inspect pressure, tilt, and contact data.</div>
 </div>
 <button id="collapseBtn" class="glass" title="Collapse all circles" aria-label="Collapse all circles"></button>
 
@@ -632,25 +676,27 @@
   //   entryPool -- 0..1 how much ink to pool on pen-down (0 = never; 1 = full).
   //                Only respected by brushes that call inkPool() (ink brush).
   //   exitPool -- 0..1 how much ink to pool on a slow lift (see entryPool).
+  //   texture  -- 0..1 paper-tooth modulation. 0 = smooth digital stamp,
+  //               1 = grain strongly gates pigment / dry-media bite.
   const brushPrefs={};
   // Sensible defaults per brush. Ink keeps its calligraphic personality (entry
   // + exit pools ON) so it still feels like a real pen; every other brush
   // ships with pools OFF so a normal sketch stroke never blobs. Response is
   // the pressure->width shaper: -1 exponential (charcoal), 0 linear, +1 S-curve.
   const DEFAULT_PROFILE={
-    pencil:  { spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0,    exitPool:0,    response:-0.3 },
-    ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55, response: 0.15},
-    marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0,    response: 0    },
-    water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0,    response:-0.5 },
-    glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    response: 0    },
+    pencil:  { spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0,    exitPool:0,    texture:0.65, response:-0.3 },
+    ink:     { spacing:0.10, jitter:0,    taperIn:6,  taperOut:10, entryPool:0.35, exitPool:0.55, texture:0.18, response: 0.15},
+    marker:  { spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0,    exitPool:0,    texture:0.35, response: 0    },
+    water:   { spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0,    exitPool:0,    texture:0.50, response:-0.5 },
+    glow:    { spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
     // Neon paints a bright core over a wide halo, so tighter spacing +
     // slight taper make the line read as one continuous glowing wire. Zero
     // jitter (jitter breaks the coherent halo).
-    neon:    { spacing:0.06, jitter:0,    taperIn:8,  taperOut:8,  entryPool:0,    exitPool:0,    response: 0.1 },
+    neon:    { spacing:0.06, jitter:0,    taperIn:8,  taperOut:8,  entryPool:0,    exitPool:0,    texture:0,    response: 0.1 },
     // Star wants wide spacing so a stroke drops a trail of stars instead of
     // a smear. Small jitter so the stars don't line up in a rigid row.
-    star:    { spacing:1.40, jitter:0.15, taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    response: 0    },
-    eraser:  { spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    response: 0    },
+    star:    { spacing:1.40, jitter:0.15, taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
+    eraser:  { spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0,    exitPool:0,    texture:0,    response: 0    },
   };
   brushes.forEach(b=>{ const d=DEFAULT_PROFILE[b.id]||{};
     brushPrefs[b.id]={
@@ -661,21 +707,23 @@
       taperOut: (typeof d.taperOut==='number') ? d.taperOut : 6,
       entryPool:(typeof d.entryPool==='number')? d.entryPool: 0,
       exitPool: (typeof d.exitPool==='number') ? d.exitPool : 0,
+      texture:  (typeof d.texture==='number')  ? d.texture  : 0,
       response: (typeof d.response==='number') ? d.response : 0,
     };
   });
   // Current-brush accessors used by the paint engine. Cheaper than reading
   // brushPrefs[brush.id].x every dab, and safe against `brush` swaps.
-  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpR=0;
-  function refreshBp(){ const p=brushPrefs[brush.id]||{};
+  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpTex=0, _bpR=0;
+  function refreshBp(){ const p=brushPrefs[brush.id]||{}, d=DEFAULT_PROFILE[brush.id]||{};
     _bpH   = (typeof p.hard==='number')      ? p.hard      : (brush.hard!=null?brush.hard:0.9);
     _bpS   = (typeof p.spacing==='number')   ? p.spacing   : 0.14;
     _bpJ   = (typeof p.jitter==='number')    ? p.jitter    : 0;
     _bpTin = (typeof p.taperIn==='number')   ? p.taperIn   : 6;
     _bpTout= (typeof p.taperOut==='number')  ? p.taperOut  : 6;
     _bpEP  = (typeof p.entryPool==='number') ? p.entryPool : 0;
-    _bpXP  = (typeof p.exitPool==='number')  ? p.exitPool  : 0;
-    _bpR   = (typeof p.response==='number')  ? p.response  : 0;
+    _bpXP  = (typeof p.exitPool==='number')  ? p.exitPool : 0;
+    _bpTex = (typeof p.texture==='number')   ? p.texture  : ((typeof d.texture==='number') ? d.texture : 0);
+    _bpR   = (typeof p.response==='number')  ? p.response  : ((typeof d.response==='number') ? d.response : 0);
   }
   function loadPrefs(){
     try{ const raw=localStorage.getItem(PREF_KEY); if(!raw) return;
@@ -975,6 +1023,32 @@
     else if(e.altitudeAngle!=null){ az=(e.azimuthAngle||0); flat=Math.min(1,1-(e.altitudeAngle/(Math.PI/2))); }
     return {x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height),
             p:e.pressure&&e.pressure>0?e.pressure:0.5, az, flat, type:e.pointerType};};
+
+  // Live stylus diagnostics. Especially useful on Android tablets where every
+  // browser/WebView exposes a slightly different subset of pressure/tilt data.
+  const stylusPanelEl=document.getElementById('stylusPanel');
+  const stylusReadoutEl=document.getElementById('stylusReadout');
+  const stylusCloseEl=document.getElementById('stylusClose');
+  let stylusSeenCount=0, stylusLastType='none';
+  const fmt=(v,n)=> (v==null || Number.isNaN(v)) ? '—' : Number(v).toFixed(n==null?2:n);
+  function updateStylusDiag(e, c){
+    if(!stylusReadoutEl || !e) return;
+    c = c || toC(e);
+    stylusSeenCount++;
+    stylusLastType = e.pointerType || 'unknown';
+    const tilt = `${fmt(e.tiltX,0)}, ${fmt(e.tiltY,0)}`;
+    const alt = e.altitudeAngle!=null ? `${fmt(e.altitudeAngle*180/Math.PI,1)}°` : '—';
+    const azi = e.azimuthAngle!=null ? `${fmt(e.azimuthAngle*180/Math.PI,1)}°` : (c.az!=null ? `${fmt(c.az*180/Math.PI,1)}°` : '—');
+    stylusReadoutEl.innerHTML =
+      `type <span>${stylusLastType}</span> · samples <span>${stylusSeenCount}</span><br>`+
+      `pressure <span>${fmt(e.pressure || c.p,3)}</span> · buttons <span>${e.buttons||0}</span> · button <span>${e.button}</span><br>`+
+      `tiltX/Y <span>${tilt}</span> · altitude <span>${alt}</span> · azimuth <span>${azi}</span><br>`+
+      `flatness <span>${fmt(c.flat,2)}</span> · contact <span>${fmt(e.width,0)}×${fmt(e.height,0)}</span><br>`+
+      `canvas <span>${fmt(c.x,1)}, ${fmt(c.y,1)}</span> · mode <span>${stylusOnly?'stylus-only':'pen+touch'}</span>`;
+  }
+  function openStylusDiag(){ if(stylusPanelEl){ stylusPanelEl.classList.add('show'); flash('Stylus diagnostics'); } }
+  if(stylusCloseEl) stylusCloseEl.addEventListener('click',()=>stylusPanelEl.classList.remove('show'));
+
   // Colour + grain + angle helpers live in web/brush-math.js (pure math,
   // unit-testable). Bind local shims so the paint-engine call sites stay
   // short and readable. If the module didn't load (sandboxed iframe preview,
@@ -1011,6 +1085,13 @@
   function grainAt(x, y){
     if(!grain) grain = _BM.buildGrain(GW);
     return _BM.sampleGrain(grain, x, y, GW);
+  }
+  function textureTooth(x, y, scale){
+    if(_bpTex <= 0) return 1;
+    const t = grainAt(x*(scale||1), y*(scale||1));
+    // Map tooth from [0,1] into a useful pigment gate. Low values skip/fade;
+    // high values catch more pigment. Clamped so strong texture never vanishes.
+    return Math.max(0.25, Math.min(1.25, 1 - _bpTex*0.55 + t*_bpTex*1.05));
   }
 
   const NIB=-0.7;   // fixed chisel-marker holder angle (radians)
@@ -1061,7 +1142,11 @@
     g.save();
     if(erase){g.globalCompositeOperation='destination-out';g.globalAlpha=1;}
     else{g.globalCompositeOperation='source-over';
-         g.globalAlpha=opacity*(brush.id==='pencil'?(.45+.55*pr):1)*rev;}
+         g.globalAlpha=opacity*(brush.id==='pencil'?(.45+.55*pr):1)*rev;
+         if(_bpTex>0 && brush.id!=='neon' && brush.id!=='star' && brush.id!=='glow'){
+           const scale = brush.id==='water' ? 0.55 : (brush.id==='ink' ? 1.15 : 1.0);
+           g.globalAlpha *= textureTooth(x, y, scale);
+         }}
     // Hardness (Brush Lab) drives the nib profile: >0.85 = solid disc, else
     // a radial gradient falling off from the hard-core radius to zero.
     const setFill=rad=>{ if(_bpH>0.85){g.fillStyle=erase?'#000':color;}
@@ -1337,6 +1422,7 @@
   let qsEnabled=true, qsActive=false, qsShape=null, qsTimer=0, qsLastMove=0, qsAnchor={x:0,y:0};
   const QS_HOLD=420;            // ms of stillness before a shape snaps
   canvas.addEventListener('pointerdown',e=>{
+    updateStylusDiag(e);
     if(e.pointerType==='pen') penSeen=performance.now();
     if(drawing) return;                  // a stroke already owns the canvas — ignore extra contacts (palm)
     if(!allow(e))return;
@@ -1475,6 +1561,7 @@
     else dabSym(ctx, c.x, c.y, smoothP, false, 0, 0, null, entryReveal, nibAng, nibFlat);
   });
   canvas.addEventListener('pointermove',e=>{
+    updateStylusDiag(e);
     if(e.pointerType==='pen') penSeen=performance.now();
     // Compare-drag: sweep the reveal divider without painting.
     if(compareMode && _compareDrag === e.pointerId){
@@ -2180,6 +2267,7 @@
     const sTout  = document.getElementById('blabTout'), vTout=document.getElementById('blabToutV');
     const sEP    = document.getElementById('blabEP'),   vEP  =document.getElementById('blabEPV');
     const sXP    = document.getElementById('blabXP'),   vXP  =document.getElementById('blabXPV');
+    const sTex   = document.getElementById('blabTex'),  vTex =document.getElementById('blabTexV');
     const sResp  = document.getElementById('blabResp'), vResp=document.getElementById('blabRespV');
     const prev   = document.getElementById('blabPreview');
     const btnClose = document.getElementById('blabClose');
@@ -2250,7 +2338,8 @@
       sTout.value = Math.round((typeof bp.taperOut==='number') ? bp.taperOut : 6);
       sEP.value   = Math.round(((typeof bp.entryPool==='number')?bp.entryPool:0)*100);
       sXP.value   = Math.round(((typeof bp.exitPool==='number') ?bp.exitPool :0)*100);
-      sResp.value = Math.round(((typeof bp.response==='number')  ?bp.response :0)*100);
+      sTex.value  = Math.round(((typeof bp.texture==='number')  ?bp.texture :((DEFAULT_PROFILE[b.id]||{}).texture||0))*100);
+      sResp.value = Math.round(((typeof bp.response==='number')  ?bp.response :((DEFAULT_PROFILE[b.id]||{}).response||0))*100);
       // Ink brush is the only one that meaningfully honours entry/exit pools
       // today (they're gated by brush.id==='ink' in pen-down/up), so grey the
       // rows out for other brushes rather than lie to the user.
@@ -2258,6 +2347,9 @@
       sEP.disabled = !inky; sXP.disabled = !inky;
       sEP.parentElement.style.opacity = inky ? '1' : '0.4';
       sXP.parentElement.style.opacity = inky ? '1' : '0.4';
+      const textured = !b.erase && !['neon','star','glow'].includes(b.id);
+      sTex.disabled = !textured;
+      sTex.parentElement.style.opacity = textured ? '1' : '0.4';
       syncLabels(); el.classList.add('show');
       // Position: top-centre-ish so the tools node underneath stays visible.
       el.style.left = Math.max(12, (window.innerWidth - el.offsetWidth)/2) + 'px';
@@ -2276,6 +2368,7 @@
       vTout.textContent = sTout.value;
       vEP.textContent   = sEP.value;
       vXP.textContent   = sXP.value;
+      vTex.textContent  = sTex.value;
       vResp.textContent = sResp.value;
     }
     function commit(){
@@ -2291,6 +2384,7 @@
       bp.taperOut= Math.max(0, +sTout.value);
       bp.entryPool = (+sEP.value)/100;
       bp.exitPool  = (+sXP.value)/100;
+      bp.texture   = (+sTex.value)/100;
       bp.response  = (+sResp.value)/100;   // [-1..+1]
       refreshBp();
       // Keep the main Size/Opacity dials in sync.
@@ -2301,7 +2395,7 @@
       syncLabels();
       paintPreview();
     }
-    [sSize,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sResp].forEach(s=>{
+    [sSize,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sTex,sResp].forEach(s=>{
       s.addEventListener('input', commit);
       // Slider drags shouldn't propagate to the canvas' pointer listeners.
       s.addEventListener('pointerdown', e=>e.stopPropagation());
@@ -2319,6 +2413,7 @@
         taperOut: (typeof shipped.taperOut==='number') ? shipped.taperOut : 6,
         entryPool:(typeof shipped.entryPool==='number')? shipped.entryPool: 0,
         exitPool: (typeof shipped.exitPool==='number') ? shipped.exitPool : 0,
+        texture:  (typeof shipped.texture==='number')  ? shipped.texture  : 0,
         response: (typeof shipped.response==='number') ? shipped.response : 0,
       };
       size = def.size; opacity = def.op;
@@ -3046,6 +3141,7 @@
   actKid('@video','Video',()=>exportVideo());
   const kStylus=actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);savePrefs();flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');}); kStylus.classList.toggle('on',stylusOnly);
   const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);savePrefs();flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
+  actKid('@stylus','Pen',()=>openStylusDiag());
   const kFull=actKid('@full','Full',k=>{ if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||(()=>{})).call(document.documentElement); document.body.classList.add('zen'); k.classList.add('on'); }
     else { (document.exitFullscreen||document.webkitExitFullscreen||(()=>{})).call(document); document.body.classList.remove('zen'); k.classList.remove('on'); } });
   document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement){document.body.classList.remove('zen');kFull.classList.remove('on');} });
@@ -3471,10 +3567,20 @@
 
   // ===== GALLERY node — up to 4 canvases, each its own project; tap = fluid switch =====
   const nGallery=makeNode({glyph:'@gallery',label:'Gallery',x:140,y:0}); nGallery.dataset.bottom='1';
-  function thumbOf(P){ const t=mkAt(64,Math.round(64*P.h/P.w)); const tc=t.getContext('2d');
+  function thumbSig(P){
+    const fr=upgradeFrame(P.frames[P.cur||0], P.w, P.h);
+    const layerSig=fr.layers.map(L=>`${L.id}:${L.visible!==false?1:0}:${L.opacity}:${L.blend}`).join('|');
+    return `${P.w}x${P.h}:${P.paper}:${P.cur||0}:${fr._v||0}:${layerSig}`;
+  }
+  function thumbOf(P){
+    const sig=thumbSig(P);
+    if(P._thumb && P._thumbSig===sig) return P._thumb;
+    const t=mkAt(64,Math.round(64*P.h/P.w)); const tc=t.getContext('2d');
     tc.fillStyle=(P.paper||'#fff0f3'); tc.fillRect(0,0,t.width,t.height);
     const fr=upgradeFrame(P.frames[P.cur||0], P.w, P.h);
-    tc.drawImage(frameComposite(fr), 0,0, t.width, t.height); return t.toDataURL(); }
+    tc.drawImage(frameComposite(fr), 0,0, t.width, t.height);
+    P._thumbSig=sig; P._thumb=t.toDataURL(); return P._thumb;
+  }
   function syncActiveProject(){ const P=projects[pi]; if(P){ P.cur=cur; P.fps=fps; P.w=W; P.h=H; } }
   function bindProjectDirect(i){
     pi=Math.max(0,Math.min(i,projects.length-1)); const P=projects[pi];

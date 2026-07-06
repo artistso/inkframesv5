@@ -6,6 +6,12 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — tablet, stylus, brush texture, and gallery perf
+- **Tablet-first coarse-pointer polish.** Touch devices get larger orbs, kid buttons, rail controls, slider thumbs, project buttons, and a wider Brush Lab without changing desktop density.
+- **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor ship with toothy defaults; neon/star/glow stay smooth.
+- **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
+- **Cached gallery thumbnails.** Gallery/project-browser thumbnails now reuse a signature cache keyed by project/frame/layer versions, avoiding needless recompositing while browsing projects.
+
 ### Release readiness — Play target SDK, exports, and legal docs
 - **Target SDK bump to Android 15 / API 35.** `compileSdk` and `targetSdk` now target API 35, and CI installs the matching platform/build-tools before assembling APK/AAB artifacts.
 - **Android WebView export bridge.** Blob-based GIF/video exports now pass through a small `InkFrameAndroidBridge` instead of handing `blob:` URLs to `DownloadManager` (which cannot fetch renderer-local blobs). Browser exports still use the normal `<a download>` path.
