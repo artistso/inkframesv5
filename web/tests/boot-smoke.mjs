@@ -128,6 +128,8 @@ const studioVersion = d.getElementById('studioVersion');
 const studioAndroid = d.getElementById('studioAndroid');
 const releaseSmokeDetails = Array.from(d.querySelectorAll('#studio summary')).some(s => /release smoke/i.test(s.textContent));
 const stylusPanel = d.getElementById('stylusPanel');
+const helpPanel = d.getElementById('helpPanel');
+const helpBackup = d.getElementById('helpBackup');
 const textureSlider = d.getElementById('blabTex');
 const brushExport = d.getElementById('blabExport');
 const brushImport = d.getElementById('blabImport');
@@ -154,6 +156,7 @@ if (startTemplateCount < 6) { console.error(`❌ start templates did not render 
 if (templateCount < 6 || !customTemplate) { console.error(`❌ project templates did not render (templates=${templateCount}, custom=${!!customTemplate})`); failed++; }
 if (!projectButtonLabels.includes('Scale copy') || !projectButtonLabels.includes('Clear')) { console.error('❌ project duplicate/clear controls missing'); failed++; }
 if (!stylusPanel) { console.error('❌ #stylusPanel (stylus diagnostics) missing'); failed++; }
+if (!helpPanel || !helpBackup || !frameActionLabels.includes('Help')) { console.error('❌ Quick Help overlay/action missing'); failed++; }
 if (!textureSlider) { console.error('❌ #blabTex (texture slider) missing'); failed++; }
 if (!brushExport || !brushImport) { console.error('❌ Brush Lab import/export controls missing'); failed++; }
 if (!brushSavePreset || !brushLibrary) { console.error('❌ Brush library controls missing'); failed++; }
