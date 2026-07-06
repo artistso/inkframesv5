@@ -3,7 +3,6 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -19,6 +18,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    // Kotlin 1.9.x enables Compose via the compiler extension (the
+    // org.jetbrains.kotlin.plugin.compose plugin only exists for Kotlin 2.x).
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
 
     buildFeatures { compose = true }
 

@@ -30,7 +30,6 @@ androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJu
 android-application = { id = "com.android.application", version = "8.5.2" }
 android-library = { id = "com.android.library", version = "8.5.2" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 # Triple-T Gradle Play Publisher — uploads the .aab to Google Play tracks.
 play-publisher = { id = "com.github.triplet.play", version = "3.10.1" }
