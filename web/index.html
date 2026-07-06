@@ -941,6 +941,30 @@
       setFill(d*.5); g.beginPath();g.arc(0,0,d*.5,0,7);g.fill();
     }
     g.restore(); }
+
+  // Radial-symmetry wrapper. When symN > 1, calls dab() once at (x,y) plus
+  // N-1 more times at positions rotated around the canvas centre. Each mirror
+  // also gets its stroke angle rotated so calligraphic nibs (ink) still swivel
+  // correctly. Cheap: no extra state, just N times the arc/gradient work per
+  // stamp (the paint engine's overwhelming cost was always the compositor).
+  function dabSym(g, x, y, pr, erase, ang, spd, dOverride, reveal, nAng, flat){
+    // Fast path: no symmetry.
+    if(symN <= 1){ dab(g, x, y, pr, erase, ang, spd, dOverride, reveal, nAng, flat); return; }
+    const cx = W * 0.5, cy = H * 0.5;
+    const dx = x - cx, dy = y - cy;
+    for(let k=0; k<symN; k++){
+      const a = (Math.PI * 2 * k) / symN;
+      const cs = Math.cos(a), sn = Math.sin(a);
+      const rx = cx + dx * cs - dy * sn;
+      const ry = cy + dx * sn + dy * cs;
+      // Rotate the nib angle + heading by the same amount so calligraphic nibs
+      // (ink) stay tangent to the mirrored path.
+      const angK  = (ang  == null) ? ang  : (ang  + a);
+      const nAngK = (nAng == null) ? nAng : (nAng + a);
+      dab(g, rx, ry, pr, erase, angK, spd, dOverride, reveal, nAngK, flat);
+    }
+  }
+
   // Calligraphic ink terminal: a soft pool of ink where the nib presses in (start) or
   // dwells before lifting (end). Strength 0..1 controls how much ink gathers.
   function inkPool(x,y,pr,strength){
@@ -1015,8 +1039,8 @@
         strokeLen += Math.hypot(x-px,y-py);
         reveal = Math.min(1, strokeLen/_bpTin);
       }
-      dab(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
-      if(!brush.erase) dab(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);
+      dabSym(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
+      if(!brush.erase) dabSym(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);
       px=x; py=y;
     }
   }
@@ -1039,8 +1063,8 @@
         strokeLen += dist/n;                                // advance the reveal envelope along the path
         reveal = _bpTin>0 ? Math.min(1, strokeLen/_bpTin) : 1;
       }
-      dab(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
-      if(!brush.erase)dab(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);}}
+      dabSym(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
+      if(!brush.erase)dabSym(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);}}
   // ===== Palm rejection =====
   // Two layers:  (1) "Stylus-only" hard mode → only pen pointers ever draw.
   //  (2) Auto mode (always on) → once a real pen has touched the screen, incidental TOUCH
@@ -1133,9 +1157,9 @@
     // the *next* dabs in on top of it. Single dab (was double-dabbed before,
     // which literally doubled the ink laid at the start point).
     const entryReveal = _bpTin > 0 ? 0 : 1;
-    dab(fctx, c.x, c.y, smoothP, brush.erase, 0, 0, null, entryReveal, nibAng, nibFlat);
+    dabSym(fctx, c.x, c.y, smoothP, brush.erase, 0, 0, null, entryReveal, nibAng, nibFlat);
     if(brush.erase){ bumpFrame(frames[cur]); render(); }
-    else dab(ctx, c.x, c.y, smoothP, false, 0, 0, null, entryReveal, nibAng, nibFlat);
+    else dabSym(ctx, c.x, c.y, smoothP, false, 0, 0, null, entryReveal, nibAng, nibFlat);
   });
   canvas.addEventListener('pointermove',e=>{
     if(e.pointerType==='pen') penSeen=performance.now();
@@ -1234,8 +1258,8 @@
           const y = ly + Math.sin(ang) * step * i;
           const shrink = 1 - t;             // width -> 0, pressure -> 0
           const d = Math.max(0.4, nibW * shrink);
-          dab(fctx, x, y, smoothP * shrink, false, ang, drawVel, d, 1, nibAng, nibFlat);
-          dab(ctx,  x, y, smoothP * shrink, false, ang, drawVel, d, 1, nibAng, nibFlat);
+          dabSym(fctx, x, y, smoothP * shrink, false, ang, drawVel, d, 1, nibAng, nibFlat);
+          dabSym(ctx,  x, y, smoothP * shrink, false, ang, drawVel, d, 1, nibAng, nibFlat);
         }
       }
     }
@@ -1585,6 +1609,8 @@
     bloom:   S+'<circle cx="12" cy="12" r="4" class="fill"/><circle cx="12" cy="12" r="8" class="soft" stroke-width="1.4"/><circle cx="12" cy="12" r="11" class="soft" stroke-width="0.8"/>'+E,
     sparkle: S+'<path d="M6 6l1 3 3 1-3 1-1 3-1-3-3-1 3-1z" class="fill"/><path d="M17 12l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" class="fill"/><path d="M12 18l.7 1.4 1.4.6-1.4.6-.7 1.4-.7-1.4-1.4-.6 1.4-.6z" class="fill"/>'+E,
     chroma:  S+'<circle cx="10" cy="12" r="5" fill="none" stroke="#f66"/><circle cx="12" cy="12" r="5" fill="none" stroke="#6f6"/><circle cx="14" cy="12" r="5" fill="none" stroke="#66f"/>'+E,
+    // SYMMETRY: petal shape suggesting radial mirroring around a centre.
+    sym:     S+'<circle cx="12" cy="12" r="1.6" class="fill"/><path d="M12 3v6M12 21v-6M3 12h6M21 12h-6M6 6l3 3M18 18l-3-3M18 6l-3 3M6 18l3-3" class="soft"/>'+E,
     // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
     imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
@@ -1972,6 +1998,23 @@
                           : 'Constellation off');
   });
   nLine._kids.appendChild(kConst);
+
+  // Radial symmetry -- every dab mirrored N-fold around the canvas centre.
+  // 1 = off (normal drawing). Common values: 2 (vertical mirror), 4/6/8/12 for
+  // mandalas + constellations. Cycles on tap.
+  const SYM_STEPS = [1, 2, 4, 6, 8, 12];
+  let symN = 1;
+  const kSym = kidEl({glyph:'@sym', sub:'Sym · 1'});
+  kSym.addEventListener('click', e=>{
+    e.stopPropagation();
+    const i = SYM_STEPS.indexOf(symN);
+    symN = SYM_STEPS[(i+1) % SYM_STEPS.length];
+    kSym.querySelector('.sub').textContent = 'Sym · ' + symN;
+    kSym.classList.toggle('on', symN > 1);
+    flash(symN > 1 ? `Symmetry ×${symN}` : 'Symmetry off');
+  });
+  nLine._kids.appendChild(kSym);
+
   // Draw the constellation from anchors onto both fctx and ctx. Called after
   // each new anchor so the artist sees the shape build up in real time.
   function paintConstellation(closed){
