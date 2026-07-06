@@ -215,7 +215,7 @@
     background:rgba(10,0,10,.30); color:var(--text); padding:0 10px; font:inherit; font-size:14px; outline:none; }
   .projMain input:focus{ border-color:var(--rim); box-shadow:0 0 0 2px rgba(247,202,201,.12); }
   .projStats{ margin-top:5px; color:var(--dim); font-size:11px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .projBtns{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:230px; }
+  .projBtns{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:340px; }
   .projBtn, #projectPanel .footer button{ font:inherit; color:var(--text); background:rgba(255,240,243,.06);
     border:1px solid rgba(247,202,201,.30); padding:7px 10px; border-radius:12px; cursor:pointer;
     opacity:.88; font-size:11px; letter-spacing:.10em; text-transform:uppercase; }
@@ -887,12 +887,17 @@
     return { frames, holds:frames.map(()=>1), cur:0, undo:[], redo:[], w, h,
       fps:t.fps||12, name:t.name||'Canvas', paper:t.paper||DEFAULT_PAPER };
   }
-  function cloneProject(P, name){
-    const w=P.w||W0, h=P.h||H0;
-    const framesCopy=(P.frames&&P.frames.length?P.frames:[newFrame(w,h)]).map(fr0=>{
-      const fr=upgradeFrame(fr0,w,h);
+  function cloneProject(P, name, opts){
+    opts=opts||{};
+    const srcW=P.w||W0, srcH=P.h||H0;
+    const w=opts.w||srcW, h=opts.h||srcH;
+    const scale=!!opts.scale;
+    const framesCopy=(P.frames&&P.frames.length?P.frames:[newFrame(srcW,srcH)]).map(fr0=>{
+      const fr=upgradeFrame(fr0,srcW,srcH);
       const layers=fr.layers.map(L=>{
-        const c=mkAt(w,h); c.getContext('2d').drawImage(L.canvas,0,0);
+        const c=mkAt(w,h);
+        if(scale) c.getContext('2d').drawImage(L.canvas,0,0,w,h);
+        else c.getContext('2d').drawImage(L.canvas,0,0);
         return { id:__lid++, name:L.name, visible:L.visible!==false,
           opacity:typeof L.opacity==='number'?L.opacity:1,
           blend:L.blend||'source-over', canvas:c };
@@ -4004,14 +4009,25 @@
   };
   const projectStats=P=>`${(P.frames&&P.frames.length)||0} frame${((P.frames&&P.frames.length)||0)===1?'':'s'} · ${P.w||W0}×${P.h||H0} · ${P.fps||12} fps`;
   function sanitizeProjectName(v,i){ const s=String(v||'').trim().replace(/[\r\n\u0000]/g,''); return s || ('Canvas '+(i+1)); }
+  function galleryFullHint(){
+    const msg='Gallery full · export archive or delete/clear a canvas first';
+    if(projectAutosave) projectAutosave.textContent=msg;
+    flash('Gallery full');
+  }
   function addProjectFromTemplate(t){
-    if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+    if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
     const P=projectFromTemplate(t);
     projects.push(P); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
     flash('Template · '+P.name);
   }
   const TEMPLATE_MIN=128, TEMPLATE_MAX=4096;
   const clampNum=(v,min,max,fb)=>{ v=Math.round(+v); return Number.isFinite(v)?Math.max(min,Math.min(max,v)):fb; };
+  function parseDims(text, fallbackW, fallbackH){
+    const m=String(text||'').match(/(\d+)\s*[x×, ]\s*(\d+)/i);
+    if(!m) return null;
+    return { w:clampNum(m[1],TEMPLATE_MIN,TEMPLATE_MAX,fallbackW||W0),
+             h:clampNum(m[2],TEMPLATE_MIN,TEMPLATE_MAX,fallbackH||H0) };
+  }
   function templatePreviewEl(t){
     const wrap=document.createElement('div'); wrap.className='tplPreview';
     const paper=t.paper||DEFAULT_PAPER;
@@ -4052,13 +4068,42 @@
     const pIn=field('Paper','color',paper(),null,null);
     const make=document.createElement('button'); make.type='button'; make.textContent='Create'; make.className='projBtn primary'; make.disabled=projects.length>=MAX_PROJECTS;
     make.addEventListener('click',()=>{
-      if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+      if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
       const w=clampNum(wIn.value,TEMPLATE_MIN,TEMPLATE_MAX,W0), h=clampNum(hIn.value,TEMPLATE_MIN,TEMPLATE_MAX,H0);
       addProjectFromTemplate({ name:`Custom ${w}×${h}`, w, h,
         frames:clampNum(fIn.value,1,120,1), fps:clampNum(fpsIn.value,1,60,12), paper:pIn.value||DEFAULT_PAPER,
         desc:'custom' });
     });
     cg.appendChild(make); projectTemplates.appendChild(custom);
+  }
+  function insertProjectCopy(sourceIndex, copy, switchTo){
+    const insertAt=Math.min(projects.length, sourceIndex+1);
+    projects.splice(insertAt,0,copy);
+    if(sourceIndex<pi) pi++;
+    renderProjectPanel(); rebuildGallery();
+    if(switchTo) switchProject(insertAt);
+    AUTOSAVE.schedule();
+  }
+  function duplicateResizedProject(i){
+    if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
+    const P=projects[i]; if(!P) return;
+    const raw=prompt('Scaled copy size (width × height)', `${P.w||W0}×${P.h||H0}`);
+    if(raw==null) return;
+    const dims=parseDims(raw,P.w||W0,P.h||H0);
+    if(!dims){ flash('Use width × height, e.g. 1280×720'); return; }
+    syncActiveProject();
+    const copy=cloneProject(P, `${P.name||'Canvas'} ${dims.w}×${dims.h}`, {w:dims.w,h:dims.h,scale:true});
+    insertProjectCopy(i, copy, true);
+    flash('Scaled copy · '+dims.w+'×'+dims.h);
+  }
+  function clearProjectAt(i){
+    const P=projects[i]; if(!P) return;
+    if(!confirm('Clear all artwork from '+(P.name||'Canvas')+'? The project stays in the gallery.')) return;
+    P.frames=[newFrame(P.w||W0,P.h||H0)]; P.holds=[1]; P.cur=0; P.undo=[]; P.redo=[];
+    P._thumb=null; P._thumbSig='';
+    if(i===pi){ bindProjectDirect(i); repaintProjectShell(); }
+    else { rebuildGallery(); }
+    renderProjectPanel(); AUTOSAVE.schedule(); flash('Project cleared');
   }
   function renderProjectPanel(){
     if(!projectPanel) return;
@@ -4084,10 +4129,15 @@
       const bDup=document.createElement('button'); bDup.className='projBtn'; bDup.textContent='Duplicate';
       bDup.disabled=projects.length>=MAX_PROJECTS; bDup.style.opacity=bDup.disabled ? .45 : .88;
       bDup.addEventListener('click',()=>{
-        if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
-        syncActiveProject(); projects.splice(i+1,0,cloneProject(projects[i]||newProject(), (projects[i]?.name||'Canvas')+' copy'));
-        if(i<pi) pi++; rebuildGallery(); renderProjectPanel(); AUTOSAVE.schedule(); flash('Project duplicated');
+        if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
+        syncActiveProject(); insertProjectCopy(i, cloneProject(projects[i]||newProject(), (projects[i]?.name||'Canvas')+' copy'), true);
+        flash('Project duplicated');
       }); btns.appendChild(bDup);
+      const bScale=document.createElement('button'); bScale.className='projBtn'; bScale.textContent='Scale copy';
+      bScale.disabled=projects.length>=MAX_PROJECTS; bScale.style.opacity=bScale.disabled ? .45 : .88;
+      bScale.addEventListener('click',()=>duplicateResizedProject(i)); btns.appendChild(bScale);
+      const bClear=document.createElement('button'); bClear.className='projBtn danger'; bClear.textContent='Clear';
+      bClear.addEventListener('click',()=>clearProjectAt(i)); btns.appendChild(bClear);
       const bDel=document.createElement('button'); bDel.className='projBtn danger'; bDel.textContent='Delete';
       bDel.disabled=projects.length<=1; bDel.style.opacity=bDel.disabled ? .45 : .88;
       bDel.addEventListener('click',()=>{
@@ -4107,7 +4157,7 @@
   projectClose.addEventListener('click',()=>projectPanel.classList.remove('show'));
   projectPanel.addEventListener('click',e=>{ if(e.target===projectPanel) projectPanel.classList.remove('show'); });
   projectNew.addEventListener('click',()=>{
-    if(projects.length>=MAX_PROJECTS){ flash('Gallery full'); return; }
+    if(projects.length>=MAX_PROJECTS){ galleryFullHint(); return; }
     projects.push(newProject()); renderProjectPanel(); rebuildGallery(); switchProject(projects.length-1); AUTOSAVE.schedule();
   });
   projectExport.addEventListener('click',async()=>{
