@@ -6,6 +6,28 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Repo / marketing
+- **New README** — hero image, animated demo GIF, honest feature list, layout
+  guide, contribution instructions. Replaces the tiny stub that described
+  InkFrame as "a lightweight companion for quick testing" from before the
+  WebView shell became the primary shipping surface.
+- **`media/hero.png`** — 16:9 cinematic shot of the Glass Horizon interface.
+- **`media/demo.gif`** — 6-frame leaping-cat loop encoded by our own
+  `web/gif-encoder.js` (from the four `demo_f*.png` keyframes). Doubles as
+  proof that the exporter shipped in the app works end-to-end.
+- **`media/README.md`** — regeneration recipe for the demo GIF.
+
+### Web build — module extraction (TS-migration prep)
+- **`web/autosave.js`** (250 lines) — full IndexedDB persistence layer,
+  extracted from index.html. Zero globals; env-injected. Payload v1/v2
+  behaviour bit-identical to before.
+- **`web/brush-math.js`** (123 lines) — pure math for the paint engine:
+  `buildGrain` / `sampleGrain` / `easeAngle` / `hexWithAlpha` / `catmullRom`.
+  Unit-testable in Node; also the natural first candidate for a Rust→WASM lift.
+- **`index.html`** drops from 2736 to 2571 lines. Two new `<script>` tags
+  before the app IIFE; the AUTOSAVE block collapses from ~180 lines to a
+  20-line factory call.
+
 ### Web build — reference image import
 - **Import action on the Layers orb** — opens a file picker (PNG / JPEG /
   GIF / WebP), fits the image inside the canvas preserving aspect ratio,
