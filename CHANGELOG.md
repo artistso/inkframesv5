@@ -6,6 +6,23 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Web build — brush engine polish
+- **Catmull-Rom spline strokes** — the drawing engine now paints a smoothed
+  curve through the last four stabilized samples (tension 0.5) instead of a
+  straight line between p1 and p2. Removes the subtle "polygon" facets you can
+  see on fast curves at large brush sizes; no measurable extra latency.
+- **Time-based velocity (px/ms)** — replaces the old per-sample step measure
+  so the brush behaves the same on a 60 Hz phone and a 240 Hz active stylus.
+- **New Watercolor brush** — soft radial wash with a wet-edge rim, subtle
+  granulation from the paper-grain field, pigment build-up on overlapping
+  strokes, and rare pooling blooms on slow-heavy passes.
+- **Fast-flick taper** — pen-up with high velocity now extends the ink stroke
+  a few px along the last heading with a shrinking nib, giving proper
+  calligraphic exit tapers alongside the existing slow-lift pooling.
+- **Per-brush preferences** — every brush remembers its own size/opacity, and
+  the colour, StreamLine amount, palm-reject / stylus-only / onion / QuickShape
+  toggles all survive an app restart (LocalStorage, tiny payload).
+
 ### Added (playback range & frame rate)
 - **Loop in/out points, loop toggle, and an FPS stepper** on the timeline. The frame strip
   dims out-of-range cells and highlights the in/out edges; pause icon while playing.

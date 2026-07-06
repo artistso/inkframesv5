@@ -284,10 +284,43 @@
     {id:'pencil',ic:'@pencil',size:6,op:1,hard:.95},
     {id:'ink',ic:'@ink',size:14,op:1,hard:.9},
     {id:'marker',ic:'@marker',size:40,op:.85,hard:.7},
+    // NEW: watercolor — wet-edge rim, pigment build-up on repeat passes, subtle bloom
+    {id:'water',ic:'@marker',size:48,op:.32,hard:.05},
     {id:'glow',ic:'@glow',size:64,op:.5,hard:.15},
     {id:'eraser',ic:'@eraser',size:40,op:1,hard:.8,erase:true},
   ];
   let brush=brushes[1], color='#bb0037', size=14, opacity=1, onion=true, playing=false, fps=12, stylusOnly=false;
+
+  // ===== Preferences (persisted per-brush + globals) =====
+  // Each brush remembers its own size/opacity, and a handful of app-wide flags
+  // (streamline, palm-reject, stylus-only, onion, colour, palette additions) survive
+  // an app restart. LocalStorage is fine here — the payload is tiny and it stays
+  // scoped to the WebView's origin (file://) which the Android shell reuses on relaunch.
+  const PREF_KEY='inkframe.prefs.v1';
+  const brushPrefs={};   // { pencil:{size,op}, ink:{...}, ... }
+  brushes.forEach(b=>{ brushPrefs[b.id]={size:b.size, op:b.op}; });
+  function loadPrefs(){
+    try{ const raw=localStorage.getItem(PREF_KEY); if(!raw) return;
+      const p=JSON.parse(raw);
+      if(p.color) color=p.color;
+      if(typeof p.streamline==='number') streamline=p.streamline;
+      if(typeof p.stylusOnly==='boolean') stylusOnly=p.stylusOnly;
+      if(typeof p.palmReject==='boolean') palmReject=p.palmReject;
+      if(typeof p.onion==='boolean') onion=p.onion;
+      if(typeof p.qsEnabled==='boolean') qsEnabled=p.qsEnabled;
+      if(p.brushPrefs) Object.assign(brushPrefs, p.brushPrefs);
+      if(p.brushId){ const b=brushes.find(x=>x.id===p.brushId); if(b) brush=b; }
+      const bp=brushPrefs[brush.id]; if(bp){ size=bp.size; opacity=bp.op; }
+    }catch(_){}
+  }
+  let savePrefsT=0;
+  function savePrefs(){ clearTimeout(savePrefsT); savePrefsT=setTimeout(()=>{
+    try{ localStorage.setItem(PREF_KEY, JSON.stringify({
+      color, streamline, stylusOnly, palmReject, onion, qsEnabled,
+      brushId:brush.id, brushPrefs,
+    })); }catch(_){}
+  }, 180); }
+  function rememberBrush(){ brushPrefs[brush.id]={size, op:opacity}; savePrefs(); }
   const mkAt=(w,h)=>{const f=document.createElement('canvas');f.width=w;f.height=h;return f;};
   const mk=()=>mkAt(W,H);
 
@@ -431,6 +464,28 @@
         gr.addColorStop(0,hexA(color,opacity*0.22*bleed)); gr.addColorStop(1,hexA(color,0));
         g.fillStyle=gr; g.beginPath();g.arc(0,0,br,0,7);g.fill();
       }
+    } else if(brush.id==='water'){           // watercolor: wet-edge rim + pigment build-up + occasional bloom
+      // The stamp is a soft radial disc with a slightly darker rim, so overlapping
+      // strokes accumulate a "wet edge" and repeated passes deepen the pigment.
+      const tooth=grainAt(x*.6,y*.6);         // coarse granulation
+      const rimIn=d*.36, rimMid=d*.48, rimOut=d*.52;
+      const gr=g.createRadialGradient(0,0,rimIn,0,0,rimOut);
+      const wash=hexA(color, opacity*(0.55+0.25*tooth));       // core wash
+      const edge=hexA(color, opacity*(0.95+0.05*tooth));       // slightly darker rim
+      const fade=hexA(color, 0);
+      gr.addColorStop(0,     wash);
+      gr.addColorStop(rimMid/rimOut, wash);
+      gr.addColorStop(0.94,  edge);
+      gr.addColorStop(1,     fade);
+      g.fillStyle=gr; g.beginPath();g.arc(0,0,rimOut,0,7);g.fill();
+      // Rare bloom on slow-heavy strokes — pigment pooling as the brush dwells.
+      if((spd||0)<2 && Math.random()<0.06){
+        const br=d*(0.9+Math.random()*0.4);
+        const bg=g.createRadialGradient(0,0,d*.2,0,0,br);
+        bg.addColorStop(0,hexA(color, opacity*0.28));
+        bg.addColorStop(1,hexA(color, 0));
+        g.fillStyle=bg; g.beginPath();g.arc(0,0,br,0,7);g.fill();
+      }
     } else if(brush.id==='pencil'){          // graphite tooth: jittered specks catching fibres
       setFill(d*.5);
       // tilt → the lead lays over and shades a broader, softer patch (elliptical, along the nib edge)
@@ -457,6 +512,68 @@
   }
   // shortest-path angle ease (handles wrap-around so the nib never spins the long way)
   function easeAng(cur,tgt,k){ let dA=((tgt-cur+Math.PI)%(2*Math.PI))-Math.PI; return cur+dA*k; }
+
+  // ===== Catmull-Rom spline stroke =====
+  // A per-brush "point history" of the last few stabilized samples. Rather than
+  // linearly stepping between p1 and p2 (which produces subtle straight-segment
+  // facets on fast curves), we fit a Centripetal Catmull-Rom curve through
+  // (p0,p1,p2,p3) and dab along *that*. Result: perceptibly smoother curves,
+  // especially at large brush sizes, with no measurable extra latency.
+  const histX=[], histY=[], histP=[], histAz=[], histFl=[]; let histN=0;
+  function pushSample(x,y,p,az,flat){
+    histX.push(x); histY.push(y); histP.push(p);
+    histAz.push(az); histFl.push(flat);
+    histN++;
+    if(histN>4){ histX.shift(); histY.shift(); histP.shift(); histAz.shift(); histFl.shift(); histN=4; }
+  }
+  function resetHistory(){ histX.length=histY.length=histP.length=histAz.length=histFl.length=0; histN=0; }
+  // Centripetal Catmull-Rom: paints the curve segment between p1 and p2
+  // using p0 and p3 as tangent hints. Falls back to a straight line if
+  // fewer than 4 samples exist yet.
+  function segCR(p, az, flat){
+    if(histN<2) return;
+    const n=histN;
+    const x0=histX[Math.max(0,n-3)], y0=histY[Math.max(0,n-3)];
+    const x1=histX[n-2], y1=histY[n-2];
+    const x2=histX[n-1], y2=histY[n-1];
+    // If we don't have a "future" sample yet, mirror the current tangent so the
+    // curve still exits cleanly instead of falling back to a straight line.
+    const x3 = n>=4 ? histX[n-1] : 2*x2 - x1;
+    const y3 = n>=4 ? histY[n-1] : 2*y2 - y1;
+    const dx=x2-x1, dy=y2-y1, dist=Math.hypot(dx,dy);
+    if(dist<0.001) return;
+    const st=Math.max(1,size*.14), steps=Math.max(1,Math.ceil(dist/st));
+    const livingLine=(brush.id==='ink'||brush.id==='pencil');
+    const angTgt=(az!=null)?az:PEN_ANGLE;
+    // Cache p0/p3 tangent-frame constants (centripetal parameterization simplified
+    // to uniform — good enough at this sample density and much cheaper).
+    let px=x1, py=y1, pang=Math.atan2(dy,dx);
+    for(let i=1;i<=steps;i++){
+      const t=i/steps, tt=t*t, ttt=tt*t;
+      // Standard Catmull-Rom basis (tension 0.5)
+      const b0 = -0.5*ttt +     tt - 0.5*t;
+      const b1 =  1.5*ttt - 2.5*tt         + 1;
+      const b2 = -1.5*ttt + 2.0*tt + 0.5*t;
+      const b3 =  0.5*ttt - 0.5*tt;
+      const x = b0*x0 + b1*x1 + b2*x2 + b3*x3;
+      const y = b0*y0 + b1*y1 + b2*y2 + b3*y3;
+      const ang=Math.atan2(y-py, x-px);
+      let d=null, reveal=1;
+      if(livingLine){
+        const tgt=targetWidth(p,drawVel);
+        nibW += (tgt-nibW)*WLAG;
+        nibAng = easeAng(nibAng, angTgt, ALAG);
+        if(flat!=null) nibFlat += (flat-nibFlat)*0.25;
+        d=nibW;
+        strokeLen += Math.hypot(x-px,y-py);
+        reveal=Math.min(1, strokeLen/REVEAL_LEN);
+      }
+      dab(fctx,x,y,p,brush.erase,ang,drawVel,d,reveal,nibAng,nibFlat);
+      if(!brush.erase) dab(ctx,x,y,p,false,ang,drawVel,d,reveal,nibAng,nibFlat);
+      px=x; py=y;
+    }
+  }
+
   function seg(x0,y0,x1,y1,p,az,flat){const dx=x1-x0,dy=y1-y0,dist=Math.hypot(dx,dy),ang=Math.atan2(dy,dx);
     const st=Math.max(1,size*.14),n=Math.max(1,Math.floor(dist/st));
     const livingLine=(brush.id==='ink'||brush.id==='pencil');   // pen & pencil get momentum + reveal
@@ -514,7 +631,8 @@
     nibAng=(c.az!=null)?c.az:PEN_ANGLE; nibFlat=c.flat||0;  // seat the nib at its true starting tilt
     strokePath=[{x:c.x,y:c.y}];                             // record path for the Spielberg catch-light
     qsActive=false; qsShape=null; qsAnchor={x:c.x,y:c.y}; clearTimeout(qsTimer);  // reset QuickShape
-    lx=c.x;ly=c.y;penX=c.x;penY=c.y;smoothP=c.p;drawVel=0;lastMoveT=performance.now();
+    lx=c.x;ly=c.y;penX=c.x;penY=c.y;smoothP=c.p;drawVel=0;lastMoveT=e.timeStamp||performance.now();
+    resetHistory(); pushSample(c.x,c.y,c.p,c.az,c.flat);
     // ink lays a small entry pool where the nib first presses into the paper
     if(brush.id==='ink') inkPool(c.x,c.y,c.p,0.45);
     dab(fctx,c.x,c.y,smoothP,brush.erase,0,0);if(brush.erase)render();else dab(ctx,c.x,c.y,smoothP,false,0,0);});
@@ -527,10 +645,20 @@
       smoothP+=(c.p-smoothP)*PSTAB;            // eased pressure
       const ox=penX,oy=penY;
       penX+=(c.x-penX)*stab; penY+=(c.y-penY)*stab;   // StreamLine: stabilized (trailing) point
-      const step=Math.hypot(penX-ox,penY-oy); drawVel+=(step-drawVel)*0.35;   // smoothed velocity
+      const step=Math.hypot(penX-ox,penY-oy);
+      // Time-based velocity in px/ms — stable across devices with wildly different
+      // pointer report rates (60 Hz phone vs 240 Hz active pen). Multiplied by 16 to
+      // preserve the "per-frame" number brush math was tuned against.
+      const now=(ev.timeStamp||performance.now()); const dtMs=Math.max(1, now-lastMoveT); lastMoveT=now;
+      const instVel = (step/dtMs)*16;
+      drawVel += (instVel-drawVel)*0.35;
       if(step>0.01) lastAng=Math.atan2(penY-oy,penX-ox);
       lastP={x:c.x,y:c.y};
-      seg(lx,ly,penX,penY,smoothP,c.az,c.flat); lx=penX; ly=penY;
+      // Feed the spline: paint a smooth curve through the trailing 4 samples
+      // instead of a straight seg from the previous point.
+      pushSample(penX,penY,smoothP,c.az,c.flat);
+      segCR(smoothP, c.az, c.flat);
+      lx=penX; ly=penY;
       if(strokePath.length<400) strokePath.push({x:penX,y:penY});}
     if(brush.erase)render(); updateLens(e);
     // QuickShape: if the pen goes still mid/late-stroke, try to snap to a clean shape
@@ -541,7 +669,25 @@
   const up=e=>{if(!drawing)return; if(e&&e.pointerId!=null&&e.pointerId!==drawPid)return;  // ignore a palm lifting
     drawing=false; drawPid=null; hideLens(); clearTimeout(qsTimer);
     // ink: a slow lift gathers a pool (calligraphic terminal); a fast flick tapers to nothing
-    if(brush.id==='ink' && !qsActive){ const dwell=Math.max(0,1-drawVel/9); if(dwell>0.12) inkPool(lx,ly,smoothP,dwell*0.8); }
+    if(brush.id==='ink' && !qsActive){
+      const dwell=Math.max(0,1-drawVel/9);
+      if(dwell>0.12){
+        // slow lift → ink pools into a calligraphic terminal
+        inkPool(lx,ly,smoothP,dwell*0.8);
+      } else if(drawVel>4 && histN>=2){
+        // fast flick → taper: extend the stroke a few px along the last heading with a shrinking nib
+        const ang=lastAng, N=6;
+        for(let i=1;i<=N;i++){ const t=i/N;
+          const x=lx+Math.cos(ang)*size*0.35*t*3;
+          const y=ly+Math.sin(ang)*size*0.35*t*3;
+          const shrink=1-t;
+          const d=nibW*shrink;
+          dab(fctx,x,y,smoothP*shrink,false,ang,drawVel,d,1,nibAng,nibFlat);
+          if(!brush.erase) dab(ctx,x,y,smoothP*shrink,false,ang,drawVel,d,1,nibAng,nibFlat);
+        }
+      }
+    }
+    resetHistory();
     if(pend){pushU(pend);pend=null;}render();refreshFrames();
     // Spielberg: a catch-light glints once down the freshly-laid stroke (then it's done)
     if((brush.id==='ink'||brush.id==='pencil') && !qsActive && strokePath.length>4) fireGlint(strokePath.slice());
@@ -616,6 +762,7 @@
     let rx=dpx*.5, ry=dpx*.5, rot=0;
     if(brush.id==='ink'){ rot=nibAng*180/Math.PI; ry=dpx*.5*(0.30-0.14*nibFlat+ (1-(0.30-0.14*nibFlat))*0.45); }
     else if(brush.id==='marker'){ rot=NIB*180/Math.PI; ry=dpx*.5*0.34; rx=dpx*.5; }
+    else if(brush.id==='water'){ rx=dpx*.55; ry=dpx*.55; }   // soft round wash disc
     else if(brush.id==='pencil'){ rot=nibAng*180/Math.PI; rx=dpx*.5*(1+1.2*nibFlat); ry=dpx*.5; }
     lensNib.setAttribute('rx',rx.toFixed(1)); lensNib.setAttribute('ry',ry.toFixed(1));
     lensNib.setAttribute('transform',`rotate(${rot.toFixed(0)})`);
@@ -978,41 +1125,52 @@
   const nTools=makeNode({glyph:'@tools',label:'Tools',x:24,y:96});
   brushes.forEach(b=>{ const k=kidEl({glyph:b.ic,sub:b.id});
     k.dataset.id=b.id; if(b.id===brush.id)k.classList.add('on');
-    k.addEventListener('click',e=>{e.stopPropagation(); brush=b; size=b.size; opacity=b.op;
-      [...nTools._kids.children].forEach(c=>c.classList.toggle('on',c.dataset.id===b.id)); flash(b.id);});
+    k.addEventListener('click',e=>{e.stopPropagation();
+      // Remember the outgoing brush's current dials, then restore the incoming brush's.
+      rememberBrush();
+      brush=b; const bp=brushPrefs[b.id]||{size:b.size,op:b.op};
+      size=bp.size; opacity=bp.op;
+      // Update the dial glyphs so the UI matches the freshly-restored numbers.
+      const sd=document.querySelector('#sizeDialGlyph'), od=document.querySelector('#opDialGlyph');
+      if(sd) sd.textContent=Math.round(size);
+      if(od) od.textContent=Math.round(opacity*100);
+      [...nTools._kids.children].forEach(c=>c.classList.toggle('on',c.dataset.id===b.id));
+      savePrefs(); flash(b.id);});
     nTools._kids.appendChild(k); });
 
   // ---- LINE node (the Living Line: StreamLine smoothing + QuickShape) ----
   const nLine=makeNode({glyph:'@line',label:'Line',x:24,y:230});
   // StreamLine dial — adjustable smoothing, Procreate-style
   const streamDial=kidEl({cls:'dial',glyph:Math.round(streamline*100),sub:'StreamLine',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
-  makeDial(streamDial,0,100,()=>Math.round(streamline*100),v=>{streamline=v/100;applyStream();streamDial.querySelector('.glyph').textContent=Math.round(v);},'StreamLine');
+  makeDial(streamDial,0,100,()=>Math.round(streamline*100),v=>{streamline=v/100;applyStream();streamDial.querySelector('.glyph').textContent=Math.round(v);savePrefs();},'StreamLine');
   nLine._kids.appendChild(streamDial);
   // QuickShape toggle
   const kQS=kidEl({glyph:'@qshape',sub:'QuickShape'});
   kQS.classList.toggle('on',qsEnabled);
-  kQS.addEventListener('click',e=>{e.stopPropagation();qsEnabled=!qsEnabled;kQS.classList.toggle('on',qsEnabled);flash(qsEnabled?'QuickShape ON · hold still to snap':'QuickShape off');});
+  kQS.addEventListener('click',e=>{e.stopPropagation();qsEnabled=!qsEnabled;kQS.classList.toggle('on',qsEnabled);savePrefs();flash(qsEnabled?'QuickShape ON · hold still to snap':'QuickShape off');});
   nLine._kids.appendChild(kQS);
 
   // ---- COLOR node ----
   const nColor=makeNode({glyph:'@color',label:'Color',x:0,y:96}); nColor.dataset.right='1';
   // size dial
   const sizeDial=kidEl({cls:'dial',glyph:'14',sub:'Size',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
-  makeDial(sizeDial,1,120,()=>size,v=>{size=v;sizeDial.querySelector('.glyph').textContent=Math.round(v);},'Size');
+  sizeDial.querySelector('.glyph').id='sizeDialGlyph';
+  makeDial(sizeDial,1,120,()=>size,v=>{size=v;sizeDial.querySelector('.glyph').textContent=Math.round(v);rememberBrush();},'Size');
   nColor._kids.appendChild(sizeDial);
   // opacity dial
   const opDial=kidEl({cls:'dial',glyph:'100',sub:'Opacity',build(k){const r=document.createElement('div');r.className='ring';k.insertBefore(r,k.firstChild);}});
-  makeDial(opDial,5,100,()=>Math.round(opacity*100),v=>{opacity=v/100;opDial.querySelector('.glyph').textContent=Math.round(v);},'Opacity');
+  opDial.querySelector('.glyph').id='opDialGlyph';
+  makeDial(opDial,5,100,()=>Math.round(opacity*100),v=>{opacity=v/100;opDial.querySelector('.glyph').textContent=Math.round(v);rememberBrush();},'Opacity');
   nColor._kids.appendChild(opDial);
   // custom color
   const custom=kidEl({glyph:'@custom',sub:'Custom',build(k){const inp=document.createElement('input');inp.type='color';inp.value=color;
-    inp.addEventListener('input',e=>{color=e.target.value;refreshSwatches();}); k.appendChild(inp);}});
+    inp.addEventListener('input',e=>{color=e.target.value;refreshSwatches();savePrefs();}); k.appendChild(inp);}});
   nColor._kids.appendChild(custom);
   // palette swatches (rebuilt on theme change)
   function rebuildSwatches(){ [...nColor._kids.querySelectorAll('.kid.swatch')].forEach(e=>e.remove());
     palette.forEach(p=>{ const k=kidEl({cls:'swatch',build(el){el.style.background=p;}}); k.dataset.c=p;
       if(p.toLowerCase()===color.toLowerCase())k.classList.add('sel');
-      k.addEventListener('click',e=>{e.stopPropagation();color=p;refreshSwatches();});
+      k.addEventListener('click',e=>{e.stopPropagation();color=p;refreshSwatches();savePrefs();});
       nColor._kids.appendChild(k); });
     if(nColor.classList.contains('open')) nColor._relayout(); }
   function refreshSwatches(){ [...nColor._kids.querySelectorAll('.kid.swatch')].forEach(k=>k.classList.toggle('sel',k.dataset.c.toLowerCase()===color.toLowerCase())); }
@@ -1027,11 +1185,11 @@
   const kUndo=actKid('@undo','Undo',doUndo);
   const kRedo=actKid('@redo','Redo',doRedo);
   actKid('@clear','Clear',()=>{pushU(snap());fctx.clearRect(0,0,W,H);render();refreshFrames();});
-  const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);render();}); kOnion.classList.toggle('on',onion);
+  const kOnion=actKid('@onion','Onion',k=>{onion=!onion;k.classList.toggle('on',onion);savePrefs();render();}); kOnion.classList.toggle('on',onion);
   actKid('@export','Export',()=>{const o=mk(),oc=o.getContext('2d');oc.fillStyle='#fff0f3';oc.fillRect(0,0,W,H);oc.drawImage(frames[cur],0,0);
     const a=document.createElement('a');a.download='inkframe-'+(cur+1)+'.png';a.href=o.toDataURL('image/png');a.click();flash('Exported PNG');});
-  actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');});
-  const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
+  const kStylus=actKid('@stylus','Stylus',k=>{stylusOnly=!stylusOnly;k.classList.toggle('on',stylusOnly);savePrefs();flash(stylusOnly?'Stylus-only ON · only the pen draws':'Stylus-only off');}); kStylus.classList.toggle('on',stylusOnly);
+  const kPalm=actKid('@palm','Palm',k=>{palmReject=!palmReject;k.classList.toggle('on',palmReject);savePrefs();flash(palmReject?'Palm rejection ON · rest your hand freely':'Palm rejection off');}); kPalm.classList.toggle('on',palmReject);
   const kFull=actKid('@full','Full',k=>{ if(!document.fullscreenElement){ (document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||(()=>{})).call(document.documentElement); document.body.classList.add('zen'); k.classList.add('on'); }
     else { (document.exitFullscreen||document.webkitExitFullscreen||(()=>{})).call(document); document.body.classList.remove('zen'); k.classList.remove('on'); } });
   document.addEventListener('fullscreenchange',()=>{ if(!document.fullscreenElement){document.body.classList.remove('zen');kFull.classList.remove('on');} });
@@ -1202,6 +1360,27 @@
     nStudio._setPos(24, Hd-78);
     nGallery._setPos(96, Hd-78);
   }
+  // ===== Restore saved preferences and reflect them in the UI =====
+  // This runs after every node/kid/dial exists, so we can flip the exact toggles the
+  // user last left on. New-install users see the built-in defaults untouched.
+  (function bootPrefs(){
+    loadPrefs();
+    // dial glyphs
+    const sd=document.querySelector('#sizeDialGlyph'); if(sd) sd.textContent=Math.round(size);
+    const od=document.querySelector('#opDialGlyph'); if(od) od.textContent=Math.round(opacity*100);
+    const streamG=streamDial.querySelector('.glyph'); if(streamG) streamG.textContent=Math.round(streamline*100);
+    applyStream();
+    // brush selection ring
+    [...nTools._kids.children].forEach(c=>c.classList.toggle('on', c.dataset.id===brush.id));
+    // toggle rings
+    kOnion.classList.toggle('on', onion);
+    kPalm.classList.toggle('on', palmReject);
+    kStylus.classList.toggle('on', stylusOnly);
+    kQS.classList.toggle('on', qsEnabled);
+    refreshSwatches();
+    render();
+  })();
+
   placeNodes(); window.addEventListener('resize',()=>{placeNodes();clampCanvas();applyCanvas();startWires();});
 
   // ===== Canvas scaling & reshaping =====
