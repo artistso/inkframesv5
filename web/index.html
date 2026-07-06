@@ -3658,6 +3658,16 @@
     refreshFrames(); buildRail(); flash(`Hold ${delta>0?'+':'−'} · ${idxs.length} frame${idxs.length===1?'':'s'}`);
   }
   function setOnTwos(){ const idxs=selectedOrCurrent(); idxs.forEach(i=>holds[i]=2); refreshFrames(); buildRail(); flash(`On twos · ${idxs.length} frame${idxs.length===1?'':'s'}`); }
+  function timelineExportIndices(){
+    const sel=selectedSorted(); if(sel.length) return sel;
+    if(loopOn && frames.length>1){ const out=[]; for(let i=loopIn;i<=loopOut;i++) out.push(i); return out; }
+    return null;
+  }
+  function timelineExportLabel(){
+    const sel=selectedSorted(); if(sel.length) return `${sel.length} selected`;
+    if(loopOn && frames.length>1) return `loop ${loopIn+1}–${loopOut+1}`;
+    return 'timeline';
+  }
   function insertBlankFrames(count){
     count=Math.max(1,Math.min(48,count|0));
     selectedFrames.clear();
@@ -3699,6 +3709,8 @@
   frameAct('@hold','Twos',()=>setOnTwos());
   frameAct('@loop','Rev',()=>reverseFrameSelection());
   frameAct('@loop','Ping',()=>pingPongSelection());
+  frameAct('@gif','GIF',()=>exportAnimatedGif({indices:timelineExportIndices(), label:timelineExportLabel()}));
+  frameAct('@video','Video',()=>exportVideo({indices:timelineExportIndices(), label:timelineExportLabel()}));
   frameAct('@clear','Clear',()=>clearFramePixels());
   frameAct('@list','All',()=>{selectedFrames.clear(); frames.forEach((_,i)=>selectedFrames.add(i)); refreshFrames(); flash(`Selected ${frames.length} frames`);});
   frameAct('@clear','None',()=>clearFrameSelection());
@@ -4907,6 +4919,21 @@
       }
       return out;
     }
+    function exportIndices(indices, total){
+      if(Array.isArray(indices) && indices.length){
+        const seen=new Set(), out=[];
+        for(const raw of indices){
+          const i=Math.max(0,Math.min(total-1,raw|0));
+          if(!seen.has(i)){ seen.add(i); out.push(i); }
+        }
+        if(out.length) return out;
+      }
+      return Array.from({length:total},(_,i)=>i);
+    }
+    function exportScopeText(opts, plan, total){
+      if(opts && opts.label) return ' · '+opts.label;
+      return plan.length===total ? '' : ` · ${plan.length} frames`;
+    }
 
     /**
      * Kick off a GIF export of the currently-active project.
@@ -4921,15 +4948,16 @@
       const width  = opts.width  || P.w || W;
       const height = opts.height || P.h || H;
       const activeFps = opts.fps || P.fps || fps || 12;
+      const plan = exportIndices(opts.indices, P.frames.length);
       // GIF timing is in centiseconds (1/100 s). Snap to an integer cs per frame
       // (the format has no finer resolution); a hold of N ticks multiplies that.
       const baseDelayCs = Math.max(2, Math.round(100 / activeFps));
-      const totalMP = (width * height * P.frames.length) / 1_000_000;
+      const totalMP = (width * height * plan.length) / 1_000_000;
       if(totalMP > 120 && !confirm(`This GIF export will process about ${Math.round(totalMP)} megapixels and may take a while on a tablet. Continue?`)){
         flash('GIF export cancelled'); return;
       }
 
-      show('Preparing frames…');
+      show('Preparing frames' + exportScopeText(opts, plan, P.frames.length) + '…');
       // Yield so the overlay actually paints before we start CPU work.
       await new Promise(r => requestAnimationFrame(r));
       await new Promise(r => setTimeout(r, 0));
@@ -4938,22 +4966,22 @@
       // memory bounded for long tablet projects: main thread owns one flattened
       // frame at a time; Worker owns only the compressed GIF chunks.
       const isFileOrigin = location.protocol === 'file:';
-      if (isFileOrigin) return encodeInlineStreaming(P, width, height, opts, baseDelayCs);
+      if (isFileOrigin) return encodeInlineStreaming(P, plan, width, height, opts, baseDelayCs);
       try {
         worker = new Worker('gif-encoder.js');
-        return encodeWorkerStreaming(P, width, height, opts, baseDelayCs);
+        return encodeWorkerStreaming(P, plan, width, height, opts, baseDelayCs);
       } catch (e) {
         console.warn('[export] worker unavailable, running inline:', e);
         if (worker) { try { worker.terminate(); } catch(_){} worker = null; }
-        return encodeInlineStreaming(P, width, height, opts, baseDelayCs);
+        return encodeInlineStreaming(P, plan, width, height, opts, baseDelayCs);
       }
     }
 
-    async function encodeWorkerStreaming(P, width, height, opts, baseDelayCs){
+    async function encodeWorkerStreaming(P, plan, width, height, opts, baseDelayCs){
       return new Promise((resolve, reject) => {
         let pendingAck = null;
         let finished = false;
-        const N = P.frames.length;
+        const N = plan.length;
         const fail = (msg) => {
           if(finished) return;
           finished = true;
@@ -4991,9 +5019,10 @@
               loop: opts.loop !== false, maxColors: opts.maxColors || 256 });
             for(let i=0; i<N; i++){
               if(cancelled || finished) return resolve();
+              const frameIndex = plan[i];
               progress(i + 1, N, 'Compositing');
-              const px = flattenFrame(P.frames[i], width, height);
-              const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
+              const px = flattenFrame(P.frames[frameIndex], width, height);
+              const hold = Math.max(1, Math.round((P.holds && P.holds[frameIndex]) || 1));
               const ack = new Promise((resolve,reject) => {
                 pendingAck = resolve;
                 cancelWait = () => reject(new Error('cancelled'));
@@ -5014,7 +5043,7 @@
 
     // Inline (main-thread) fallback for environments that can't spawn a Worker.
     // Encodes one flattened frame at a time; no giant framePayload array.
-    async function encodeInlineStreaming(P, width, height, opts, baseDelayCs) {
+    async function encodeInlineStreaming(P, plan, width, height, opts, baseDelayCs) {
       try {
         let Enc = (typeof window !== 'undefined') && window.GifEncoder;
         if (!Enc) {
@@ -5025,13 +5054,14 @@
         const enc = new Enc(width, height, {
           loop: opts.loop !== false, maxColorsPerFrame: opts.maxColors || 256,
         });
-        for (let i = 0; i < P.frames.length; i++) {
+        for (let i = 0; i < plan.length; i++) {
           if (cancelled) return;
-          progress(i + 1, P.frames.length, 'Compositing');
-          const px = flattenFrame(P.frames[i], width, height);
-          const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
+          const frameIndex = plan[i];
+          progress(i + 1, plan.length, 'Compositing');
+          const px = flattenFrame(P.frames[frameIndex], width, height);
+          const hold = Math.max(1, Math.round((P.holds && P.holds[frameIndex]) || 1));
           enc.addFrame(px, baseDelayCs * hold);
-          progress(i + 1, P.frames.length, 'Encoding');
+          progress(i + 1, plan.length, 'Encoding');
           if ((i & 1) === 1) await new Promise(r => setTimeout(r, 0));
         }
         const bytes = enc.finish();
@@ -5137,9 +5167,10 @@
       const width  = opts.width  || P.w || W;
       const height = opts.height || P.h || H;
       const activeFps = opts.fps || P.fps || fps || 12;
+      const plan = exportIndices(opts.indices, P.frames.length);
       const spf = 1000 / activeFps;                 // ms per tick
 
-      show(`Rendering ${pick.ext.toUpperCase()}…`);
+      show(`Rendering ${pick.ext.toUpperCase()}${exportScopeText(opts, plan, P.frames.length)}…`);
       // Prep the offscreen canvas.
       const off = document.createElement('canvas');
       off.width = width; off.height = height;
@@ -5171,16 +5202,17 @@
       rec.start(100);  // gather chunks every 100 ms; keeps memory bounded
 
       // Draw and cadence each frame.
-      const N = P.frames.length;
+      const N = plan.length;
       for(let i=0; i<N; i++){
         if(videoCancelled){ break; }
+        const frameIndex = plan[i];
         // Composite onto the offscreen: paper background then frame layers.
         g.fillStyle = paper(); g.fillRect(0,0,width,height);
-        const fr = upgradeFrame(P.frames[i], width, height);
+        const fr = upgradeFrame(P.frames[frameIndex], width, height);
         g.drawImage(frameComposite(fr, width, height), 0, 0);
         if(track.requestFrame) track.requestFrame();
         progress(i+1, N, 'Recording');
-        const hold = Math.max(1, Math.round((P.holds && P.holds[i]) || 1));
+        const hold = Math.max(1, Math.round((P.holds && P.holds[frameIndex]) || 1));
         await new Promise(r=>setTimeout(r, spf * hold));
       }
 
