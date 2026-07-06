@@ -1171,6 +1171,8 @@
     // Layers orb glyphs -- kept in the same rose-quartz line style as the rest
     layers:  S+'<path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4" class="soft"/><path d="M4 16l8 4 8-4" class="soft"/>'+E,
     layerAdd:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M18 14v6M15 17h6" stroke-width="1.6"/>'+E,
+    // Import: photo card with an inward arrow -- brings an outside image in as a reference layer.
+    imp:     S+'<rect x="3.5" y="6.5" width="17" height="12" rx="1.8"/><path d="M5.5 15.5l4-4 3 3 2-2 4 4" class="soft"/><circle cx="15.5" cy="10" r="1.5" class="fill"/><path d="M12 4v-3M9 -2l3 3 3-3" stroke-width="1.6" transform="translate(0 6)"/>'+E,
     layerDup:S+'<path d="M4 7l6-3 6 3-6 3z"/><path d="M8 14l6-3 6 3-6 3z" class="soft"/>'+E,
     layerDel:S+'<path d="M4 8l6-3 6 3-6 3z"/><path d="M4 14l6 3 6-3" class="soft"/><path d="M14 16l6 6M20 16l-6 6" stroke-width="1.6"/>'+E,
     layerUp: S+'<path d="M4 12l6-3 6 3-6 3z" class="soft"/><path d="M12 18V6M8 10l4-4 4 4"/>'+E,
@@ -1512,6 +1514,57 @@
     const t=fr.layers[fr.active]; fr.layers[fr.active]=fr.layers[fr.active-1]; fr.layers[fr.active-1]=t;
     fr.active--; bumpFrame(fr); render(); refreshLayers();
   });
+  // Import an image as a fresh REFERENCE layer at the bottom of the stack.
+  // Opens a hidden file picker (JPEG/PNG/GIF/WebP), fits the image inside the
+  // canvas preserving aspect ratio, drops it at 40% opacity so it reads as
+  // reference not final art. Users can move/duplicate/delete it like any layer.
+  function importReferenceFromFile(file){
+    if(!file || !file.type || !file.type.startsWith('image/')){ flash('Not an image'); return; }
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      pushU(structSnap());
+      const fr=frames[cur];
+      // Fit-to-canvas (contain), centred.
+      const s=Math.min(W/img.naturalWidth, H/img.naturalHeight);
+      const dw=Math.round(img.naturalWidth*s), dh=Math.round(img.naturalHeight*s);
+      const dx=((W-dw)/2)|0, dy=((H-dh)/2)|0;
+      const c=mkAt(W,H); const g=c.getContext('2d');
+      g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+      g.drawImage(img, dx, dy, dw, dh);
+      // Insert at the bottom so ink lands over the reference by default; a name
+      // starting with "Ref" is our informal convention for "reference layer".
+      fr.layers.unshift({ id:__lid++, name:'Ref · '+(file.name||'image').replace(/\.[^.]+$/,''),
+                          visible:true, opacity:0.4, blend:'source-over', canvas:c });
+      // Keep the previously-active layer selected (its index just shifted up by 1).
+      fr.active = Math.min(fr.active+1, fr.layers.length-1);
+      bumpFrame(fr); refreshFctx(); render(); refreshLayers();
+      flash('Reference · '+file.name);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); flash('Could not load image'); };
+    img.src=url;
+  }
+  const kLayImp=lAct('@imp','Import',()=>{
+    const f=document.createElement('input');
+    f.type='file'; f.accept='image/png,image/jpeg,image/gif,image/webp';
+    f.style.display='none';
+    f.addEventListener('change',()=>{ if(f.files && f.files[0]) importReferenceFromFile(f.files[0]);
+                                       f.remove(); });
+    document.body.appendChild(f); f.click();
+  });
+  // Also accept drag-and-drop anywhere on the canvas as a shortcut.
+  ['dragover','dragenter'].forEach(t=>canvas.addEventListener(t, e=>{
+    if(e.dataTransfer && [...e.dataTransfer.types].includes('Files')){
+      e.preventDefault(); e.dataTransfer.dropEffect='copy';
+    }
+  }));
+  canvas.addEventListener('drop', e=>{
+    if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]){
+      e.preventDefault(); importReferenceFromFile(e.dataTransfer.files[0]);
+    }
+  });
+
   const kLayEye=lAct('@eyeOn','Show',(k)=>{
     const L=activeLayer(); if(!L)return; pushU(structSnap());
     L.visible=!L.visible; k.querySelector('.glyph').innerHTML=ICONS[L.visible?'eyeOn':'eyeOff'];
