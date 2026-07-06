@@ -133,14 +133,33 @@
   .kid.theme.sel{ box-shadow:0 0 16px rgba(255,255,255,.85); border:2px solid var(--blush); }
 
   /* studio overlay — soft glow, no box */
-  #studio{ position:fixed; inset:0; z-index:45; display:none; align-items:center; justify-content:center; text-align:center; padding:30px; }
+  /* Studio "about" overlay -- a proper frosted-glass card, not a radial
+     hint. Backdrop dims + blurs the app behind so the card reads. Card
+     stays legible on every theme thanks to the contrast-aware --text /
+     --dim that applyTheme() computes. */
+  #studio{ position:fixed; inset:0; z-index:45; display:none; align-items:center; justify-content:center; padding:30px;
+    background:rgba(10,0,10,.55); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
   #studio.show{ display:flex; }
-  #studio .glow{ max-width:440px; padding:40px; border-radius:50%;
-    background:radial-gradient(ellipse at center, rgba(20,0,14,.6), rgba(20,0,14,0) 72%); }
-  #studio h2{ font-family:"Cinzel",Georgia,serif; letter-spacing:.18em; font-size:22px; margin:0 0 14px;
+  #studio .card{ max-width:520px; width:100%; padding:32px 34px; border-radius:24px;
+    background:linear-gradient(160deg, rgba(247,202,201,.18), rgba(20,0,14,.55));
+    border:1px solid rgba(247,202,201,.30);
+    box-shadow:0 24px 60px rgba(10,0,10,.55), inset 0 1px 0 rgba(255,240,243,.35);
+    color:var(--text); text-align:center;
+    animation:studioIn .32s cubic-bezier(.2,.9,.3,1); }
+  @keyframes studioIn{ from{ transform:translateY(14px) scale(.96); opacity:0; } to{ transform:none; opacity:1; } }
+  #studio h2{ font-family:"Cinzel",Georgia,serif; letter-spacing:.18em; font-size:26px; margin:0 0 6px;
     background:linear-gradient(180deg,#fff,var(--rose)); -webkit-background-clip:text; background-clip:text; color:transparent; }
-  #studio p{ font-size:14px; line-height:1.7; color:var(--blush); margin:0 0 10px; }
-  #studio .mute{ color:var(--dim); font-size:12px; letter-spacing:.1em; }
+  #studio .tag{ font-size:11px; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--dim); margin:0 0 22px; }
+  #studio p{ font-size:14px; line-height:1.7; color:var(--text); margin:0 0 10px; }
+  #studio .divider{ height:1px; margin:20px auto; width:60%; background:linear-gradient(90deg, transparent, var(--rim), transparent); }
+  #studio .credits{ font-size:12px; line-height:1.9; color:var(--dim); letter-spacing:.04em; }
+  #studio .credits a{ color:var(--text); text-decoration:none; border-bottom:1px dashed var(--rim); }
+  #studio .credits b{ color:var(--text); font-weight:600; letter-spacing:.06em; }
+  #studio .close{ margin-top:22px; font:inherit; color:var(--text); background:transparent;
+    border:1px solid var(--rim); padding:8px 20px; border-radius:14px; cursor:pointer;
+    letter-spacing:.14em; text-transform:uppercase; font-size:11px; opacity:.85; }
+  #studio .close:hover{ opacity:1; background:rgba(247,202,201,.08); }
 
   /* ===== Node-graph connector wires ===== */
   #wires{ position:fixed; inset:0; z-index:18; pointer-events:none; width:100%; height:100%; }
@@ -218,8 +237,13 @@
   .shandle.e,.shandle.w{ top:50%; width:14px; height:46px; margin-top:-23px; cursor:ew-resize; }
   .shandle.n{ top:-9px; } .shandle.s{ bottom:-9px; } .shandle.e{ right:-9px; } .shandle.w{ left:-9px; }
 
+  /* Hint toast -- uses the theme's --text so it flips light/dark automatically.
+     Background is a translucent "opposite" so it always has enough contrast:
+     dark themes get a dark bubble, pale themes get a light bubble. Neither
+     side wins by accident. */
   .hint{ position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:40; font-size:12px; letter-spacing:.06em;
-    color:#fff; background:rgba(20,0,14,.5); padding:7px 16px; border-radius:16px; border:1px solid var(--stroke);
+    color:var(--text); background:color-mix(in srgb, var(--violet) 72%, transparent);
+    padding:7px 16px; border-radius:16px; border:1px solid var(--stroke);
     pointer-events:none; opacity:0; transition:opacity .4s; backdrop-filter:blur(8px); }
 
   /* Export overlay — GIF encoding is offloaded to a worker; this shows progress. */
@@ -300,12 +324,22 @@
 <div id="rail" class="glass"><div id="railTrack"><div id="loopRegion"></div><div id="loopIn" class="loophandle"></div><div id="loopOut" class="loophandle"></div></div><div id="playhead"></div></div>
 </div>
 
-<div id="studio" onclick="this.classList.remove('show')">
-  <div class="glow">
-    <h2>A Calm Studio</h2>
-    <p><b>InkFrame</b> is a professional drawing &amp; animation studio.</p>
-    <p>Free &amp; ad-free. No account. No data collected. No AI.</p>
-    <p class="mute">Just you, your stylus, and a quiet place to create. Tap anywhere to return.</p>
+<!-- Studio "about" overlay. Frosted-glass panel; tap the backdrop or Close
+     button to dismiss. Legibility is theme-aware via var(--text) / var(--dim). -->
+<div id="studio" onclick="if(event.target.id==='studio') this.classList.remove('show')">
+  <div class="card">
+    <h2>InkFrame</h2>
+    <div class="tag">The Glass Horizon · A Calm Studio</div>
+    <p><b>InkFrame Studio</b> is a professional drawing &amp; animation studio.</p>
+    <p>Free &amp; ad-free. No account. No data collected. No AI in your artwork.</p>
+    <p>Just you, your stylus, and a quiet place to create.</p>
+    <div class="divider"></div>
+    <div class="credits">
+      Made by <b>Steven Owens</b> · <a href="https://x.com/soquarky" target="_blank" rel="noopener">@soquarky</a><br/>
+      Built with <b>Arena.ai Agent Mode</b> · <a href="https://arena.ai" target="_blank" rel="noopener">arena.ai</a>
+    </div>
+    <button class="close" type="button"
+      onclick="document.getElementById('studio').classList.remove('show')">Close</button>
   </div>
 </div>
 
@@ -418,12 +452,37 @@
       sw:['#1fb6a6','#0f6b62','#b8efe7','#e8fffb','#042320','#5fd6c7','#138c80','#0a423c']},
   ];
   let themeIdx=0, palette=themes[0].sw.slice();
+  // Compute a readable text colour + dimmed variant + subtle rim from the
+  // theme's darkest anchor (--violet). Previously --text was hardcoded to
+  // #fff0f3 which read as illegible cream ghosts over pale themes (Gold
+  // Dusk, Mint Glass, Graphite). Now the text is always the brightest of
+  // the theme's cream vs a computed high-contrast alternative.
+  function readableTextFor(t){
+    // Cheap luminance of the theme's `v` (violet / deepest colour). If it's
+    // already dark, cream text works fine. If it's light, invert to a near-
+    // black text that reads over the pastel gradient.
+    const hex = (t.v || '#000').replace('#','');
+    const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+    const lum = (0.30*r + 0.59*g + 0.11*b) / 255;
+    if(lum < 0.35){
+      // Dark theme -> keep cream text at full opacity, dim = warm rose-quartz.
+      return { text: '#fff0f3', dim: 'rgba(255,240,243,.72)', rim: 'rgba(255,240,243,.55)' };
+    }
+    // Pale theme -> use a dark ink for text, so it's readable over the pastel bg.
+    return { text: '#1a0f16', dim: 'rgba(26,15,22,.62)', rim: 'rgba(26,15,22,.30)' };
+  }
   function applyTheme(i){
     const t=themes[i]; themeIdx=i; palette=t.sw.slice();
     const r=document.documentElement.style;
     r.setProperty('--accent',t.a); r.setProperty('--accent-deep',t.d);
     r.setProperty('--rose',t.rose); r.setProperty('--blush',t.blush); r.setProperty('--violet',t.v);
     r.setProperty('--bg',t.bg);
+    // Contrast-aware text colours so hints / labels / brush lab / studio
+    // panel stay legible across the whole theme lineup.
+    const ct = readableTextFor(t);
+    r.setProperty('--text', ct.text);
+    r.setProperty('--dim',  ct.dim);
+    r.setProperty('--rim',  ct.rim);
     document.getElementById('bg').style.background=t.bg;
     if(!palette.includes(color)) color=t.a;
     rebuildSwatches(); rebuildThemes();
