@@ -516,8 +516,11 @@
   <div class="row"><span class="lbl">Texture</span><input type="range" id="blabTex" min="0" max="100" step="1"><span class="val" id="blabTexV">0</span></div>
   <div class="row"><span class="lbl">Response</span><input type="range" id="blabResp" min="-100" max="100" step="1"><span class="val" id="blabRespV">0</span></div>
   <div class="btns">
+    <button id="blabExport" type="button">Export</button>
+    <button id="blabImportBtn" type="button">Import</button>
     <button id="blabReset" type="button">Reset</button>
     <button id="blabClose" type="button" class="primary">Done</button>
+    <input id="blabImport" type="file" accept=".inkbrush,.json,application/json" style="display:none" />
   </div>
 </div>
 <div id="stylusPanel" role="dialog" aria-label="Stylus diagnostics">
@@ -2272,6 +2275,9 @@
     const prev   = document.getElementById('blabPreview');
     const btnClose = document.getElementById('blabClose');
     const btnReset = document.getElementById('blabReset');
+    const btnExport = document.getElementById('blabExport');
+    const btnImport = document.getElementById('blabImportBtn');
+    const importFile = document.getElementById('blabImport');
 
     // Preview canvas — a fixed-height strip; we paint a horizontal stroke
     // through it using the actual dab() engine so what you see is what you get.
@@ -2399,6 +2405,51 @@
       s.addEventListener('input', commit);
       // Slider drags shouldn't propagate to the canvas' pointer listeners.
       s.addEventListener('pointerdown', e=>e.stopPropagation());
+    });
+    const brushProfileKeys=['size','op','hard','spacing','jitter','taperIn','taperOut','entryPool','exitPool','texture','response'];
+    function profileDownload(blob,name){
+      const url=URL.createObjectURL(blob); const a=document.createElement('a');
+      a.href=url; a.download=name; document.body.appendChild(a); a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 600);
+    }
+    function cleanProfile(src){
+      const out={};
+      for(const k of brushProfileKeys){ if(typeof src[k]==='number' && Number.isFinite(src[k])) out[k]=src[k]; }
+      if(Object.keys(out).length===0) throw new Error('No brush settings found');
+      if(out.spacing!=null) out.spacing=Math.max(0.02, Math.min(1.6, out.spacing));
+      if(out.jitter!=null) out.jitter=Math.max(0, Math.min(1, out.jitter));
+      if(out.hard!=null) out.hard=Math.max(0, Math.min(1, out.hard));
+      if(out.op!=null) out.op=Math.max(0.01, Math.min(1, out.op));
+      if(out.size!=null) out.size=Math.max(1, Math.min(120, out.size));
+      ['entryPool','exitPool','texture'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(1, out[k])); });
+      if(out.response!=null) out.response=Math.max(-1, Math.min(1, out.response));
+      ['taperIn','taperOut'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(60, out[k])); });
+      return out;
+    }
+    const readProfileFile=file=> file.text ? file.text() : new Promise((resolve,reject)=>{
+      const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=()=>reject(r.error||new Error('Read failed')); r.readAsText(file);
+    });
+    btnExport.addEventListener('click',()=>{
+      commit();
+      const payload={ v:1, kind:'inkframe-brush-profile', app:'InkFrame Studio', brushId:brush.id,
+        savedAt:Date.now(), profile:{...(brushPrefs[brush.id]||{})} };
+      const blob=new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+      profileDownload(blob, `inkframe-${brush.id}.inkbrush`);
+      flash('Brush exported · '+brush.id);
+    });
+    btnImport.addEventListener('click',()=>importFile.click());
+    importFile.addEventListener('change',async()=>{
+      const file=importFile.files && importFile.files[0]; importFile.value=''; if(!file) return;
+      try{
+        const payload=JSON.parse(await readProfileFile(file));
+        const source=payload.profile || payload;
+        if(payload.brushId && payload.brushId!==brush.id && !confirm('Import '+payload.brushId+' settings into current '+brush.id+' brush?')) return;
+        const profile=cleanProfile(source);
+        brushPrefs[brush.id]={ ...(brushPrefs[brush.id]||{}), ...profile };
+        if(typeof profile.size==='number') size=profile.size;
+        if(typeof profile.op==='number') opacity=profile.op;
+        refreshBp(); open(); savePrefs(); flash('Brush imported · '+brush.id);
+      }catch(e){ console.error('[brush] import failed', e); flash('Brush import failed: '+(e.message||e)); }
     });
     btnClose.addEventListener('click', close);
     btnReset.addEventListener('click', ()=>{
@@ -4171,15 +4222,23 @@
       flash('Export cancelled');
     });
 
+    // Reused flattening canvas for GIF export. Creating a new canvas per frame
+    // is expensive on Android WebView and can leave large GPU/CPU allocations
+    // for the GC to discover later; one scratch surface keeps peak memory lower.
+    const flatCanvas = document.createElement('canvas');
+    let flatCtx = null;
+
     /**
      * Flatten one frame (paper background + frame ink) into an ARGB Int32Array
      * of length width*height. Matches the PNG export composition so a single GIF
      * frame looks identical to the equivalent PNG.
      */
     function flattenFrame(frame, width, height) {
-      const off = document.createElement('canvas');
-      off.width = width; off.height = height;
-      const g = off.getContext('2d');
+      if(flatCanvas.width!==width || flatCanvas.height!==height){
+        flatCanvas.width = width; flatCanvas.height = height; flatCtx = flatCanvas.getContext('2d', {willReadFrequently:true});
+      }
+      const g = flatCtx || (flatCtx = flatCanvas.getContext('2d', {willReadFrequently:true}));
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
       g.fillStyle = paper();             // paper -- matches render() clearRect fill
       g.fillRect(0, 0, width, height);
       // Accept both new {layers,...} frames and legacy raw canvases (v1 autosave).
@@ -4213,6 +4272,10 @@
       // GIF timing is in centiseconds (1/100 s). Snap to an integer cs per frame
       // (the format has no finer resolution); a hold of N ticks multiplies that.
       const baseDelayCs = Math.max(2, Math.round(100 / activeFps));
+      const totalMP = (width * height * P.frames.length) / 1_000_000;
+      if(totalMP > 120 && !confirm(`This GIF export will process about ${Math.round(totalMP)} megapixels and may take a while on a tablet. Continue?`)){
+        flash('GIF export cancelled'); return;
+      }
 
       show('Preparing frames…');
       // Yield so the overlay actually paints before we start CPU work.
@@ -4425,6 +4488,7 @@
           videoBitsPerSecond: opts.bitrate || 6_000_000 });
       } catch(e){
         console.warn('[export] MediaRecorder ctor failed:', e);
+        try { track && track.stop && track.stop(); } catch(_){}
         flash('Video export failed'); hide(); return;
       }
       videoRec = rec;
