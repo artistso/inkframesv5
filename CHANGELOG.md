@@ -6,6 +6,8 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-07
+
 ### Release pipeline — debug APK is the canonical release
 - **Promoted the debug APK to the primary release artifact.** `.github/workflows/release.yml` now builds `./gradlew :app:assembleDebug` and publishes `InkFrame-vX.Y.Z-debug.apk` to GitHub Releases. The release body is pulled from `RELEASE_NOTES.md`.
 - **Removed the `.debug` application ID suffix** from the debug build type in `app/build.gradle.kts` so the released APK uses the canonical package name `com.inkframe.studio`.

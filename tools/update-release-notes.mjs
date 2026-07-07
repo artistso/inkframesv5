@@ -29,7 +29,9 @@ function extractUnreleased(changelog) {
   const rest = changelog.slice(start);
   const next = /^## (?!\[Unreleased\])/m.exec(rest);
   const body = (next ? rest.slice(0, next.index) : rest).trim();
-  if (!body) throw new Error('CHANGELOG.md [Unreleased] section is empty');
+  // Allow an empty [Unreleased] between releases; the release notes will show
+  // a placeholder until the next meaningful change is added.
+  if (!body) return '_No user-facing changes since the last release._';
   return body;
 }
 
