@@ -17,12 +17,7 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 
 ## What's changed
 
-## Brush engine — stabilizer overhaul
-- **Replaced the simple EMA StreamLine with a velocity-adaptive rope + directional-bias stabilizer.** Fast strokes reduce smoothing so the line stays 1:1; slow strokes use the full per-brush Stabilize amount. Perpendicular jitter is suppressed more than forward progress, and sub-pixel noise is gated so the stroke no longer "breathes" while holding still.
-- **Pressure smoothing is now stabilizer-aware.** Higher Stabilize values also damp pressure jitter, but never enough to feel late.
-- **Predicted-stroke overlay is now tunable per brush.** A new **Predict** slider in Brush Lab controls overlay opacity; the overlay fades along the predicted segment so it reads as "future ink" rather than a full stroke.
-- **Retuned default brush profiles** for ink (0.05 stabilize), pencil (0.22), marker (0.28), watercolor (0.45), frost (0.32), smudge (0.16), glow/neon (0.18–0.22), star (0.10), and eraser (0.12).
-- Added `docs/BRUSH_ENGINE_ROADMAP.md` documenting research from Procreate, Photoshop, Clip Studio Paint, Krita, Fresco, Infinite Painter, and Rebelle.
+_No user-facing changes since the last release._
 
 ## Minimum smoke test
 

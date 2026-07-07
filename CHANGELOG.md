@@ -6,6 +6,8 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-07
+
 ### Brush engine — stabilizer overhaul
 - **Replaced the simple EMA StreamLine with a velocity-adaptive rope + directional-bias stabilizer.** Fast strokes reduce smoothing so the line stays 1:1; slow strokes use the full per-brush Stabilize amount. Perpendicular jitter is suppressed more than forward progress, and sub-pixel noise is gated so the stroke no longer "breathes" while holding still.
 - **Pressure smoothing is now stabilizer-aware.** Higher Stabilize values also damp pressure jitter, but never enough to feel late.
