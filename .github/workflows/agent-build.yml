@@ -1,0 +1,136 @@
+name: Agent build
+
+# Workflow_dispatch entry point for Agent Mode. Useful when you want to trigger
+# a CI build remotely without committing or cutting a release.
+#
+#   gh workflow run agent-build.yml -f task=apk
+#   gh run watch
+#   gh run download -n inkframe-agent-apk
+#
+# Tasks:
+#   apk   - build the debug APK (artifact: inkframe-agent-apk)
+#   web   - build the web bundle (artifact: inkframe-agent-web)
+#   test  - run JVM unit tests + web smoke checks (artifact: test-reports)
+#   all   - run web smoke, tests, and build the debug APK in parallel
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'What to build'
+        required: true
+        default: 'apk'
+        type: choice
+        options:
+          - apk
+          - web
+          - test
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  web-smoke:
+    name: Web boot smoke (jsdom)
+    if: ${{ inputs.task == 'web' || inputs.task == 'test' || inputs.task == 'all' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install jsdom (transient)
+        run: npm install --no-save --prefix /tmp/jsdom jsdom
+      - name: Run web smoke checks
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+        run: |
+          node --check tools/update-release-notes.mjs
+          node --check tools/prepare-release.mjs
+          node --check tools/bump-version.mjs
+          node tools/update-release-notes.mjs --check
+          node web/tests/version-smoke.mjs
+          node web/tests/boot-smoke.mjs
+
+  test:
+    name: Unit tests (JVM)
+    if: ${{ inputs.task == 'test' || inputs.task == 'all' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v4
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '**/build/reports/tests/'
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build-apk:
+    name: Build debug APK
+    if: ${{ inputs.task == 'apk' || inputs.task == 'all' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v4
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-agent-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  build-web:
+    name: Build web bundle
+    if: ${{ inputs.task == 'web' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: cd web && npm ci
+      - name: Build web
+        run: cd web && npm run build
+      - name: Upload web bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-agent-web
+          path: web/dist/**
+          if-no-files-found: error
+          retention-days: 30

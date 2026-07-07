@@ -44,8 +44,8 @@ The repo ships two workflows in `.github/workflows/`:
 Or cut a versioned release that anyone can download:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0      # release.yml publishes InkFrame-v0.1.0.apk to Releases
+git tag v0.1.1
+git push origin v0.1.1      # release.yml publishes InkFrame-v0.1.1-debug.apk to Releases
 ```
 
 The CI runners already have the Android SDK + JDK 17, so this path needs nothing on your
@@ -94,11 +94,26 @@ java -version          # must say 17
 ./gradlew test
 ```
 
-### Release (signed) — for Google Play
+### Release — debug APK is the canonical release
 
-Signing is already wired in `app/build.gradle.kts`. It reads credentials from a local
-`keystore.properties` **or** from environment variables (CI), and falls back to debug
-signing if neither is set.
+InkFrame Studio's primary release artifact is the **debug APK** produced by
+`./gradlew :app:assembleDebug`. The WebView shell ships the same `web/index.html`
+in every variant, so the debug build is fully functional, offline, and sideload-ready.
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds the debug APK
+and attaches `InkFrame-vX.Y.Z-debug.apk` to a GitHub Release.
+
+```bash
+git tag v0.1.1 && git push origin v0.1.1
+# → Release workflow publishes InkFrame-v0.1.1-debug.apk
+```
+
+The release notes are pulled automatically from `RELEASE_NOTES.md`.
+
+### Optional: signed release / Google Play
+
+If you later want a signed release for Google Play, the wiring is still in
+`app/build.gradle.kts`. It reads credentials from a local `keystore.properties`
+**or** from environment variables, and falls back to debug signing if neither is set.
 
 **1. Create a keystore once** (keep it safe & backed up — losing it means you can't update
 the app):
@@ -119,8 +134,9 @@ cp keystore.properties.example keystore.properties   # then edit the values
 > Google Play requires the **.aab** (App Bundle). The signed **.apk** is just for quick
 > on-device testing.
 
-**3. Signed builds in CI** — add these repo secrets
-(*Settings ▸ Secrets and variables ▸ Actions*), then push a `v*` tag:
+**3. Signed builds in CI** — you would need a separate workflow (the default
+`release.yml` no longer publishes signed artifacts). Add these repo secrets
+(*Settings ▸ Secrets and variables ▸ Actions*) if you create one:
 
 | Secret | Value |
 |---|---|
@@ -129,58 +145,31 @@ cp keystore.properties.example keystore.properties   # then edit the values
 | `KEY_ALIAS` | e.g. `inkframe` |
 | `KEY_PASSWORD` | key password |
 
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-# release.yml builds the signed .aab + .apk and attaches them to a GitHub Release.
-```
-
-> **Play Console tip:** for a brand-new app, enrol in **Play App Signing** (recommended).
-> Upload the `.aab` to an **Internal testing** track first — it reaches your own device in
-> minutes, and you can push update after update straight to that track.
-
 ### Auto-incrementing versionCode
 
 You no longer hand-edit `versionCode`. It's derived in `app/build.gradle.kts`:
 
-- **In CI**, it's `versionCodeBase + GITHUB_RUN_NUMBER`, so every CI build climbs and Play
-  never rejects a duplicate.
+- **In CI**, it's `versionCodeBase + GITHUB_RUN_NUMBER`, so every CI build climbs.
 - **Locally**, it stays at the base (1) for convenience.
-- **Override** anytime with `INKFRAME_VERSION_CODE=42 ./gradlew :app:bundleRelease`.
+- **Override** anytime with `INKFRAME_VERSION_CODE=42 ./gradlew :app:assembleDebug`.
 
-`versionName` (the human "0.1.0") still lives in `app/build.gradle.kts` — bump it for
-meaningful releases.
+`versionName` (the human "0.1.1") is read from `web/metadata.json` — bump it with
+`node tools/bump-version.mjs 0.1.2` for meaningful releases.
 
-### Auto-publish to the Play "internal" track (optional)
+### Optional: publish to the Play "internal" track
 
 The [Triple-T Gradle Play Publisher](https://github.com/Triple-T/gradle-play-publisher) is
-wired up. Once configured, pushing a `v*` tag uploads the signed `.aab` straight to your
-Internal testing track.
-
-**1. Create a Play service account** (Play Console ▸ Setup ▸ API access ▸ create/link a
-Google Cloud service account, grant it *Release to testing tracks*), download its JSON key.
-
-**2. Local publish:**
+wired up but not used by the default release workflow. Once configured, you can publish
+locally:
 
 ```bash
-cp play-service-account.json   # place the downloaded key here (git-ignored)
+# place a downloaded Play service-account JSON key here (git-ignored)
 ./gradlew :app:publishReleaseBundle            # -> internal track
 PLAY_TRACK=alpha ./gradlew :app:publishReleaseBundle   # or another track
 ```
 
-**3. CI publish:** add one more repo secret and push a tag:
-
-| Secret | Value |
-|---|---|
-| `PLAY_SERVICE_ACCOUNT_JSON` | the full contents of the service-account JSON |
-
-```bash
-git tag v0.1.1 && git push origin v0.1.1
-# release.yml: builds signed .aab/.apk, attaches to a GitHub Release, AND uploads
-# the .aab to the Play internal track (only if PLAY_SERVICE_ACCOUNT_JSON is set).
-```
-
 > First upload of a brand-new app must be done **manually** in the Play Console (Google
-> requires the initial release by hand); subsequent updates can flow through CI.
+> requires the initial release by hand).
 
 ---
 

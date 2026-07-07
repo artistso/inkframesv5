@@ -1,139 +1,93 @@
-# Releasing InkFrame Studio to Google Play
+# Releasing InkFrame Studio
 
-A copy-paste checklist for shipping. Two phases: a **one-time setup**, then a fast
-**repeat loop** for every update. App identity for reference:
+InkFrame Studio ships as a **debug APK** on GitHub Releases. The APK is
+sideload-ready, fully offline, and uses the canonical application ID
+`com.inkframe.studio`.
 
 | | |
 |---|---|
 | Application ID | `com.inkframe.studio` |
 | Min / Target SDK | 26 (Android 8.0) / 35 |
-| Upload format | **`.aab`** (App Bundle) — `.apk` is for sideload testing only |
-| Marketing version | `versionName` in `app/build.gradle.kts` (e.g. `0.1.0`) |
-| Build number | `versionCode` — **auto-incremented in CI**, never hand-edit |
+| Release format | **`.apk`** (debug-signed) — `InkFrame-vX.Y.Z-debug.apk` |
+| Marketing version | `versionName` from `web/metadata.json` (e.g. `0.1.1`) |
+| Build number | `versionCode` — auto-incremented in CI from the GitHub run number |
 
 ---
 
-## Phase 1 — One-time setup (~30–45 min)
-
-### 1. Create your upload keystore (do this once, then guard it)
+## Quick release
 
 ```bash
-keytool -genkey -v -keystore inkframe-release.jks -keyalg RSA -keysize 2048 \
-        -validity 10000 -alias inkframe
+# 1. Make sure CHANGELOG.md [Unreleased] describes what's shipping.
+
+# 2. Bump the marketing version and regenerate release notes:
+node tools/bump-version.mjs 0.1.1
+
+# 3. Review the generated RELEASE_NOTES.md, then commit:
+git add -A
+git commit -m "v0.1.1"
+
+# 4. Tag and push — CI builds and publishes InkFrame-v0.1.1-debug.apk:
+git tag -a v0.1.1 -m "InkFrame Studio 0.1.1"
+git push origin main v0.1.1
 ```
 
-- [ ] Keystore created
-- [ ] **Backed up** the `.jks` + passwords somewhere safe (a password manager).
-      ⚠️ If you self-sign and lose this, you can never update the app — see step 4.
+Then watch the release workflow:
+<https://github.com/artistso/inkframesv5/actions/workflows/release.yml>
 
-### 2. Create the app in Play Console
-
-- [ ] <https://play.google.com/console> → **Create app**
-- [ ] Name: *InkFrame Studio* · Type: **App** · Free/Paid · accept declarations
-- [ ] Complete the initial **Dashboard** setup tasks Google lists (privacy policy,
-      data safety, content rating, target audience, store listing). These are required
-      before any public track, but **Internal testing** needs only a few.
-
-### 3. Enrol in Play App Signing (strongly recommended)
-
-- [ ] When you create the first release, Play offers **Play App Signing** → accept.
-      Google then holds the *app signing key*; your `.jks` becomes only the *upload key*
-      (which can be reset if lost). This is the safety net for step 1's warning.
-
-### 4. First release MUST be uploaded by hand
-
-Google requires the very first build of a new app to be uploaded manually.
-
-```bash
-cp keystore.properties.example keystore.properties   # then fill in real values
-./gradlew :app:bundleRelease
-# -> app/build/outputs/bundle/release/app-release.aab
-```
-
-- [ ] Play Console → **Testing ▸ Internal testing ▸ Create new release**
-- [ ] Upload `app-release.aab`, add release notes, **Review → Start rollout**
-- [ ] **Testers tab** → add your Google account (or a tester list) → copy the **opt-in
-      link**, open it on your device, become a tester, install from Play.
-
-### 5. (Optional) Wire CI auto-publish for every future update
-
-GitHub → repo **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret**:
-
-| Secret | How to produce it |
-|---|---|
-| `KEYSTORE_BASE64` | `base64 -w0 inkframe-release.jks` (whole file) — macOS: `base64 -i inkframe-release.jks \| tr -d '\n'` |
-| `KEYSTORE_PASSWORD` | your keystore password |
-| `KEY_ALIAS` | `inkframe` (from step 1) |
-| `KEY_PASSWORD` | your key password |
-| `PLAY_SERVICE_ACCOUNT_JSON` | full JSON of a Play service account (below) |
-
-**Service account (for `PLAY_SERVICE_ACCOUNT_JSON`):**
-
-- [ ] Play Console → **Setup ▸ API access** → create/link a Google Cloud project
-- [ ] Create a **service account**, download its **JSON key**
-- [ ] Back in API access → **Grant access** to that service account →
-      permission **“Release to testing tracks”** (and *Manage production releases* later
-      if you want CI to push to production)
-- [ ] Paste the JSON file's entire contents as the `PLAY_SERVICE_ACCOUNT_JSON` secret
-
-> The service account can only publish to an app that **already exists** and whose first
-> release was made manually (step 4). That's why Phase 1 is one-time.
+When it finishes, the APK is attached to a GitHub Release at:
+<https://github.com/artistso/inkframesv5/releases>
 
 ---
 
-## Phase 2 — The repeat loop (every update, ~2 min of your time)
+## Before you tag
 
-Once Phase 1 is done, shipping an update is just a tag push.
-
-```bash
-# 1. (only for meaningful releases) bump the marketing version:
-#    edit app/build.gradle.kts -> val baseVersionName = "0.1.1"
-
-# 2. commit your work
-git add -A && git commit -m "Describe the change"
-
-# 3. tag + push -> CI builds a signed, auto-versioned .aab and uploads to Internal testing
-git tag v0.1.1
-git push origin main --tags
-```
-
-What CI does on a `v*` tag (`.github/workflows/release.yml`):
-
-1. Builds a **signed `.aab` + `.apk`** (versionCode auto-set from the run number).
-2. Attaches both to a **GitHub Release**.
-3. If `PLAY_SERVICE_ACCOUNT_JSON` is set → uploads the `.aab` to the **internal** track.
-
-Then on your device: open Play (as an opted-in tester) → the update appears within a few
-minutes. Iterate as fast as you like.
-
-- [ ] Watch the run in the **Actions** tab (green check = published)
-- [ ] Update lands on the **Internal testing** track
-- [ ] Install/refresh on device, test, repeat
-
-### Handy variations
+Run the release prep helper to catch common mistakes:
 
 ```bash
-# Build locally without CI (signed):
-./gradlew :app:bundleRelease
-
-# Publish locally to a different track:
-PLAY_TRACK=alpha ./gradlew :app:publishReleaseBundle
-
-# Force a specific versionCode (normally unnecessary):
-INKFRAME_VERSION_CODE=120 ./gradlew :app:bundleRelease
+node tools/prepare-release.mjs
 ```
+
+It checks:
+
+- `web/metadata.json` and `web/package.json` versions match.
+- `RELEASE_NOTES.md` is current.
+- Git working tree is clean and in sync with `origin/main`.
+- The target tag does not already exist.
+
+If everything passes, it prints the exact `git tag` and `git push` commands.
 
 ---
 
-## Quick troubleshooting
+## What CI does on a `v*` tag
 
-| Symptom | Cause / fix |
-|---|---|
-| Play rejects upload: *“Version code N already used”* | Re-running CI reuses a run number rarely; just push a new tag, or set `INKFRAME_VERSION_CODE` higher. |
-| CI publish step skipped | `PLAY_SERVICE_ACCOUNT_JSON` secret not set (build/Release still succeed). |
-| `The caller does not have permission` | Service account missing **Release to testing tracks** in API access. |
-| `APK signed with the wrong key` | First manual upload chose a different key than CI; align on the Play App Signing upload key. |
-| Tester can't see the app | They haven't opened the **opt-in link** / aren't on the testers list. |
-| First CI tag failed to publish | Expected if the app's first release wasn't done manually yet (step 4). |
+`.github/workflows/release.yml`:
 
-See `BUILD.md` for the full build reference (Android Studio, CLI, CI artifacts).
+1. Installs JDK 17 and Android SDK platform 35.
+2. Runs `./gradlew :app:assembleDebug`.
+3. Renames the output to `InkFrame-vX.Y.Z-debug.apk`.
+4. Creates a GitHub Release using `RELEASE_NOTES.md` as the body.
+5. Attaches the APK to the release.
+
+No repository secrets are required.
+
+---
+
+## Sideloading the release APK
+
+1. Download `InkFrame-vX.Y.Z-debug.apk` from the GitHub Release.
+2. Copy it to your Android device.
+3. Enable *Settings ▸ Security ▸ Install unknown apps* for your file manager.
+4. Tap the APK to install.
+
+---
+
+## Optional: Google Play / signed release
+
+If you later want to publish on Google Play, the signed-release wiring is still
+present in `app/build.gradle.kts` and `keystore.properties.example`. You would
+need to create a separate workflow or restore the old signed-release logic from
+git history. See `docs/BUILD.md` §"Optional: signed release / Google Play" for
+keystore and Play service-account setup.
+
+The default `release.yml` intentionally does **not** build signed artifacts so
+that releases stay simple and secret-free.

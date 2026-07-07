@@ -81,7 +81,9 @@ android {
         }
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
+            // Debug is the primary release artifact for InkFrame (the WebView shell
+            // ships the same web/index.html for both variants). Keep the canonical
+            // package name so the released APK is com.inkframe.studio.
         }
     }
 

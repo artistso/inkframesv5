@@ -66,7 +66,7 @@ In the installed APK, verify:
 
 ## 6. Version metadata and release notes
 
-Before tagging a release, update `CHANGELOG.md`, then bump the version:
+Before tagging a release, update `CHANGELOG.md` `[Unreleased]`, then bump the version:
 
 ```bash
 node tools/bump-version.mjs 0.1.1
@@ -75,7 +75,7 @@ node tools/bump-version.mjs 0.1.1
 The bump helper updates `web/metadata.json` and `web/package.json`, regenerates `RELEASE_NOTES.md`, and runs the version/release-notes checks. You can set an explicit release date with:
 
 ```bash
-node tools/bump-version.mjs 0.1.1 --date 2026-07-06
+node tools/bump-version.mjs 0.1.1 --date 2026-07-07
 ```
 
 CI runs the same release-notes/version checks before building the APK.
@@ -89,10 +89,10 @@ node tools/prepare-release.mjs
 It verifies a clean/synced git state, aligned metadata/release notes, and no existing tag, then prints the exact tag/push commands for the metadata version. If it says the tag already exists, bump `web/metadata.json` and `web/package.json` before releasing again. Example output:
 
 ```bash
-git tag -a v0.1.0 -m "InkFrame Studio 0.1.0"
-git push origin main v0.1.0
+git tag -a v0.1.1 -m "InkFrame Studio 0.1.1"
+git push origin main v0.1.1
 ```
 
-Release workflow:
+Release workflow (builds and publishes the debug APK):
 
 <https://github.com/artistso/inkframesv5/actions/workflows/release.yml>

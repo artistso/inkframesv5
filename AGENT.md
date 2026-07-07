@@ -59,7 +59,7 @@ Export needs puppeteer once: `cd web && npm install puppeteer --save-dev`
 - `.github/workflows/release.yml` – tag `v*` → debug APK → GitHub Release
 - `.github/workflows/agent-build.yml` – workflow_dispatch – Agent Mode entry point
   ```
-  gh workflow run agent-build.yml -f task=apk -f version_bump=none
+  gh workflow run agent-build.yml -f task=apk
   ```
 
 All builds produce the **same debug-signed, fully-wrapped, offline APK**. No Play Store keystore, no AAB.
@@ -106,7 +106,7 @@ DON'T:
 2. `./inkframe-cli build-apk` – sideload smoke test
 3. `./inkframe-cli bump patch`
 4. `./inkframe-cli release-check`
-5. `git tag vX.Y.Z && git push origin main --tags`
+5. `git tag -a vX.Y.Z -m "InkFrame Studio X.Y.Z" && git push origin main vX.Y.Z`
 6. Wait for Release workflow → download `InkFrame-vX.Y.Z-debug.apk`
 
 Full checklist: `docs/RELEASE_CHECKLIST.md`

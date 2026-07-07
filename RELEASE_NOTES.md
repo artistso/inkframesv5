@@ -13,9 +13,15 @@ A 2D animation and drawing studio: brushes, layers, frame timeline with onion sk
 3. Save the downloaded `.inkframe` somewhere outside browser/app storage.
 4. Then install/test the latest APK or browser build.
 
-See `docs/RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
+See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 
 ## What's changed
+
+## Release pipeline — debug APK is the canonical release
+- **Promoted the debug APK to the primary release artifact.** `.github/workflows/release.yml` now builds `./gradlew :app:assembleDebug` and publishes `InkFrame-vX.Y.Z-debug.apk` to GitHub Releases. The release body is pulled from `RELEASE_NOTES.md`.
+- **Removed the `.debug` application ID suffix** from the debug build type in `app/build.gradle.kts` so the released APK uses the canonical package name `com.inkframe.studio`.
+- **Added the missing `.github/workflows/agent-build.yml`** workflow referenced by the Agent Mode docs (`./inkframe-cli gh-ci`). It supports `apk`, `web`, `test`, and `all` tasks via `workflow_dispatch`.
+- **Retired the default Play/AAB path** from the main release workflow. The `release` build type and signing config remain in `app/build.gradle.kts` for optional future Play Store use, but the standard GitHub Release is now the debug APK only.
 
 ## Web build — tablet, stylus, brush texture, and gallery perf
 - **Tablet-first coarse-pointer polish.** Touch devices get larger orbs, kid buttons, rail controls, slider thumbs, project buttons, and a wider Brush Lab without changing desktop density.

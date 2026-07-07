@@ -1,27 +1,18 @@
-name: Release (signed AAB + APK)
+name: Release (debug APK)
 
-# Push a version tag (e.g. v0.1.0) to build SIGNED release artifacts for the Play Store:
-#   git tag v0.1.0 && git push origin v0.1.0
+# Push a version tag (e.g. v0.1.1) to build the debug APK and publish it as a
+# GitHub Release. The debug build is the canonical release for InkFrame Studio;
+# the WebView shell serves the same web/index.html in every variant, and the
+# release variant is kept only for optional future Play Store signing.
+#
+#   git tag v0.1.1 && git push origin v0.1.1
 #
 # Produces:
-#   - app-release.aab  (upload this to Google Play)
-#   - app-release.apk  (sideload for a quick on-device smoke test)
-# both attached to a GitHub Release.
+#   - InkFrame-v0.1.1-debug.apk  (sideload-ready, debug-signed, fully offline)
 #
-# Required repository secrets (Settings ▸ Secrets and variables ▸ Actions):
-#   KEYSTORE_BASE64          base64 of your .jks  ->  base64 -w0 inkframe-release.jks
-#   KEYSTORE_PASSWORD        keystore password
-#   KEY_ALIAS                key alias (e.g. inkframe)
-#   KEY_PASSWORD             key password
-#
-# Optional — enables automatic upload to the Play "internal" track:
-#   PLAY_SERVICE_ACCOUNT_JSON   full JSON of a Play Console service account
-#
-# If the signing secrets are absent the build still runs but produces debug-signed
-# output (not valid for Play upload). If the Play secret is absent, the upload step is
-# skipped and the artifacts are only attached to the GitHub Release.
-#
-# versionCode auto-increments from the CI run number (see app/build.gradle.kts).
+# No repository secrets are required. The release notes are pulled from
+# RELEASE_NOTES.md, which is generated from CHANGELOG.md [Unreleased] and
+# web/metadata.json by tools/update-release-notes.mjs.
 
 on:
   push:
@@ -33,12 +24,8 @@ permissions:
 
 jobs:
   release:
-    name: Build & publish signed release
+    name: Build & publish debug APK release
     runs-on: ubuntu-latest
-    env:
-      # Promote the optional Play secret to a job-level flag so step `if:` conditions are
-      # simple and robust (referencing secrets directly in `if:` is brittle).
-      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,38 +47,17 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Decode keystore (if configured)
-        id: keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/inkframe-release.jks"
-            echo "path=$RUNNER_TEMP/inkframe-release.jks" >> "$GITHUB_OUTPUT"
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No KEYSTORE_BASE64 secret — building debug-signed (NOT Play-valid)."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
 
-      - name: Build signed App Bundle + APK
-        env:
-          INKFRAME_KEYSTORE: ${{ steps.keystore.outputs.path }}
-          INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          INKFRAME_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          INKFRAME_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:bundleRelease :app:assembleRelease --stacktrace
-
-      - name: Collect artifacts
+      - name: Collect artifact
         run: |
           mkdir -p release
-          cp app/build/outputs/bundle/release/app-release.aab \
-             "release/InkFrame-${GITHUB_REF_NAME}.aab" 2>/dev/null || true
-          cp app/build/outputs/apk/release/app-release.apk \
-             "release/InkFrame-${GITHUB_REF_NAME}.apk" 2>/dev/null || true
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "release/InkFrame-${GITHUB_REF_NAME}-debug.apk"
           ls -la release
 
-      - name: Upload artifacts to the run
+      - name: Upload artifact to the run
         uses: actions/upload-artifact@v4
         with:
           name: inkframe-release-${{ github.ref_name }}
@@ -103,36 +69,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           name: InkFrame ${{ github.ref_name }}
-          body: |
-            InkFrame Studio ${{ github.ref_name }}
-
-            - **`.aab`** — upload to Google Play Console (Internal testing → Production).
-            - **`.apk`** — sideload for a quick on-device smoke test
-              (Android 8.0+, OpenGL ES 3.0).
-
-            Signed with the project release key when CI secrets are configured.
-
-      # --- Optional: push straight to the Play "internal" testing track ---
-      - name: Write Play service-account file
-        id: play
-        if: ${{ env.HAS_PLAY == 'true' }}
-        env:
-          PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-        run: |
-          printf '%s' "$PLAY_SA" > "$RUNNER_TEMP/play-sa.json"
-          echo "file=$RUNNER_TEMP/play-sa.json" >> "$GITHUB_OUTPUT"
-
-      - name: Publish AAB to Play (internal track)
-        if: ${{ env.HAS_PLAY == 'true' }}
-        env:
-          # Signing (so the bundle the plugin builds is the signed one):
-          INKFRAME_KEYSTORE: ${{ steps.keystore.outputs.path }}
-          INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          INKFRAME_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          INKFRAME_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          # Play publishing:
-          PLAY_SERVICE_ACCOUNT_JSON_FILE: ${{ steps.play.outputs.file }}
-          PLAY_TRACK: internal
-        run: ./gradlew :app:publishReleaseBundle --stacktrace

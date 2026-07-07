@@ -68,7 +68,7 @@ case "$cmd" in
   gh-ci)
     need_gh gh-ci
     task="${1:-apk}"
-    gh workflow run agent-build.yml -f task="$task" -f version_bump=none
+    gh workflow run agent-build.yml -f task="$task"
     echo "Triggered. Watch with: gh run watch"
     ;;
   gh-ci-get)
@@ -85,7 +85,9 @@ case "$cmd" in
     ;;
   gh-release)
     need_gh gh-release
-    # bump, commit, tag, push – triggers release.yml
+    # bump, commit, tag, push – triggers release.yml, which builds and
+    # publishes the debug APK (InkFrame-vX.Y.Z-debug.apk) as the canonical
+    # GitHub Release artifact.
     arg="${1:-patch}"
     if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
       ver="$arg"
@@ -139,7 +141,7 @@ GitHub / Agent Mode:
   gh-clone [dir]              gh repo clone artistso/inkframesv5
   gh-ci [apk|web|test|all]    trigger agent-build.yml workflow
   gh-ci-get <run-id>          download inkframe-agent-apk artifact
-  gh-release [patch|minor|major]  bump → commit → tag → push → GitHub Release builds debug APK
+  gh-release [patch|minor|major]  bump → commit → tag → push → GitHub Release builds & publishes InkFrame-vX.Y.Z-debug.apk
   agent build                 test + build-apk (CI-free local)
   agent web                   npm ci + build
   agent release patch         full release via gh
