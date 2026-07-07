@@ -73,15 +73,17 @@ android {
             // R8 would strip nothing but risk breaking the JS bridge — keep it off.
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = if (hasReleaseSigning) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            // Always use release signing if available, otherwise fail the build
+            // to prevent unsigned/unexpected debug-signed release APKs
+            signingConfig = signingConfigs.findByName("release") ?: run {
+                throw GradleException("Release signing config not found. Please provide keystore properties or environment variables.")
             }
         }
         debug {
             isMinifyEnabled = false
+            // Keep debug suffix for debug builds to distinguish from release
             applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
