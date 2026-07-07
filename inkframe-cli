@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# InkFrame Studio CLI pipeline
+# Agent Mode / GitHub-aware
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+cmd="${1:-help}"
+shift || true
+
+need_gh(){ command -v gh >/dev/null 2>&1 || { echo "gh (GitHub CLI) is required for '$1'. Install: https://cli.github.com/"; exit 1; }; }
+
+case "$cmd" in
+  dev)
+    cd web
+    [ -d node_modules ] || npm install
+    npm run dev
+    ;;
+  build-web)
+    cd web
+    [ -d node_modules ] || npm install
+    npm run build
+    echo "Built -> web/dist/"
+    ;;
+  serve)
+    cd web
+    python3 -m http.server 8080
+    ;;
+  build-apk)
+    ./gradlew :app:assembleDebug
+    echo "APK: app/build/outputs/apk/debug/app-debug.apk"
+    ;;
+  test)
+    ./gradlew test
+    ;;
+  bump)
+    arg="${1:-patch}"
+    # tools/bump-version.mjs expects explicit semver, so auto-increment patch/minor/major
+    if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+      ver="$arg"
+    else
+      cur=$(node -p "require('./web/metadata.json').version")
+      IFS=. read -r maj min pat <<<"$cur"
+      case "$arg" in
+        major) maj=$((maj+1)); min=0; pat=0 ;;
+        minor) min=$((min+1)); pat=0 ;;
+        *)     pat=$((pat+1)) ;;
+      esac
+      ver="$maj.$min.$pat"
+    fi
+    node tools/bump-version.mjs "$ver"
+    ;;
+  release-check)
+    node tools/prepare-release.mjs
+    ;;
+  export-gif)
+    node tools/inkframe-cli.mjs export-gif "$@"
+    ;;
+  export)
+    node tools/inkframe-cli.mjs "$@"
+    ;;
+
+  # --- GitHub / Agent Mode ---
+  gh-clone)
+    need_gh gh-clone
+    gh repo clone artistso/inkframesv5 "${1:-inkframesv5}"
+    ;;
+  gh-ci)
+    need_gh gh-ci
+    task="${1:-apk}"
+    gh workflow run agent-build.yml -f task="$task" -f version_bump=none
+    echo "Triggered. Watch with: gh run watch"
+    ;;
+  gh-ci-get)
+    need_gh gh-ci-get
+    # gh run download <run-id> -n inkframe-agent-apk
+    run_id="${1:-}"
+    if [ -z "$run_id" ]; then
+      echo "Usage: ./inkframe-cli gh-ci-get <run-id>"
+      echo "Find run-id with: gh run list --workflow=agent-build.yml"
+      exit 1
+    fi
+    gh run download "$run_id" -n inkframe-agent-apk
+    echo "Downloaded APK to ./inkframe-agent-apk/"
+    ;;
+  gh-release)
+    need_gh gh-release
+    # bump, commit, tag, push – triggers release.yml
+    arg="${1:-patch}"
+    if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+      ver="$arg"
+    else
+      cur=$(node -p "require('./web/metadata.json').version")
+      IFS=. read -r maj min pat <<<"$cur"
+      case "$arg" in
+        major) maj=$((maj+1)); min=0; pat=0 ;;
+        minor) min=$((min+1)); pat=0 ;;
+        *)     pat=$((pat+1)) ;;
+      esac
+      ver="$maj.$min.$pat"
+    fi
+    node tools/bump-version.mjs "$ver"
+    git add -A
+    git commit -m "v$ver" || true
+    git tag -a "v$ver" -m "InkFrame Studio $ver"
+    git push origin main --tags
+    echo "Pushed v$ver – watch: https://github.com/artistso/inkframesv5/actions/workflows/release.yml"
+    ;;
+  agent)
+    # Agent Mode entry – run a named task end-to-end
+    # ./inkframe-cli agent build   -> test + build-apk
+    # ./inkframe-cli agent release patch -> bump + tag + push
+    sub="${1:-help}"
+    shift || true
+    case "$sub" in
+      build) ./gradlew test && ./gradlew :app:assembleDebug && echo "OK $(ls -lh app/build/outputs/apk/debug/*.apk | awk '{print $9, $5}')" ;;
+      web) cd web && npm ci && npm run build ;;
+      release) "$0" gh-release "${1:-patch}" ;;
+      export-gif) node tools/inkframe-cli.mjs export-gif "$@" ;;
+      *) echo "agent tasks: build | web | release [patch|minor|major] | export-gif <in> <out>"; exit 1 ;;
+    esac
+    ;;
+
+  help|*)
+    cat <<'EOF'
+InkFrame Studio CLI – Agent Mode ready
+
+Local:
+  dev              Vite HMR http://localhost:5173
+  build-web        npm run build → web/dist/
+  serve            python -m http.server 8080
+  build-apk        ./gradlew :app:assembleDebug
+  test             ./gradlew test
+  bump <patch|minor|major>
+  release-check    verify + print git tag commands
+  export-gif in.inkframe out.gif [--fps 12] [--width 1024]
+
+GitHub / Agent Mode:
+  gh-clone [dir]              gh repo clone artistso/inkframesv5
+  gh-ci [apk|web|test|all]    trigger agent-build.yml workflow
+  gh-ci-get <run-id>          download inkframe-agent-apk artifact
+  gh-release [patch|minor|major]  bump → commit → tag → push → GitHub Release builds debug APK
+  agent build                 test + build-apk (CI-free local)
+  agent web                   npm ci + build
+  agent release patch         full release via gh
+  agent export-gif in out     headless GIF
+
+Examples:
+  ./inkframe-cli dev
+  ./inkframe-cli build-apk
+  ./inkframe-cli agent build
+  ./inkframe-cli gh-ci apk
+  ./inkframe-cli gh-release patch
+  ./inkframe-cli export-gif my.inkframe out.gif --fps 24
+
+Docs: docs/PIPELINE.md  docs/BUILD.md  docs/ARCHITECTURE.md
+EOF
+    ;;
+esac

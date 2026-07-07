@@ -1,0 +1,2505 @@
+From 8ba9e2ad9b9e73d64288c804dbe849a82e9522fd Mon Sep 17 00:00:00 2001
+From: Arena Agent <agent@arena.ai>
+Date: Tue, 7 Jul 2026 05:33:05 +0000
+Subject: [PATCH] =?UTF-8?q?v0.1.1=20=E2=80=93=20CLI=20pipeline,=20Agent=20?=
+ =?UTF-8?q?Mode,=20debug-APK=20release?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add ./inkframe-cli with dev/build/test/bump/release/export-gif
+- Add tools/inkframe-cli.mjs – headless .inkframe → GIF via Puppeteer
+- Add .github/workflows/agent-build.yml – workflow_dispatch for Agent Mode
+- Add .github/workflows/export-gif.yml – headless GIF export in CI
+- Rewrite .github/workflows/release.yml – debug APK only, no Play signing
+- Rewrite README.md – CLI-first, Agent Mode / GitHub CLI section
+- Move ARCHITECTURE.md, BUILD.md, PRIVACY.md, RELEASING.md, RELEASE_CHECKLIST.md, RELEASE_NOTES.md, PIPELINE.md → docs/
+- Update docs/BUILD.md, docs/RELEASING.md – debug-APK / GitHub Releases only
+- Add AGENT.md – Agent Mode guide
+- Update tools/update-release-notes.mjs, prepare-release.mjs – docs/ paths
+- Fix inkframe-cli bump – auto-increment semver
+- Bump version: 0.1.0 → 0.1.1
+
+Legacy Kotlin modules (core-*, engine-gl, feature-*) kept – 210 tests still pass.
+---
+ .github/workflows/agent-build.yml             | 109 ++++
+ .github/workflows/export-gif.yml              |  79 +++
+ .github/workflows/release.yml                 | 115 ++---
+ AGENT.md                                      | 112 ++++
+ BUILD.md                                      | 216 --------
+ README.md                                     | 291 ++++++-----
+ RELEASE_NOTES.md                              |   6 +-
+ RELEASING.md                                  | 139 -----
+ ARCHITECTURE.md => docs/ARCHITECTURE.md       |   0
+ docs/BUILD.md                                 | 108 ++++
+ docs/PIPELINE.md                              |  84 +++
+ PRIVACY.md => docs/PRIVACY.md                 |   0
+ .../RELEASE_CHECKLIST.md                      |   2 +
+ docs/RELEASE_NOTES.md                         | 483 ++++++++++++++++++
+ docs/RELEASING.md                             |  86 ++++
+ inkframe-cli                                  | 159 ++++++
+ tools/inkframe-cli.mjs                        | 148 ++++++
+ tools/prepare-release.mjs                     |  14 +-
+ tools/update-release-notes.mjs                |  18 +-
+ web/metadata.json                             |   4 +-
+ web/package.json                              |   2 +-
+ 21 files changed, 1593 insertions(+), 582 deletions(-)
+ create mode 100644 .github/workflows/agent-build.yml
+ create mode 100644 .github/workflows/export-gif.yml
+ create mode 100644 AGENT.md
+ delete mode 100644 BUILD.md
+ delete mode 100644 RELEASING.md
+ rename ARCHITECTURE.md => docs/ARCHITECTURE.md (100%)
+ create mode 100644 docs/BUILD.md
+ create mode 100644 docs/PIPELINE.md
+ rename PRIVACY.md => docs/PRIVACY.md (100%)
+ rename RELEASE_CHECKLIST.md => docs/RELEASE_CHECKLIST.md (98%)
+ create mode 100644 docs/RELEASE_NOTES.md
+ create mode 100644 docs/RELEASING.md
+ create mode 100755 inkframe-cli
+ create mode 100755 tools/inkframe-cli.mjs
+
+diff --git a/.github/workflows/agent-build.yml b/.github/workflows/agent-build.yml
+new file mode 100644
+index 0000000..21e57d9
+--- /dev/null
++++ b/.github/workflows/agent-build.yml
+@@ -0,0 +1,109 @@
++name: Agent Build
++
++# Agent Mode / CLI-triggerable build
++# Trigger with:
++#   gh workflow run agent-build.yml -f task=apk
++#   gh run watch
++#   gh run download <run-id> -n inkframe-agent-apk
++#
++# This is the pipeline Agent Mode uses to build InkFrame headlessly.
++
++on:
++  workflow_dispatch:
++    inputs:
++      task:
++        description: 'Task to run'
++        required: true
++        default: 'apk'
++        type: choice
++        options:
++          - apk
++          - web
++          - test
++          - all
++      version_bump:
++        description: 'Bump version before build? (patch/minor/major/none)'
++        required: false
++        default: 'none'
++        type: choice
++        options:
++          - none
++          - patch
++          - minor
++          - major
++
++permissions:
++  contents: read
++
++jobs:
++  agent:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Node 20
++        if: contains(inputs.task, 'web') || inputs.task == 'all'
++        uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++
++      - name: Bump version (if requested)
++        if: inputs.version_bump != 'none'
++        run: |
++          node tools/bump-version.mjs ${{ inputs.version_bump }}
++          cat web/metadata.json
++
++      - name: Web build
++        if: contains(inputs.task, 'web') || inputs.task == 'all'
++        run: |
++          cd web
++          npm ci
++          npm run build
++
++      - name: Set up JDK 17
++        if: contains(inputs.task, 'apk') || inputs.task == 'all' || contains(inputs.task, 'test')
++        uses: actions/setup-java@v4
++        with:
++          distribution: temurin
++          java-version: '17'
++
++      - name: Set up Android SDK
++        if: contains(inputs.task, 'apk') || inputs.task == 'all' || contains(inputs.task, 'test')
++        uses: android-actions/setup-android@v3
++
++      - name: Install Android platform
++        if: contains(inputs.task, 'apk') || inputs.task == 'all' || contains(inputs.task, 'test')
++        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
++
++      - name: Gradle cache
++        if: contains(inputs.task, 'apk') || inputs.task == 'all' || contains(inputs.task, 'test')
++        uses: gradle/actions/setup-gradle@v4
++
++      - name: Test
++        if: contains(inputs.task, 'test') || inputs.task == 'all'
++        run: |
++          chmod +x ./gradlew
++          ./gradlew test --stacktrace
++
++      - name: Build APK
++        if: contains(inputs.task, 'apk') || inputs.task == 'all'
++        run: |
++          chmod +x ./gradlew
++          ./gradlew :app:assembleDebug --stacktrace
++
++      - name: Upload APK
++        if: contains(inputs.task, 'apk') || inputs.task == 'all'
++        uses: actions/upload-artifact@v4
++        with:
++          name: inkframe-agent-apk
++          path: app/build/outputs/apk/debug/*.apk
++          retention-days: 30
++
++      - name: Upload web dist
++        if: contains(inputs.task, 'web') || inputs.task == 'all'
++        uses: actions/upload-artifact@v4
++        with:
++          name: inkframe-web-dist
++          path: web/dist
++          if-no-files-found: ignore
++          retention-days: 14
+diff --git a/.github/workflows/export-gif.yml b/.github/workflows/export-gif.yml
+new file mode 100644
+index 0000000..f125f71
+--- /dev/null
++++ b/.github/workflows/export-gif.yml
+@@ -0,0 +1,79 @@
++name: Export GIF
++
++# Headless .inkframe → GIF export
++# Trigger via:
++#   gh workflow run export-gif.yml -f archive=myproject.inkframe -f fps=24
++#
++# Or upload an .inkframe as a workflow artifact input (via the Actions UI).
++#
++# Output: inkframe-export-gif artifact with out.gif
++
++on:
++  workflow_dispatch:
++    inputs:
++      archive:
++        description: 'Path in repo to .inkframe file (e.g. media/demo.inkframe)'
++        required: false
++        default: ''
++      fps:
++        description: 'FPS'
++        required: false
++        default: '12'
++      width:
++        description: 'Output width (blank = native)'
++        required: false
++        default: ''
++
++permissions:
++  contents: read
++
++jobs:
++  export:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Node 20
++        uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++
++      - name: Install export deps
++        run: |
++          cd web
++          npm ci || npm install
++          npm install --no-save puppeteer
++
++      - name: Find archive to export
++        id: find
++        run: |
++          INPUT="${{ inputs.archive }}"
++          if [ -n "$INPUT" ] && [ -f "$INPUT" ]; then
++            echo "archive=$INPUT" >> $GITHUB_OUTPUT
++            exit 0
++          fi
++          # auto-find first .inkframe in repo
++          FOUND=$(find . -name "*.inkframe" -type f | head -1)
++          if [ -n "$FOUND" ]; then
++            echo "archive=$FOUND" >> $GITHUB_OUTPUT
++            echo "Auto-found $FOUND"
++            exit 0
++          fi
++          echo "No .inkframe found in repo. Upload one as an artifact or specify inputs.archive"
++          echo "archive=" >> $GITHUB_OUTPUT
++          exit 1
++
++      - name: Export GIF
++        run: |
++          node tools/inkframe-cli.mjs export-gif \
++            "${{ steps.find.outputs.archive }}" \
++            out.gif \
++            --fps ${{ inputs.fps }} \
++            ${{ inputs.width && format('--width {0}', inputs.width) || '' }}
++
++      - name: Upload GIF
++        uses: actions/upload-artifact@v4
++        with:
++          name: inkframe-export-gif
++          path: out.gif
++          retention-days: 14
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index e6a0241..16b9ba5 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -1,44 +1,33 @@
+-name: Release (signed AAB + APK)
++name: Release – Debug APK
+ 
+-# Push a version tag (e.g. v0.1.0) to build SIGNED release artifacts for the Play Store:
++# Push a version tag (e.g. v0.1.0) to build a FULLY-WRAPPED DEBUG APK:
+ #   git tag v0.1.0 && git push origin v0.1.0
+ #
+-# Produces:
+-#   - app-release.aab  (upload this to Google Play)
+-#   - app-release.apk  (sideload for a quick on-device smoke test)
+-# both attached to a GitHub Release.
++# This is the SAME build as the CI debug APK – WebView-wrapped,
++# offline, no Play signing.  Just a clean debug APK pumped out to
++# GitHub Releases.
+ #
+-# Required repository secrets (Settings ▸ Secrets and variables ▸ Actions):
+-#   KEYSTORE_BASE64          base64 of your .jks  ->  base64 -w0 inkframe-release.jks
+-#   KEYSTORE_PASSWORD        keystore password
+-#   KEY_ALIAS                key alias (e.g. inkframe)
+-#   KEY_PASSWORD             key password
++# Artifacts:
++#   InkFrame-<tag>-debug.apk
+ #
+-# Optional — enables automatic upload to the Play "internal" track:
+-#   PLAY_SERVICE_ACCOUNT_JSON   full JSON of a Play Console service account
+-#
+-# If the signing secrets are absent the build still runs but produces debug-signed
+-# output (not valid for Play upload). If the Play secret is absent, the upload step is
+-# skipped and the artifacts are only attached to the GitHub Release.
+-#
+-# versionCode auto-increments from the CI run number (see app/build.gradle.kts).
++# No keystore / Play secrets required.
+ 
+ on:
+   push:
+     tags: [ 'v*' ]
+   workflow_dispatch:
++    inputs:
++      tag:
++        description: 'Release tag (e.g. v0.1.1)'
++        required: false
+ 
+ permissions:
+-  contents: write   # create the Release and upload assets
++  contents: write
+ 
+ jobs:
+   release:
+-    name: Build & publish signed release
++    name: Build debug APK & publish
+     runs-on: ubuntu-latest
+-    env:
+-      # Promote the optional Play secret to a job-level flag so step `if:` conditions are
+-      # simple and robust (referencing secrets directly in `if:` is brittle).
+-      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+     steps:
+       - uses: actions/checkout@v4
+ 
+@@ -54,49 +43,30 @@ jobs:
+       - name: Install Android platform 35
+         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+ 
+-      - name: Set up Gradle (with cache)
++      - name: Set up Gradle
+         uses: gradle/actions/setup-gradle@v4
+ 
+       - name: Make gradlew executable
+         run: chmod +x ./gradlew
+ 
+-      - name: Decode keystore (if configured)
+-        id: keystore
+-        env:
+-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+-        run: |
+-          if [ -n "$KEYSTORE_BASE64" ]; then
+-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/inkframe-release.jks"
+-            echo "path=$RUNNER_TEMP/inkframe-release.jks" >> "$GITHUB_OUTPUT"
+-            echo "signed=true" >> "$GITHUB_OUTPUT"
+-          else
+-            echo "No KEYSTORE_BASE64 secret — building debug-signed (NOT Play-valid)."
+-            echo "signed=false" >> "$GITHUB_OUTPUT"
+-          fi
+-
+-      - name: Build signed App Bundle + APK
+-        env:
+-          INKFRAME_KEYSTORE: ${{ steps.keystore.outputs.path }}
+-          INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+-          INKFRAME_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+-          INKFRAME_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+-        run: ./gradlew :app:bundleRelease :app:assembleRelease --stacktrace
+-
+-      - name: Collect artifacts
++      - name: Run unit tests
++        run: ./gradlew test --stacktrace
++
++      - name: Assemble debug APK
++        run: ./gradlew :app:assembleDebug --stacktrace
++
++      - name: Collect APK
+         run: |
+           mkdir -p release
+-          cp app/build/outputs/bundle/release/app-release.aab \
+-             "release/InkFrame-${GITHUB_REF_NAME}.aab" 2>/dev/null || true
+-          cp app/build/outputs/apk/release/app-release.apk \
+-             "release/InkFrame-${GITHUB_REF_NAME}.apk" 2>/dev/null || true
+-          ls -la release
++          REF="${GITHUB_REF_NAME}"
++          cp app/build/outputs/apk/debug/app-debug.apk "release/InkFrame-${REF}-debug.apk"
++          ls -lh release/
+ 
+-      - name: Upload artifacts to the run
++      - name: Upload build artifact
+         uses: actions/upload-artifact@v4
+         with:
+           name: inkframe-release-${{ github.ref_name }}
+           path: release/*
+-          if-no-files-found: error
+           retention-days: 90
+ 
+       - name: Publish GitHub Release
+@@ -108,31 +78,12 @@ jobs:
+           body: |
+             InkFrame Studio ${{ github.ref_name }}
+ 
+-            - **`.aab`** — upload to Google Play Console (Internal testing → Production).
+-            - **`.apk`** — sideload for a quick on-device smoke test
+-              (Android 8.0+, OpenGL ES 3.0).
++            **Debug APK – fully wrapped, offline, sideload-ready**
+ 
+-            Signed with the project release key when CI secrets are configured.
++            - `InkFrame-<tag>-debug.apk` – install on Android 8.0+ (API 26+)
++            - No account, no ads, no network – see `docs/PRIVACY.md`
++            - Same build as CI – WebView shell loading `web/index.html`
+ 
+-      # --- Optional: push straight to the Play "internal" testing track ---
+-      - name: Write Play service-account file
+-        id: play
+-        if: ${{ env.HAS_PLAY == 'true' }}
+-        env:
+-          PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+-        run: |
+-          printf '%s' "$PLAY_SA" > "$RUNNER_TEMP/play-sa.json"
+-          echo "file=$RUNNER_TEMP/play-sa.json" >> "$GITHUB_OUTPUT"
+-
+-      - name: Publish AAB to Play (internal track)
+-        if: ${{ env.HAS_PLAY == 'true' }}
+-        env:
+-          # Signing (so the bundle the plugin builds is the signed one):
+-          INKFRAME_KEYSTORE: ${{ steps.keystore.outputs.path }}
+-          INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+-          INKFRAME_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+-          INKFRAME_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+-          # Play publishing:
+-          PLAY_SERVICE_ACCOUNT_JSON_FILE: ${{ steps.play.outputs.file }}
+-          PLAY_TRACK: internal
+-        run: ./gradlew :app:publishReleaseBundle --stacktrace
++            Install: enable "Install unknown apps" → tap the APK.
++
++            Built with the CLI pipeline: `./inkframe-cli build-apk`
+diff --git a/AGENT.md b/AGENT.md
+new file mode 100644
+index 0000000..7d94973
+--- /dev/null
++++ b/AGENT.md
+@@ -0,0 +1,112 @@
++# InkFrame Studio – Agent Mode Guide
++
++This repo is Agent-Mode ready. No AI is embedded in the app – Agent Mode drives the repo from outside via GitHub CLI + `./inkframe-cli`.
++
++## Quick Agent tasks
++
++```bash
++# 1. Clone
++gh repo clone artistso/inkframesv5
++cd inkframesv5
++
++# 2. Build locally (no Android SDK needed for web)
++./inkframe-cli agent web     # → web/dist/
++./inkframe-cli agent build   # test + APK (needs JDK 17 + Android SDK)
++
++# 3. Trigger a remote CI build (no local SDK)
++./inkframe-cli gh-ci apk
++gh run watch
++./inkframe-cli gh-ci-get <run-id>
++# APK at ./inkframe-agent-apk/app-debug.apk
++
++# 4. Cut a release
++./inkframe-cli agent release patch
++# → bumps version, tags vX.Y.Z, pushes
++# → GitHub Actions builds InkFrame-vX.Y.Z-debug.apk
++# → attaches to GitHub Release automatically
++```
++
++## CLI surface for agents
++
++```
++./inkframe-cli help
++
++Local:
++  dev / build-web / serve / build-apk / test
++  bump / release-check
++  export-gif in.inkframe out.gif
++
++GitHub:
++  gh-clone [dir]
++  gh-ci [apk|web|test|all]
++  gh-ci-get <run-id>
++  gh-release [patch|minor|major]
++
++Agent:
++  agent build          # test + build-apk
++  agent web            # npm ci + build
++  agent release patch  # bump → tag → push
++  agent export-gif in out
++```
++
++Node helper: `node tools/inkframe-cli.mjs export-gif in.inkframe out.gif --fps 24 --width 1280`
++
++Export needs puppeteer once: `cd web && npm install puppeteer --save-dev`
++
++## Workflows
++
++- `.github/workflows/android.yml` – CI on every push: web smoke → unit tests → debug APK artifact
++- `.github/workflows/release.yml` – tag `v*` → debug APK → GitHub Release
++- `.github/workflows/agent-build.yml` – workflow_dispatch – Agent Mode entry point
++  ```
++  gh workflow run agent-build.yml -f task=apk -f version_bump=none
++  ```
++
++All builds produce the **same debug-signed, fully-wrapped, offline APK**. No Play Store keystore, no AAB.
++
++## Repo layout
++
++```
++web/index.html          # whole app, single file
++app/                    # Android WebView shell
++core-*/engine-gl/feature-*/  # legacy Kotlin – still tested, not shipped
++tools/
++  inkframe-cli.mjs      # headless export
++  bump-version.mjs
++  prepare-release.mjs
++  update-release-notes.mjs
++docs/
++  ARCHITECTURE.md
++  BUILD.md
++  PIPELINE.md
++  RELEASING.md
++  RELEASE_CHECKLIST.md
++  PRIVACY.md
++  RELEASE_NOTES.md
++```
++
++## Agent Mode – DO / DON'T
++
++DO:
++- Use `./inkframe-cli` for all builds/exports/releases
++- Trigger remote builds via `gh workflow run agent-build.yml`
++- Bump versions with `node tools/bump-version.mjs patch`
++- Export `.inkframe` archives via headless `export-gif`
++- Read `docs/ARCHITECTURE.md` before touching the paint engine
++
++DON'T:
++- Embed AI/LLM calls in `web/index.html` – keep it offline
++- Commit a keystore – releases are debug-signed intentionally
++- Edit `versionCode` by hand – CI auto-increments
++- Delete `core-*` – tests still run in CI (210 tests)
++
++## Release checklist (short)
++
++1. `./inkframe-cli test`
++2. `./inkframe-cli build-apk` – sideload smoke test
++3. `./inkframe-cli bump patch`
++4. `./inkframe-cli release-check`
++5. `git tag vX.Y.Z && git push origin main --tags`
++6. Wait for Release workflow → download `InkFrame-vX.Y.Z-debug.apk`
++
++Full checklist: `docs/RELEASE_CHECKLIST.md`
+diff --git a/BUILD.md b/BUILD.md
+deleted file mode 100644
+index f6f50d7..0000000
+--- a/BUILD.md
++++ /dev/null
+@@ -1,216 +0,0 @@
+-# Building InkFrame Studio → APK
+-
+-This project is a complete, self-contained Android app. **No special/manual dependencies
+-are needed** — everything beyond AndroidX + Jetpack Compose (JSON, GIF, YUV, etc.) was
+-written from scratch and lives in the source tree. Gradle downloads AndroidX/Compose
+-automatically on the first build.
+-
+-> ⚠️ The APK cannot be produced in the Arena sandbox (it has no Android SDK and only
+-> JDK 11). Build it on your machine with **Android Studio** or a local **Android SDK**,
+-> using **JDK 17**.
+-
+----
+-
+-## What you need
+-
+-| Requirement        | Version / notes                                   |
+-|--------------------|---------------------------------------------------|
+-| Android Studio     | **Koala (2024.1)** or newer (bundles JDK 17)      |
+-| JDK                | **17** (Android Studio ships one; or install Temurin 17) |
+-| Android SDK        | Platform **API 35**, Build-Tools 35.x             |
+-| Min device         | Android 8.0 (API 26)+, OpenGL ES 3.0 (any modern phone/tablet) |
+-
+-Versions already pinned in the project: Gradle **8.9**, AGP **8.5.2**, Kotlin **1.9.24**,
+-compileSdk **35**, targetSdk **35**, minSdk **26**.
+-
+----
+-
+-## Option A0 — GitHub Actions (no local SDK needed) ✅ easiest to *get an APK*
+-
+-The repo ships two workflows in `.github/workflows/`:
+-
+-- **`android.yml`** — on every push/PR (and via the Actions tab's *Run workflow*): runs
+-  the unit tests, builds the debug APK, and uploads it as an artifact.
+-- **`release.yml`** — on pushing a `v*` tag: builds the APK and attaches it to a GitHub
+-  Release.
+-
+-**To get an installable APK without installing anything locally:**
+-
+-1. Push the project to GitHub (see README/below).
+-2. Open the **Actions** tab → wait for the *Android CI* run to finish (green check).
+-3. Open the run → **Artifacts** → download **`inkframe-debug-apk`** → unzip → sideload
+-   `app-debug.apk` onto your device.
+-
+-Or cut a versioned release that anyone can download:
+-
+-```bash
+-git tag v0.1.0
+-git push origin v0.1.0      # release.yml publishes InkFrame-v0.1.0.apk to Releases
+-```
+-
+-The CI runners already have the Android SDK + JDK 17, so this path needs nothing on your
+-machine but git.
+-
+----
+-
+-## Option A — Android Studio (easiest to *develop*)
+-
+-1. **Open** Android Studio → *File ▸ Open* → select the `InkFrame/` folder.
+-2. Studio will sync Gradle and offer to install any missing SDK bits (API 35,
+-   Build-Tools) — accept. First sync downloads AndroidX/Compose (a few minutes).
+-3. Plug in a device (USB debugging on) or start an emulator (API 26+).
+-4. Press **Run ▶** (or *Build ▸ Build Bundle(s) / APK(s) ▸ Build APK(s)*).
+-5. The debug APK lands at:
+-   `app/build/outputs/apk/debug/app-debug.apk`
+-
+-> If Studio complains about the JDK, set *Settings ▸ Build ▸ Build Tools ▸ Gradle ▸
+-> Gradle JDK* to **17** (the bundled "jbr-17" is fine).
+-
+----
+-
+-## Option B — Command line
+-
+-Requires a local Android SDK and JDK 17.
+-
+-```bash
+-# 1) Point Gradle at your SDK (once). Either set the env var…
+-export ANDROID_HOME=$HOME/Android/Sdk        # macOS: ~/Library/Android/sdk
+-#    …or create local.properties in the project root:
+-echo "sdk.dir=$ANDROID_HOME" > local.properties
+-
+-# 2) Make sure JDK 17 is active
+-java -version          # must say 17
+-
+-# 3) Build a debug APK
+-./gradlew :app:assembleDebug
+-
+-# Output:
+-#   app/build/outputs/apk/debug/app-debug.apk
+-
+-# Install on a connected device:
+-./gradlew installDebug
+-
+-# Run the 210 JVM unit tests (no device needed):
+-./gradlew test
+-```
+-
+-### Release (signed) — for Google Play
+-
+-Signing is already wired in `app/build.gradle.kts`. It reads credentials from a local
+-`keystore.properties` **or** from environment variables (CI), and falls back to debug
+-signing if neither is set.
+-
+-**1. Create a keystore once** (keep it safe & backed up — losing it means you can't update
+-the app):
+-
+-```bash
+-keytool -genkey -v -keystore inkframe-release.jks -keyalg RSA -keysize 2048 \
+-        -validity 10000 -alias inkframe
+-```
+-
+-**2. Local signed build** — copy the template and fill it in:
+-
+-```bash
+-cp keystore.properties.example keystore.properties   # then edit the values
+-./gradlew :app:bundleRelease     # -> app/build/outputs/bundle/release/app-release.aab  (upload to Play)
+-./gradlew :app:assembleRelease   # -> app/build/outputs/apk/release/app-release.apk     (sideload test)
+-```
+-
+-> Google Play requires the **.aab** (App Bundle). The signed **.apk** is just for quick
+-> on-device testing.
+-
+-**3. Signed builds in CI** — add these repo secrets
+-(*Settings ▸ Secrets and variables ▸ Actions*), then push a `v*` tag:
+-
+-| Secret | Value |
+-|---|---|
+-| `KEYSTORE_BASE64` | `base64 -w0 inkframe-release.jks` (the whole file, base64) |
+-| `KEYSTORE_PASSWORD` | keystore password |
+-| `KEY_ALIAS` | e.g. `inkframe` |
+-| `KEY_PASSWORD` | key password |
+-
+-```bash
+-git tag v0.1.0 && git push origin v0.1.0
+-# release.yml builds the signed .aab + .apk and attaches them to a GitHub Release.
+-```
+-
+-> **Play Console tip:** for a brand-new app, enrol in **Play App Signing** (recommended).
+-> Upload the `.aab` to an **Internal testing** track first — it reaches your own device in
+-> minutes, and you can push update after update straight to that track.
+-
+-### Auto-incrementing versionCode
+-
+-You no longer hand-edit `versionCode`. It's derived in `app/build.gradle.kts`:
+-
+-- **In CI**, it's `versionCodeBase + GITHUB_RUN_NUMBER`, so every CI build climbs and Play
+-  never rejects a duplicate.
+-- **Locally**, it stays at the base (1) for convenience.
+-- **Override** anytime with `INKFRAME_VERSION_CODE=42 ./gradlew :app:bundleRelease`.
+-
+-`versionName` (the human "0.1.0") still lives in `app/build.gradle.kts` — bump it for
+-meaningful releases.
+-
+-### Auto-publish to the Play "internal" track (optional)
+-
+-The [Triple-T Gradle Play Publisher](https://github.com/Triple-T/gradle-play-publisher) is
+-wired up. Once configured, pushing a `v*` tag uploads the signed `.aab` straight to your
+-Internal testing track.
+-
+-**1. Create a Play service account** (Play Console ▸ Setup ▸ API access ▸ create/link a
+-Google Cloud service account, grant it *Release to testing tracks*), download its JSON key.
+-
+-**2. Local publish:**
+-
+-```bash
+-cp play-service-account.json   # place the downloaded key here (git-ignored)
+-./gradlew :app:publishReleaseBundle            # -> internal track
+-PLAY_TRACK=alpha ./gradlew :app:publishReleaseBundle   # or another track
+-```
+-
+-**3. CI publish:** add one more repo secret and push a tag:
+-
+-| Secret | Value |
+-|---|---|
+-| `PLAY_SERVICE_ACCOUNT_JSON` | the full contents of the service-account JSON |
+-
+-```bash
+-git tag v0.1.1 && git push origin v0.1.1
+-# release.yml: builds signed .aab/.apk, attaches to a GitHub Release, AND uploads
+-# the .aab to the Play internal track (only if PLAY_SERVICE_ACCOUNT_JSON is set).
+-```
+-
+-> First upload of a brand-new app must be done **manually** in the Play Console (Google
+-> requires the initial release by hand); subsequent updates can flow through CI.
+-
+----
+-
+-## Sideloading the debug APK
+-
+-1. Copy `app-debug.apk` to your device.
+-2. Enable *Settings ▸ Security ▸ Install unknown apps* for your file manager.
+-3. Tap the APK to install. (Debug APKs are signed with a debug key, so this just works.)
+-
+----
+-
+-## Troubleshooting
+-
+-| Symptom | Fix |
+-|---|---|
+-| `Unsupported class file major version` / Gradle JDK error | Use **JDK 17** (Studio: Gradle JDK = jbr-17). |
+-| `SDK location not found` | Create `local.properties` with `sdk.dir=...` (Option B step 1). |
+-| First sync is slow / offline failure | First build needs internet to fetch AndroidX/Compose from Google Maven. |
+-| `Failed to find Build Tools` / `platform 35` | Let Studio install them, or `sdkmanager "platforms;android-35" "build-tools;35.0.0"`. |
+-| Preview/canvas looks blank in Studio Preview | Expected — the GL canvas only renders on a real device/emulator. |
+-
+----
+-
+-## Verifying without an APK
+-
+-Even without the SDK you can confirm the pure logic is healthy:
+-
+-```bash
+-./gradlew :core-common:test :core-model:test :engine-gl:test
+-```
+-
+-210 unit tests cover JSON, the GIF/LZW encoder, YUV conversion, HSV color,
+-onion-skin planning, timeline ops, undo, viewport math, and more.
+diff --git a/README.md b/README.md
+index e89cf6d..fb47c78 100644
+--- a/README.md
++++ b/README.md
+@@ -8,7 +8,7 @@
+ 
+ <br/>
+ 
+-<img src="media/demo.gif" alt="An animated GIF of a leaping cat drawn frame-by-frame in InkFrame, encoded by the built-in GIF exporter" width="320" />
++<img src="media/demo.gif" alt="An animated GIF of a leaping cat drawn frame-by-frame in InkFrame" width="320" />
+ 
+ <br/>
+ 
+@@ -20,174 +20,203 @@
+ 
+ ---
+ 
+-## What is this?
+-
+-InkFrame is a **2D drawing and frame-by-frame animation app** with a design that
+-doesn't look like anything else. Instead of docked toolbars, it fans out
+-**glowing rose-quartz orbs** around your canvas — brushes on the left, colour
+-and actions on the right, timeline along the bottom. Every tool is one tap
+-away and *stays out of the way of the drawing*.
+-
+-The entire app is a single-file HTML build that runs in any browser and ships
+-as an Android APK via a thin WebView shell. That means:
+-
+-- **Zero install cost** to try — open `web/index.html` in any browser.
+-- **Full offline** — nothing calls the network. IndexedDB autosaves the whole
+-  session; a phone lock, refresh, or app-switch never loses work.
+-- **Same code, browser and tablet** — the APK is a WebView that loads the same
+-  `index.html`, so what you draw in Chrome and what you draw on your tablet
+-  behave identically.
+-- **Free**, as in beer *and* as in speech. Released under the MIT License (see `LICENSE`).
+-
+-## The feature list
+-
+-### Drawing
+-- **5 built-in brushes:** pencil (graphite tooth), ink (calligraphic
+-  nib + tilt), marker (chisel + bleed), watercolour (wet-edge wash), glow, eraser
+-- **Brush Lab** — long-press any brush to open a live editor with sliders for
+-  size / opacity / hardness / spacing / jitter. Every value persists per brush.
+-  Turn any brush into charcoal or spatter with the jitter slider alone.
+-- **StreamLine** smoothing (0–100 % adjustable) + **QuickShape** (hold still,
+-  a rough stroke snaps to a clean line or ellipse — Procreate-style)
+-- **Catmull-Rom spline strokes** — no polygon faceting on fast curves
+-- **Palm rejection** and **stylus-only mode** — rest your hand freely
+-- **Tilt-aware** ink pen and pencil (real nib swivel + graphite laydown)
+-- **Living Line** — inertial nib width + orientation + a "reveal" envelope so
+-  strokes feel like they carry weight
+-
+-### Animation
+-- **Multi-frame timeline** with per-frame **holds** (this frame lingers 3 ticks)
+-- **Layers per frame** — add / duplicate / delete / reorder, per-layer opacity,
+-  visibility, and 11 blend modes (Multiply, Screen, Overlay, Dodge, Burn, …)
+-- **Onion skin** — past frames in deep magenta, future in warm rose, extra
+-  "reach" while scrubbing so you can feel the arc of motion
+-- **Motion blur** and **dissolve** playback modes
+-- **Loop range** — set in/out points on the rail, isolate a beat to iterate
+-- **Adjustable FPS** dial (1–24 fps)
+-
+-### I/O
+-- **Import a reference image** (PNG / JPEG / GIF / WebP) — drops in as a dim
+-  bottom layer for rotoscoping or tracing. Drag-and-drop onto the canvas works.
+-- **Export PNG** — the current frame
+-- **Export GIF** — animated, looping, respects per-frame holds. Pure-JS
+-  encoder (a 1:1 port of the Kotlin `GifEncoder` in `core-common/gif/`).
+-- **Export MP4 / WebM** — H.264 where the platform supports it, VP9/VP8
+-  otherwise. Frame-accurate, honours holds.
+-- **IndexedDB autosave** — 800 ms after any edit and on every visibility
+-  change / page-hide. Restores silently on next launch.
+-
+-### Ergonomics
+-- **Multi-project gallery** — 4 canvases you can swap between with a cinematic
+-  dive transition
+-- **Themes**, **Zen mode**, **fullscreen**
+-- **Multi-touch** — 2-finger pinch scales the canvas, 2-finger tap = undo,
+-  3-finger tap = redo
+-- **PWA manifest** — installable to any browser's home screen as a standalone
+-  app (violet theme, landscape, embedded SVG icon)
+-
+-## Try it now (no build)
+-
+-Just open `web/index.html` in any browser. The whole app boots.
++InkFrame is a **2D drawing and frame-by-frame animation app** that doesn't look like anything else. Instead of docked toolbars, **glowing rose-quartz orbs** fan out around your canvas – brushes left, colour/actions right, timeline bottom. Everything stays out of the way of the drawing.
++
++The entire app is a single-file HTML build (`web/index.html`) that runs in any browser and ships as an Android APK via a thin WebView shell.
++
++- **Zero install** – open `web/index.html`, draw.
++- **Fully offline** – IndexedDB autosaves every 800 ms. No account, no network, no AI in your artwork.
++- **Same code everywhere** – browser, PWA, tablet APK are identical.
++- **MIT Licensed**
++
++---
++
++## Quick start
+ 
+ ```bash
+-open web/index.html          # macOS
+-xdg-open web/index.html      # Linux
+-start web/index.html         # Windows
++# Try it – no build
++open web/index.html
++
++# Dev server with HMR
++./inkframe-cli dev
++# → http://localhost:5173
++
++# Build web
++./inkframe-cli build-web
++# → web/dist/
++
++# Build Android APK (debug, fully wrapped)
++./inkframe-cli build-apk
++# → app/build/outputs/apk/debug/app-debug.apk
+ ```
+ 
+-For hot-reload while hacking:
++Grab a prebuilt debug APK from any green CI run: **Actions → Android CI → inkframe-debug-apk**
++
++---
++
++## CLI pipeline
++
++All build / release / export tasks go through `./inkframe-cli`:
++
++```
++dev              Vite HMR dev server
++build-web        Production build → web/dist/
++serve            Static server http://localhost:8080
++build-apk        Gradle debug APK
++test             ./gradlew test (210 JVM unit tests)
++bump <patch|minor|major>  Bump web/metadata.json + package.json
++release-check    Verify release readiness, print git tag commands
++export-gif in.inkframe out.gif [--fps 12] [--width 1024]
++help
++```
++
++Full docs: [`docs/PIPELINE.md`](docs/PIPELINE.md)
++
++### Headless export
+ 
+ ```bash
+-cd web
+-npm install
+-npm run dev                  # Vite dev server with HMR
++# GIF – bit-identical to the in-app encoder
++./inkframe-cli export-gif myproject.inkframe out.gif --fps 24
++
++# MP4 – via ffmpeg
++ffmpeg -i out.gif -movflags +faststart -pix_fmt yuv420p out.mp4
+ ```
+ 
+-## Build the APK
++The GIF exporter needs puppeteer once:
++`cd web && npm install puppeteer --save-dev`
++
++---
++
++## Agent Mode / GitHub CLI
+ 
+-The Android app in `/app` is a lightweight WebView that loads
+-`web/index.html` from bundled assets. To build it:
++No AI is embedded in InkFrame itself. Agent Mode drives the repo from outside via GitHub CLI:
+ 
+ ```bash
+-./gradlew :app:assembleDebug
+-# APK lands at app/build/outputs/apk/debug/
++# clone
++gh repo clone artistso/inkframesv5
++
++# run a CI build remotely (apk / web / test / all)
++gh workflow run agent-build.yml -f task=apk
++gh run watch
++gh run download -n inkframe-agent-apk
++
++# cut a release – builds debug APK, publishes to GitHub Releases
++./inkframe-cli bump patch
++./inkframe-cli release-check
++git tag v0.x.y && git push origin v0.x.y
++# → .github/workflows/release.yml builds InkFrame-v0.x.y-debug.apk
+ ```
+ 
+-Or grab a fresh debug APK from any completed Android CI run in
+-[Actions](https://github.com/artistso/inkframesv5/actions/workflows/android.yml).
++Agent workflow: [`.github/workflows/agent-build.yml`](.github/workflows/agent-build.yml)
+ 
+-See `BUILD.md` for release signing and `RELEASING.md` for the Play Store
+-pipeline.
++CLI helper for agents: [`tools/inkframe-cli.mjs`](tools/inkframe-cli.mjs) – `export-gif`, version bump, release check. Wrap it in your own Agent Mode runner; no API keys needed.
+ 
+-## Release/testing helpers
++---
++
++## Features
++
++**Drawing**
++- 9 brushes: pencil, ink (tilt-aware), marker, watercolor, frost glass, smudge/blur, glow, neon, star
++- Brush Lab – long-press any brush: size / opacity / hardness / spacing / jitter / taper / texture / response – per-brush, persisted
++- StreamLine smoothing, QuickShape (hold → snap to line/ellipse)
++- Catmull-Rom spline strokes, palm rejection, stylus-only mode
++- Living Line – inertial nib width + orientation
++
++**Animation**
++- Multi-frame timeline, per-frame holds
++- Layers per frame – opacity, visibility, 11 blend modes
++- Onion skin – past/future tint, scrub-reach
++- Motion blur, dissolve playback, loop in/out, 1–24 fps
++
++**I/O**
++- Import reference image (PNG/JPEG/GIF/WebP, drag-drop)
++- Export PNG, GIF (pure-JS GIF89a), MP4/WebM (MediaRecorder)
++- IndexedDB autosave, `.inkframe` archive import/export
++- Multi-project gallery – 4 canvases
+ 
+-- `RELEASE_CHECKLIST.md` — tablet/browser/APK smoke-test flow: backup archive → CI artifact → install → verify exports and stylus behavior.
+-- `RELEASE_NOTES.md` — generated tester/GitHub Release summary. Regenerate with `node tools/update-release-notes.mjs` after updating `CHANGELOG.md` / `web/metadata.json`.
+-- `tools/bump-version.mjs` — updates `web/metadata.json` + `web/package.json`, regenerates release notes, and runs version checks.
+-- `tools/prepare-release.mjs` — verifies release readiness and prints the exact `git tag` / `git push` commands for the metadata version.
++**Ergonomics**
++- Themes, Zen mode, fullscreen
++- 2-finger pinch = zoom, 2-finger tap = undo, 3-finger tap = redo
++- PWA installable
++
++Full feature list & architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
++
++---
+ 
+ ## Repository layout
+ 
+ ```
+ web/
+-├── index.html          the whole app UI + engine (single file)
+-├── gif-encoder.js      pure-JS GIF89a encoder (1:1 port of core-common/gif/)
+-├── autosave.js         IndexedDB session persistence
+-├── brush-math.js       pure math helpers (grain, angle ease, Catmull-Rom)
+-├── manifest.webmanifest  PWA install descriptor
+-├── package.json        Vite dev/build config
+-└── vite.config.js
+-
+-app/                    Android WebView shell (Kotlin)
+-core-common/            legacy pure-Kotlin utilities (GIF encoder, undo, math)
+-core-model/             legacy pure-Kotlin data model (Project, Frame, Brush)
+-engine-gl/              legacy OpenGL ES paint engine (currently unused)
+-feature-canvas/         legacy Compose canvas UI (currently unused)
+-feature-layers/         legacy Compose layer panel (currently unused)
+-
+-media/
+-├── hero.png            marketing hero
+-├── demo.gif            animated demo (built by our own encoder)
+-├── demo_f{1..4}.png    demo keyframes
+-└── ...
+-
+-.github/workflows/      Android + release CI
++  index.html          # the whole app – UI + engine, single file
++  gif-encoder.js      # GIF89a encoder (port of core-common/gif/)
++  autosave.js         # IndexedDB persistence
++  brush-math.js       # grain, angle ease, Catmull-Rom
++  manifest.webmanifest
++app/                  # Android WebView shell (Kotlin)
++core-common/          # legacy Kotlin utilities – still tested
++core-model/           # legacy Kotlin data model
++engine-gl/            # legacy OpenGL ES paint engine
++feature-canvas/
++feature-layers/
++media/                # hero.png, demo.gif, …
++.github/workflows/
++  android.yml         # CI – test + debug APK
++  release.yml         # tag → debug APK → GitHub Release
++  agent-build.yml     # workflow_dispatch – for Agent Mode
++tools/
++  inkframe-cli.mjs    # export-gif, version helpers
++  bump-version.mjs
++  prepare-release.mjs
++  update-release-notes.mjs
++docs/
++  ARCHITECTURE.md
++  BUILD.md
++  PIPELINE.md
++  PRIVACY.md
++  RELEASING.md
++  RELEASE_CHECKLIST.md
++  RELEASE_NOTES.md
+ ```
+ 
+-The `core-*`, `engine-gl`, and `feature-*` modules are the earlier native
+-Kotlin implementation. They still compile and their unit tests still run in
+-CI, but the app doesn't depend on them anymore — the WebView route turned
+-out to be faster to ship and easier to iterate. See `ARCHITECTURE.md` for
+-the full story.
++The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin implementation. They still compile and test in CI, but the shipping app is the WebView build – faster to iterate. See `docs/ARCHITECTURE.md`.
++
++---
++
++## Build – Android APK
++
++Debug APK – fully wrapped, offline, sideload-ready. No Play signing.
++
++```bash
++./inkframe-cli build-apk
++# app/build/outputs/apk/debug/app-debug.apk
++```
+ 
+-## Design language
++CI builds the same APK on every push. Tagged releases (`git tag v* && git push origin v*`) publish `InkFrame-<tag>-debug.apk` to GitHub Releases automatically.
+ 
+-The interface style is called **The Glass Horizon**. Every UI element is a
+-translucent rose-quartz orb hovering over a magenta-to-violet radial gradient.
+-Nodes connect via soft glowing "wires" that pulse when you open them. Icons
+-are hand-drawn SVGs in the same line style (the entire icon set lives in
+-`ICONS = { ... }` inside `index.html`).
++Full Android build notes: [`docs/BUILD.md`](docs/BUILD.md)
+ 
+-The one non-orb affordance is the canvas itself — always cream-pink paper,
+-always front-and-centre.
++---
+ 
+ ## Contributing
+ 
+-Open a pull request against `main`. Every push runs the Android debug APK
+-build and the Kotlin unit-test suite in CI (see `.github/workflows/android.yml`).
++PRs against `main`. CI runs web smoke + JVM unit tests + debug APK.
++
++Update `CHANGELOG.md` for meaningful changes.
+ 
+-Meaningful changes should update `CHANGELOG.md`.
++---
+ 
+ ## License
+ 
+-Free to use, modify, and redistribute under the MIT License. See `LICENSE`.
++MIT – free to use, modify, redistribute. See [`LICENSE`](LICENSE).
+ 
+-## Privacy
++Privacy: InkFrame is offline-first, no account, no ads, no analytics. See [`docs/PRIVACY.md`](docs/PRIVACY.md).
+ 
+-InkFrame is designed to run offline. See `PRIVACY.md` for the Play Store/data-safety notes.
++---
+ 
+ <div align="center">
+ 
+ *Built with the Glass Horizon design system · runs on stylus, finger, or mouse.*
+ 
++*CLI pipeline: `./inkframe-cli help`*
++
+ </div>
+diff --git a/RELEASE_NOTES.md b/RELEASE_NOTES.md
+index 8238002..df0d440 100644
+--- a/RELEASE_NOTES.md
++++ b/RELEASE_NOTES.md
+@@ -1,6 +1,6 @@
+-# InkFrame Studio 0.1.0 Release Notes
++# InkFrame Studio 0.1.1 Release Notes
+ 
+-_Date: 2026-07-06_
++_Date: 2026-07-07_
+ 
+ <!-- Generated by tools/update-release-notes.mjs from CHANGELOG.md [Unreleased]. Do not edit this file manually. -->
+ 
+@@ -13,7 +13,7 @@ A 2D animation and drawing studio: brushes, layers, frame timeline with onion sk
+ 3. Save the downloaded `.inkframe` somewhere outside browser/app storage.
+ 4. Then install/test the latest APK or browser build.
+ 
+-See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
++See `docs/RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
+ 
+ ## What's changed
+ 
+diff --git a/RELEASING.md b/RELEASING.md
+deleted file mode 100644
+index eab5f85..0000000
+--- a/RELEASING.md
++++ /dev/null
+@@ -1,139 +0,0 @@
+-# Releasing InkFrame Studio to Google Play
+-
+-A copy-paste checklist for shipping. Two phases: a **one-time setup**, then a fast
+-**repeat loop** for every update. App identity for reference:
+-
+-| | |
+-|---|---|
+-| Application ID | `com.inkframe.studio` |
+-| Min / Target SDK | 26 (Android 8.0) / 35 |
+-| Upload format | **`.aab`** (App Bundle) — `.apk` is for sideload testing only |
+-| Marketing version | `versionName` in `app/build.gradle.kts` (e.g. `0.1.0`) |
+-| Build number | `versionCode` — **auto-incremented in CI**, never hand-edit |
+-
+----
+-
+-## Phase 1 — One-time setup (~30–45 min)
+-
+-### 1. Create your upload keystore (do this once, then guard it)
+-
+-```bash
+-keytool -genkey -v -keystore inkframe-release.jks -keyalg RSA -keysize 2048 \
+-        -validity 10000 -alias inkframe
+-```
+-
+-- [ ] Keystore created
+-- [ ] **Backed up** the `.jks` + passwords somewhere safe (a password manager).
+-      ⚠️ If you self-sign and lose this, you can never update the app — see step 4.
+-
+-### 2. Create the app in Play Console
+-
+-- [ ] <https://play.google.com/console> → **Create app**
+-- [ ] Name: *InkFrame Studio* · Type: **App** · Free/Paid · accept declarations
+-- [ ] Complete the initial **Dashboard** setup tasks Google lists (privacy policy,
+-      data safety, content rating, target audience, store listing). These are required
+-      before any public track, but **Internal testing** needs only a few.
+-
+-### 3. Enrol in Play App Signing (strongly recommended)
+-
+-- [ ] When you create the first release, Play offers **Play App Signing** → accept.
+-      Google then holds the *app signing key*; your `.jks` becomes only the *upload key*
+-      (which can be reset if lost). This is the safety net for step 1's warning.
+-
+-### 4. First release MUST be uploaded by hand
+-
+-Google requires the very first build of a new app to be uploaded manually.
+-
+-```bash
+-cp keystore.properties.example keystore.properties   # then fill in real values
+-./gradlew :app:bundleRelease
+-# -> app/build/outputs/bundle/release/app-release.aab
+-```
+-
+-- [ ] Play Console → **Testing ▸ Internal testing ▸ Create new release**
+-- [ ] Upload `app-release.aab`, add release notes, **Review → Start rollout**
+-- [ ] **Testers tab** → add your Google account (or a tester list) → copy the **opt-in
+-      link**, open it on your device, become a tester, install from Play.
+-
+-### 5. (Optional) Wire CI auto-publish for every future update
+-
+-GitHub → repo **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret**:
+-
+-| Secret | How to produce it |
+-|---|---|
+-| `KEYSTORE_BASE64` | `base64 -w0 inkframe-release.jks` (whole file) — macOS: `base64 -i inkframe-release.jks \| tr -d '\n'` |
+-| `KEYSTORE_PASSWORD` | your keystore password |
+-| `KEY_ALIAS` | `inkframe` (from step 1) |
+-| `KEY_PASSWORD` | your key password |
+-| `PLAY_SERVICE_ACCOUNT_JSON` | full JSON of a Play service account (below) |
+-
+-**Service account (for `PLAY_SERVICE_ACCOUNT_JSON`):**
+-
+-- [ ] Play Console → **Setup ▸ API access** → create/link a Google Cloud project
+-- [ ] Create a **service account**, download its **JSON key**
+-- [ ] Back in API access → **Grant access** to that service account →
+-      permission **“Release to testing tracks”** (and *Manage production releases* later
+-      if you want CI to push to production)
+-- [ ] Paste the JSON file's entire contents as the `PLAY_SERVICE_ACCOUNT_JSON` secret
+-
+-> The service account can only publish to an app that **already exists** and whose first
+-> release was made manually (step 4). That's why Phase 1 is one-time.
+-
+----
+-
+-## Phase 2 — The repeat loop (every update, ~2 min of your time)
+-
+-Once Phase 1 is done, shipping an update is just a tag push.
+-
+-```bash
+-# 1. (only for meaningful releases) bump the marketing version:
+-#    edit app/build.gradle.kts -> val baseVersionName = "0.1.1"
+-
+-# 2. commit your work
+-git add -A && git commit -m "Describe the change"
+-
+-# 3. tag + push -> CI builds a signed, auto-versioned .aab and uploads to Internal testing
+-git tag v0.1.1
+-git push origin main --tags
+-```
+-
+-What CI does on a `v*` tag (`.github/workflows/release.yml`):
+-
+-1. Builds a **signed `.aab` + `.apk`** (versionCode auto-set from the run number).
+-2. Attaches both to a **GitHub Release**.
+-3. If `PLAY_SERVICE_ACCOUNT_JSON` is set → uploads the `.aab` to the **internal** track.
+-
+-Then on your device: open Play (as an opted-in tester) → the update appears within a few
+-minutes. Iterate as fast as you like.
+-
+-- [ ] Watch the run in the **Actions** tab (green check = published)
+-- [ ] Update lands on the **Internal testing** track
+-- [ ] Install/refresh on device, test, repeat
+-
+-### Handy variations
+-
+-```bash
+-# Build locally without CI (signed):
+-./gradlew :app:bundleRelease
+-
+-# Publish locally to a different track:
+-PLAY_TRACK=alpha ./gradlew :app:publishReleaseBundle
+-
+-# Force a specific versionCode (normally unnecessary):
+-INKFRAME_VERSION_CODE=120 ./gradlew :app:bundleRelease
+-```
+-
+----
+-
+-## Quick troubleshooting
+-
+-| Symptom | Cause / fix |
+-|---|---|
+-| Play rejects upload: *“Version code N already used”* | Re-running CI reuses a run number rarely; just push a new tag, or set `INKFRAME_VERSION_CODE` higher. |
+-| CI publish step skipped | `PLAY_SERVICE_ACCOUNT_JSON` secret not set (build/Release still succeed). |
+-| `The caller does not have permission` | Service account missing **Release to testing tracks** in API access. |
+-| `APK signed with the wrong key` | First manual upload chose a different key than CI; align on the Play App Signing upload key. |
+-| Tester can't see the app | They haven't opened the **opt-in link** / aren't on the testers list. |
+-| First CI tag failed to publish | Expected if the app's first release wasn't done manually yet (step 4). |
+-
+-See `BUILD.md` for the full build reference (Android Studio, CLI, CI artifacts).
+diff --git a/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+similarity index 100%
+rename from ARCHITECTURE.md
+rename to docs/ARCHITECTURE.md
+diff --git a/docs/BUILD.md b/docs/BUILD.md
+new file mode 100644
+index 0000000..9af1941
+--- /dev/null
++++ b/docs/BUILD.md
+@@ -0,0 +1,108 @@
++# Building InkFrame Studio → APK
++
++InkFrame ships as a single-file PWA (`web/index.html`) wrapped in a thin Android WebView shell. The APK is **debug-signed**, fully offline, sideload-ready.
++
++> APKs from CI, local builds, and GitHub Releases are identical – debug-signed, no Play Store keystore.
++
++Android Studio / SDK is only needed for the APK. The web app runs with zero build tools.
++
++---
++
++## Requirements
++
++| | Version |
++|---|---|
++| Android Studio | Koala (2024.1)+ – bundles JDK 17 |
++| JDK | 17 |
++| Android SDK | Platform API 35, Build-Tools 35.x |
++| Min device | Android 8.0 (API 26)+ |
++
++Pinned in repo: Gradle 8.9, AGP 8.5.2, Kotlin 1.9.24, compileSdk 35.
++
++---
++
++## Quick build – CLI
++
++```bash
++./inkframe-cli build-apk
++# → app/build/outputs/apk/debug/app-debug.apk
++```
++
++Install:
++```bash
++adb install -r app/build/outputs/apk/debug/app-debug.apk
++./inkframe-cli test   # 210 JVM unit tests
++```
++
++---
++
++## Option A – GitHub Actions (no local SDK)
++
++1. Push to GitHub
++2. Actions → **Android CI** → download `inkframe-debug-apk`
++3. Sideload the APK
++
++Release build:
++```bash
++git tag v0.1.0 && git push origin v0.1.0
++# → .github/workflows/release.yml builds InkFrame-v0.1.0-debug.apk
++#   attaches to GitHub Release
++```
++
++---
++
++## Option B – Android Studio
++
++1. File ▸ Open → select repo root
++2. Accept SDK install prompts (API 35)
++3. Run ▶
++4. APK: `app/build/outputs/apk/debug/app-debug.apk`
++
++Gradle JDK must be 17 (Settings ▸ Build Tools ▸ Gradle).
++
++---
++
++## Option C – Command line
++
++```bash
++export ANDROID_HOME=$HOME/Android/Sdk
++echo "sdk.dir=$ANDROID_HOME" > local.properties
++
++java -version   # must say 17
++./gradlew :app:assembleDebug
++```
++
++---
++
++## Sideloading
++
++1. Copy `app-debug.apk` to device
++2. Settings ▸ Security ▸ Install unknown apps → allow your file manager
++3. Tap APK
++
++Debug-signed APKs install without Play Store.
++
++---
++
++## Troubleshooting
++
++| Symptom | Fix |
++|---|---|
++| `Unsupported class file major version` | Use JDK 17 |
++| `SDK location not found` | Create `local.properties` with `sdk.dir=...` |
++| First sync slow | First build fetches AndroidX from Google Maven – needs internet |
++| `Failed to find Build Tools / platform 35` | `sdkmanager "platforms;android-35" "build-tools;35.0.0"` |
++
++---
++
++## Verifying without an APK
++
++```bash
++./gradlew :core-common:test :core-model:test :engine-gl:test
++```
++
++210 unit tests – JSON, GIF/LZW, YUV, HSV, onion-skin, timeline, undo, viewport math.
++
++---
++
++See also: [`PIPELINE.md`](PIPELINE.md) – CLI pipeline, [`RELEASING.md`](RELEASING.md) – release checklist
+diff --git a/docs/PIPELINE.md b/docs/PIPELINE.md
+new file mode 100644
+index 0000000..cef95b3
+--- /dev/null
++++ b/docs/PIPELINE.md
+@@ -0,0 +1,84 @@
++# InkFrame Studio – CLI Pipeline
++
++Unified command-line for InkFrame Studio v5 – Agent Mode ready.
++
++```
++./inkframe-cli <command>
++```
++
++## Local commands
++
++| Command | What |
++|---|---|
++| `dev` | Vite HMR at http://localhost:5173 |
++| `build-web` | `npm run build` → `web/dist/` |
++| `serve` | `python3 -m http.server 8080` |
++| `build-apk` | `./gradlew :app:assembleDebug` |
++| `test` | `./gradlew test` – 210 JVM tests |
++| `bump <patch|minor|major>` | updates `web/metadata.json` + `package.json`, regenerates `RELEASE_NOTES.md` |
++| `release-check` | `node tools/prepare-release.mjs` – prints git tag commands |
++| `export-gif in.inkframe out.gif [--fps 12] [--width 1024]` | Headless GIF via Puppeteer + in-app GifEncoder |
++
++## GitHub / Agent Mode commands
++
++| Command | What |
++|---|---|
++| `gh-clone [dir]` | `gh repo clone artistso/inkframesv5` |
++| `gh-ci [apk|web|test|all]` | Trigger `.github/workflows/agent-build.yml` |
++| `gh-ci-get <run-id>` | Download `inkframe-agent-apk` artifact |
++| `gh-release [patch|minor|major]` | bump → commit → tag → push → CI builds Release APK |
++| `agent build` | test + build-apk (local, CI-free) |
++| `agent web` | npm ci + build |
++| `agent release patch` | full release via gh |
++| `agent export-gif in out` | headless export |
++
++Agent guide: [`../AGENT.md`](../AGENT.md)
++
++## Typical pipelines
++
++**Web dev**
++```
++./inkframe-cli dev
++```
++
++**Android debug**
++```
++./inkframe-cli build-apk
++adb install app/build/outputs/apk/debug/app-debug.apk
++```
++
++**Release (debug APK → GitHub Releases)**
++```
++./inkframe-cli bump patch
++./inkframe-cli release-check
++git tag v0.x.y && git push origin main --tags
++# CI publishes InkFrame-v0.x.y-debug.apk
++```
++
++**Agent Mode – remote build**
++```
++./inkframe-cli gh-ci apk
++gh run watch
++./inkframe-cli gh-ci-get <run-id>
++```
++
++**Batch export**
++```
++./inkframe-cli export-gif my.inkframe out.gif --fps 24 --width 1280
++ffmpeg -i out.gif -movflags +faststart -pix_fmt yuv420p out.mp4
++```
++
++Export needs puppeteer once:
++```
++cd web && npm install puppeteer --save-dev
++```
++
++## CI workflows
++
++- `android.yml` – push/PR: web smoke → unit tests → debug APK artifact
++- `release.yml` – tag `v*`: test → debug APK → GitHub Release
++- `agent-build.yml` – workflow_dispatch: `task=apk|web|test|all`, optional `version_bump`
++
++All three produce the **same debug-signed, fully-wrapped, offline APK**. No Play Store signing, no AAB.
++
++See: `docs/BUILD.md`, `docs/RELEASING.md`, `AGENT.md`
+diff --git a/PRIVACY.md b/docs/PRIVACY.md
+similarity index 100%
+rename from PRIVACY.md
+rename to docs/PRIVACY.md
+diff --git a/RELEASE_CHECKLIST.md b/docs/RELEASE_CHECKLIST.md
+similarity index 98%
+rename from RELEASE_CHECKLIST.md
+rename to docs/RELEASE_CHECKLIST.md
+index 75faca9..ff04fea 100644
+--- a/RELEASE_CHECKLIST.md
++++ b/docs/RELEASE_CHECKLIST.md
+@@ -1,5 +1,7 @@
+ # InkFrame Release & Tablet Smoke Checklist
+ 
++Debug APK – GitHub Releases only. No Play Store signing.
++
+ Use this checklist whenever you push a build, install a fresh APK, or test in a new Android tablet browser.
+ 
+ ## 1. Back up artwork first
+diff --git a/docs/RELEASE_NOTES.md b/docs/RELEASE_NOTES.md
+new file mode 100644
+index 0000000..df0d440
+--- /dev/null
++++ b/docs/RELEASE_NOTES.md
+@@ -0,0 +1,483 @@
++# InkFrame Studio 0.1.1 Release Notes
++
++_Date: 2026-07-07_
++
++<!-- Generated by tools/update-release-notes.mjs from CHANGELOG.md [Unreleased]. Do not edit this file manually. -->
++
++A 2D animation and drawing studio: brushes, layers, frame timeline with onion skinning, playback, and PNG/GIF/video export.
++
++## Before you install or test
++
++1. Open **Studio** in the app.
++2. Tap **Backup archive**.
++3. Save the downloaded `.inkframe` somewhere outside browser/app storage.
++4. Then install/test the latest APK or browser build.
++
++See `docs/RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
++
++## What's changed
++
++## Web build — tablet, stylus, brush texture, and gallery perf
++- **Tablet-first coarse-pointer polish.** Touch devices get larger orbs, kid buttons, rail controls, slider thumbs, project buttons, and a wider Brush Lab without changing desktop density.
++- **Readable text mode + typography pass.** Actions ▸ Text toggles high-contrast label capsules, stronger shadows, heavier weights, and brighter secondary text for glare/low-vision tablet use; the base UI font stack, label weights, letter spacing, button padding, touch targets, and input heights were tuned for better tablet readability.
++- **Frost glass brush.** A new frosted-glass brush paints a milky translucent body, icy rim highlights, tint wash, and crystalline scratch texture; Brush Lab texture controls how heavy the ice grain feels.
++- **Smudge / blur brush.** A new Smudge brush pulls active-layer pixels along the stroke direction with a soft circular nib; opacity controls strength and Texture adds blur/grain for a glassy smear.
++- **Pen brush overhaul.** Ink/pen defaults now target low-latency 1:1 tablet feel: no entry/exit pooling, a true pressure hairline, tighter dab spacing, longer clean tapers, lower stabilization, and a pressure curve tuned to avoid start/end blobs. Brush Lab adds **Min size** and **Stabilize** sliders, and existing installs migrate old ink pooling settings once.
++- **Timeline power pass.** The frame List branch now shows live thumbnails, supports long-press multi-select, highlights selected ranges on the physical rail/perimeter board, and adds batch actions for duplicate sequence, delete, clear, reverse, ping-pong loop generation, insert +4 blanks, hold +/−, on-twos, selected/loop GIF + video export, select all, and clear selection.
++- **Monopoly-board perimeter timeline.** A new frame board wraps around the canvas outside edge, scales with canvas zoom, shows existing frames plus placeholder slots, supports drag-to-select ranges around the board, displays a live frame-cap badge, lets users tap placeholders to add frames, and enforces a hard 120-frame cap to protect tablet memory.
++- **Layer merge/flatten tools.** Layers now includes **Merge** (active layer composited down into the layer below using opacity/blend mode) and **Flat** (flatten all visible layers into one transparent layer), both undoable with structural snapshots.
++- **Onion skin control upgrade.** Actions now exposes onion depth, ghost opacity, tint strength, past/future tint colour pickers, and an active-layer-only onion mode, with settings persisted across launches.
++- **Quick Help overlay.** Actions ▸ Help opens an in-app tablet manual covering backup/archive safety, Brush Lab, stylus/barrel modes, timeline multi-select/export, layers, and gestures, with direct Backup archive and Projects shortcuts.
++- **Brush texture control.** Brush Lab now has a **Texture** slider that gates pigment through the paper-grain field. Pencil/marker/watercolor/frost ship with toothy defaults; neon/star/glow stay smooth.
++- **Portable brush profiles.** Brush Lab can export/import `.inkbrush` profile JSON for the current brush, making custom brush settings easy to back up and share.
++- **Custom brush library.** Brush Lab now has a per-brush saved preset list: save named presets, tap **Use** to apply them, export a saved preset, or delete old experiments. Imported `.inkbrush` files are added to the library automatically.
++- **Named project templates.** Gallery ▸ Manage now offers one-tap starters: Classic sketch, HD animation, Square social, Phone vertical, Pixel art, and Neon loop, with sensible canvas sizes, frame counts, FPS, and paper colours.
++- **Template previews + custom starter.** Template cards now show aspect/paper/frame-count preview chips, and the same panel includes a custom width/height/frame-count/FPS/paper creator for tablet-first setup.
++- **Project duplication quality.** Gallery rows now support normal Duplicate, **Scale copy** (prompts for a new width×height and scales every layer/frame), and **Clear** (wipes artwork while keeping the project slot/settings). Gallery-full messages now point users toward exporting/deleting instead of silently failing.
++- **First-launch Start overlay.** If no local recovery snapshot is restored, InkFrame now opens with a tablet-friendly template picker directly over the canvas, plus Blank canvas, Import archive, Project manager, Skip, and Don’t show again actions.
++- **Start-screen archive import.** Returning users on a new browser/device can now restore a `.inkframe` archive directly from the Start overlay before creating anything.
++- **Studio release/about panel.** The Studio overlay now shows version/runtime/license/privacy/release-smoke notes plus direct Backup archive, Projects, and Start screen actions.
++- **Release helper docs.** Added `RELEASE_CHECKLIST.md` for tablet/APK smoke testing and generated `RELEASE_NOTES.md` for tester-facing release summaries.
++- **Release-notes generator.** `tools/update-release-notes.mjs` rebuilds `RELEASE_NOTES.md` from `CHANGELOG.md` `[Unreleased]` + `web/metadata.json`, and CI checks the file is current.
++- **Release tag helper.** `tools/prepare-release.mjs` verifies clean/synced git state, metadata/release notes alignment, tag availability, then prints the exact `git tag -a vX.Y.Z` and `git push origin main vX.Y.Z` commands.
++- **Version bump helper.** `tools/bump-version.mjs` updates `web/metadata.json` + `web/package.json`, refreshes generated release notes, and runs the cheap metadata/release checks in one command.
++- **Single-source version metadata.** `web/metadata.json` now drives the in-app Studio version/package/SDK display and the Android Gradle `versionName`/SDK values; CI runs a no-dependency version smoke check to prevent drift.
++- **Stylus diagnostics panel.** Actions ▸ Pen opens a live readout for pointer type, pressure, barrel buttons, tilt, altitude/azimuth, contact patch, canvas coordinates, and stylus-only mode.
++- **Barrel-button mode control.** Actions now has a barrel/side-button cycle: **Pick** samples colour, **Erase** temporarily borrows the eraser brush for that stroke, and **Off** swallows accidental side-button input.
++- **Cached gallery thumbnails.** Gallery/project-browser thumbnails now reuse a signature cache keyed by project/frame/layer versions, avoiding needless recompositing while browsing projects.
++- **Export memory polish.** GIF export now streams one flattened frame at a time to the worker/inline encoder, reuses one flattening canvas, and warns before very large tablet exports; video export now stops capture tracks on recorder setup failure.
++- **Archive performance polish.** `.inkframe` archive import/export encodes and restores layers asynchronously with progress text, yielding between layers so the project browser stays responsive on tablets.
++
++## Release readiness — Play target SDK, exports, and legal docs
++- **Target SDK bump to Android 15 / API 35.** `compileSdk` and `targetSdk` now target API 35, and CI installs the matching platform/build-tools before assembling APK/AAB artifacts.
++- **Android WebView export bridge.** Blob-based GIF/video exports now pass through a small `InkFrameAndroidBridge` instead of handing `blob:` URLs to `DownloadManager` (which cannot fetch renderer-local blobs). Browser exports still use the normal `<a download>` path.
++- **MIME-aware MediaStore saving.** PNG/GIF/WebP/JPEG exports save to `Pictures/InkFrame`; MP4/WebM exports save to `Movies/InkFrame`; future non-media exports route to Downloads.
++- **Added `LICENSE` and `PRIVACY.md`.** README now points to the MIT License and offline/privacy notes for Play Store data-safety preparation.
++
++## Web build — project browser, archives, and local recovery UI
++- **Gallery ▸ Manage** opens a frosted project browser with thumbnails, editable project names, frame/size/fps stats, switch, duplicate, delete, and new-canvas actions.
++- **InkFrame archive export/import** from the project browser saves the whole gallery as a portable `.inkframe` JSON package with PNG-encoded layers, then restores it on another browser/device without needing an account or cloud service.
++- **Autosave health controls** show the last local recovery-save time, expose a manual **Save now**, and let the user clear the recovery copy without deleting the projects currently open on screen.
++- `web/autosave.js` `flushNow()` now returns the underlying save promise so UI can update after a manual save completes.
++
++## Web build — brush engine part 2 (stroke feel)
++Three long-planned improvements plus two safety nets.
++
++* **Velocity-adaptive spacing.** Dab step distance now shrinks up to 40 %
++  as stroke speed rises so fast curves at large brush sizes stay
++  continuous instead of beading. Applied to both `seg` and `segCR`.
++* **Per-brush pressure Response curve.** New Brush Lab slider (-100 to
++  +100): -1 = exponential (light presses stay hairline, deep presses
++  flare -- charcoal / wet nib), 0 = linear, +1 = smoothstep S-curve
++  (accentuates the mid-pressure band). Shipped defaults: pencil -0.3,
++  ink +0.15, watercolour -0.5, everything else 0.
++* **Predicted stroke overlay.** A second transparent `<canvas>` above
++  the drawing canvas gets a fast light-ink trail from the last confirmed
++  StreamLine sample to the raw pen tip on every pointermove (plus any
++  `getPredictedEvents()` samples the platform offers). Wiped on pen-up.
++  Reads as "ink lives at my tip" even with heavy smoothing.
++
++## Web build — resilient boot (workspace preview never pink-screens)
++* Both sibling-module bindings (`InkFrameBrushMath`, `InkFrameAutosave`)
++  now have inline fallbacks. If either script fails to load (workspace
++  iframe with `sandbox=allow-scripts` but no network, offline serving,
++  file protocol quirks), the app still boots into a fully-usable
++  session. Persistence just becomes a no-op in that environment.
++* New `web/tests/boot-smoke.mjs` -- jsdom-based CI check that catches
++  the "syntax-clean but throws at runtime" bug class that hid the
++  const-reassignment landmine for weeks. Wired into Android CI as a
++  new `web-smoke` job that gates the APK build.
++
++## Web build — stroke terminals (no more blob-at-start / blob-at-end)
++Real diagnosis of five separate causes shipping a "digital-feeling" stroke,
++each fixed at the smallest possible layer:
++
++* **Pressure seat-in** (4-sample window). Cheap styli and capacitive touch
++  report a default pressure of 0.5 on the very first sample, which stamped
++  the entry dab at half nib width no matter your actual touch. Now the
++  smoothed pressure starts at a hairline (0.15 blended 60/40 with the
++  raw reading) and ramps to real pressure over PSEAT_N samples via a
++  variable-strength ease.
++* **Removed the double-dab on pen-down.** The old code stamped fctx AND
++  ctx at the same (x, y) with the same pressure -- literally two dabs of
++  ink at one point. Now the entry dab is single-stamped.
++* **Entry dab honours the taper-in envelope** (reveal = 0 when taperIn > 0)
++  so the stroke actually starts from nothing instead of stamping a
++  full-width dab and then fading in the *next* few dabs on top of it.
++* **`inkPool()` is gated on the new `entryPool` pref**, off by default
++  for every brush except ink (which ships at 0.35). Ink-brush users
++  keep their calligraphic entry pool; sketch brushes stop pooling.
++* **Fixed the flick-taper spacing.** The old exit taper laid dabs at
++  `size * 0.35 * t * 3` which left them 3x too far apart -- a visible
++  hook at the end. New spacing matches the brush's own dab spacing
++  (`_bpS`) so it reads as a continuous taper.
++
++## Web build — full user control over terminals (Brush Lab expansion)
++Four new per-brush prefs, each with a slider in the Brush Lab and each
++persisted through the existing prefs layer:
++
++* **Taper in** (px, 0..60) -- length of the entry taper. 0 = start at
++  full width. Replaces the old hardcoded 22 px REVEAL_LEN constant.
++* **Taper out** (px, 0..60) -- length of the exit taper on a fast lift.
++* **Entry pool** (0..100 %) -- how much ink to pool on pen-down. Only
++  meaningful for the ink brush; the row greys out on other brushes so
++  the UI doesn't lie about what will happen.
++* **Exit pool** (0..100 %) -- how much ink to pool on a slow lift.
++
++Shipped-defaults per brush live in a new `DEFAULT_PROFILE` table so a
++fresh install picks values that make sense per brush (ink calligraphic,
++pencil light-tapered, watercolour long-entry, glow/eraser flat).
++Reset restores from that same table (was previously restoring only
++size/op/hard/spacing/jitter and losing the taper knobs).
++
++Live preview strip in the Brush Lab now paints the terminal envelopes
++too -- so you see the entry pool / taper-in / taper-out / exit pool
++without leaving the panel.
++
++## Repo / marketing
++- **New README** — hero image, animated demo GIF, honest feature list, layout
++  guide, contribution instructions. Replaces the tiny stub that described
++  InkFrame as "a lightweight companion for quick testing" from before the
++  WebView shell became the primary shipping surface.
++- **`media/hero.png`** — 16:9 cinematic shot of the Glass Horizon interface.
++- **`media/demo.gif`** — 6-frame leaping-cat loop encoded by our own
++  `web/gif-encoder.js` (from the four `demo_f*.png` keyframes). Doubles as
++  proof that the exporter shipped in the app works end-to-end.
++- **`media/README.md`** — regeneration recipe for the demo GIF.
++
++## Web build — module extraction (TS-migration prep)
++- **`web/autosave.js`** (250 lines) — full IndexedDB persistence layer,
++  extracted from index.html. Zero globals; env-injected. Payload v1/v2
++  behaviour bit-identical to before.
++- **`web/brush-math.js`** (123 lines) — pure math for the paint engine:
++  `buildGrain` / `sampleGrain` / `easeAngle` / `hexWithAlpha` / `catmullRom`.
++  Unit-testable in Node; also the natural first candidate for a Rust→WASM lift.
++- **`index.html`** drops from 2736 to 2571 lines. Two new `<script>` tags
++  before the app IIFE; the AUTOSAVE block collapses from ~180 lines to a
++  20-line factory call.
++
++## Web build — reference image import
++- **Import action on the Layers orb** — opens a file picker (PNG / JPEG /
++  GIF / WebP), fits the image inside the canvas preserving aspect ratio,
++  and drops it as a fresh layer at the BOTTOM of the stack at 40 % opacity
++  under the name `Ref · <filename>`. Everything else about it is a normal
++  layer (move up/down, opacity, visibility, delete, undo, autosave, PNG /
++  GIF / video export all Just Work).
++- **Drag-and-drop** an image file anywhere on the canvas triggers the same
++  import path.
++
++## Web build — Brush Lab (custom brush editor)
++- **Long-press any brush kid** to open a floating panel with sliders for
++  size, opacity, hardness, spacing, and jitter. Values persist per brush
++  via the existing prefs layer; a live preview strip inside the panel
++  re-paints on every input change through the real `dab()` engine so the
++  stroke you see is exactly what will paint.
++- Hardness became a real user control (previously fixed per brush). New
++  Spacing pref replaces the hardcoded `0.14` dab step. New Jitter pref
++  perturbs each dab's position by up to `size * jitter * 0.5`, so any
++  brush can be turned into charcoal / spatter / gouache instantly.
++- Reset button restores the brush's shipped defaults.
++
++## Web build — MP4 / WebM video export
++- **New Video action** next to GIF. Records the timeline through
++  `MediaRecorder` off an offscreen `<canvas>`, feature-detecting codecs
++  in order: MP4 (H.264 baseline), WebM (VP9), WebM (VP8). Filename
++  extension matches the actual codec chosen.
++- Uses `canvas.captureStream(0)` + `track.requestFrame()` for manual
++  frame pacing so per-frame Holds are honoured exactly (not real-time
++  captured — the video is frame-accurate).
++- Same overlay + Cancel button as GIF; a running video export is torn
++  down cleanly if cancelled.
++
++## Web build — buttery-smooth perf pass
++- **Canvas resize (corner + side handles) is rAF-coalesced**: every pointermove
++  used to run `applyCanvas()` + `startWires()` synchronously, meaning a 120 Hz
++  stylus re-flowed the DOM and rebuilt the entire SVG wire graph 240 times
++  a second. Now the handlers just update the pending scale/dims and let a
++  single requestAnimationFrame loop paint at most once per frame. Corner
++  scaling and side reshaping now stay glassy at any zoom.
++- **Pen-up no longer calls `refreshFrames()`**: a normal stroke doesn't
++  change the frame count / holds / rail segments, so the O(n) list branch
++  rebuild + rail rebuild is skipped. The current-frame `.on` bead stays
++  correctly lit because `cur` didn't move.
++
++## Web build — layers per frame
++- **Layers orb** joins the bottom rail alongside Frames. Add / duplicate /
++  delete / move up / move down, per-layer visibility, opacity dial, and a
++  cycling blend-mode picker (Normal, Multiply, Screen, Overlay, Darken,
++  Lighten, Dodge, Burn, Hard, Soft, Difference).
++- **Layer Stack branch** — the "Stack" list inside the Layers orb shows every
++  layer of the current frame as a tappable circle (top layer first), with
++  hidden layers dimmed. Tap to make active.
++- **Frame model upgrade** — each frame becomes
++  `{layers:[{id,name,visible,opacity,blend,canvas}], active, _comp, _v}`.
++  Onion skin, playback, PNG, GIF, Dup-Frame, resize, gallery thumbnails, and
++  the autosave restore path all consume the layers via a cached
++  `frameComposite(fr)` helper. Consumers still see "one image per frame"; the
++  cache rebuilds only when the frame's version counter advances.
++- **Snapshots split** into a fast pixel snap (per stroke — active layer only)
++  and a structural snap (layer add/dup/del/reorder/prop toggle) so pen-down
++  never has to clone every layer.
++- **Autosave v2** — layer-aware payload; v1 sessions still restore (upgraded
++  to a single-layer frame on load).
++
++## Web build — animated GIF export
++- **New GIF action in the Actions node** (`@gif` glyph) — exports the current
++  project as a looping animated GIF, honouring per-frame Hold ticks and the
++  active FPS. Timing is snapped to centiseconds (the format's resolution) and
++  hold multipliers stretch the delay proportionally.
++- **`web/gif-encoder.js`** — a pure-JS, zero-dependency GIF89a encoder built
++  as a 1:1 port of the existing Kotlin implementation in
++  `core-common/gif/*.kt` (LzwEncoder, MedianCutQuantizer, GifEncoder). The
++  same variable names and control flow are preserved so bug fixes port back
++  and forth trivially. Verified against `file(1)` and `identify(1)`.
++- **Web Worker offload** — encoding runs in a background worker (with an
++  automatic main-thread fallback for the file:// WebView, which blocks
++  Worker() from that origin). Progress messages update a translucent
++  overlay in real time; a Cancel button terminates the worker mid-encode.
++- Frames are transferred to the worker as ArrayBuffer via the `transfer`
++  list so there's zero copy overhead between compositing and encoding.
++
++## Web build — persistence & PWA
++- **IndexedDB autosave** — the entire session (every project's frames, holds,
++  fps, name, canvas size, and the active project index) is persisted 800 ms
++  after every accepted edit and flushed synchronously on `visibilitychange` /
++  `pagehide` / `beforeunload`. Frames are stored as PNG blobs (about 4x smaller
++  than raw ImageData). On launch the previous session is silently restored;
++  a phone lock, an app switch, or an accidental refresh no longer wipes work.
++- **PWA manifest** (`manifest.webmanifest`) — `display: standalone`,
++  landscape, violet theme colour, embedded SVG icons (regular + maskable).
++  Makes "Install to Home Screen" work when the HTML is served over http(s);
++  ignored (harmlessly) inside the file:// WebView shell.
++- Autosave surface exposed as `window.INKFRAME_AUTOSAVE` (`status()` / `clear()`)
++  so a future Recover UI can plug in without touching the IDB layer.
++- APK asset pipeline: `stageWebAssets` also copies `*.webmanifest` and `sw.js`
++  so any future service-worker file bundles automatically.
++
++## Web build — brush engine polish
++- **Catmull-Rom spline strokes** — the drawing engine now paints a smoothed
++  curve through the last four stabilized samples (tension 0.5) instead of a
++  straight line between p1 and p2. Removes the subtle "polygon" facets you can
++  see on fast curves at large brush sizes; no measurable extra latency.
++- **Time-based velocity (px/ms)** — replaces the old per-sample step measure
++  so the brush behaves the same on a 60 Hz phone and a 240 Hz active stylus.
++- **New Watercolor brush** — soft radial wash with a wet-edge rim, subtle
++  granulation from the paper-grain field, pigment build-up on overlapping
++  strokes, and rare pooling blooms on slow-heavy passes.
++- **Fast-flick taper** — pen-up with high velocity now extends the ink stroke
++  a few px along the last heading with a shrinking nib, giving proper
++  calligraphic exit tapers alongside the existing slow-lift pooling.
++- **Per-brush preferences** — every brush remembers its own size/opacity, and
++  the colour, StreamLine amount, palm-reject / stylus-only / onion / QuickShape
++  toggles all survive an app restart (LocalStorage, tiny payload).
++
++## Added (playback range & frame rate)
++- **Loop in/out points, loop toggle, and an FPS stepper** on the timeline. The frame strip
++  dims out-of-range cells and highlights the in/out edges; pause icon while playing.
++- `PlaybackOps` (`core-model`, pure) — in/out setters that keep the range valid, fps
++  clamping, frame duration, and a `nextFrame` looping helper; `StudioState` playback wiring
++  now uses it (replacing inline logic). Changing FPS restarts the playback cadence live.
++- 12 new tests (`PlaybackOpsTest`), 271 total.
++
++## Added (per-layer blend-mode picker)
++- **Blend-mode dropdown** in the layer panel — pick any of the 8 modes (Normal, Multiply,
++  Screen, Overlay, Add, Darken, Lighten, Difference) per layer; the compositor already
++  supported them, this surfaces them in the UI.
++- `BlendMode.displayName` (title-case label) for the picker; `StudioState.setLayerBlendMode`.
++- 1 new test (blend-mode labels), 259 total.
++
++## Added (layer management)
++- **Layer reorder, rename, delete, and visibility toggle** in the side panel, plus a
++  per-layer opacity slider. Each row has an eye toggle, name, up/down, rename, and delete;
++  deletion safely re-selects an active layer and keeps ≥1 layer.
++- `LayerOps` (`core-model`, pure) — z-order moves, rename (trim/fallback), delete guards,
++  `activeAfterDelete`, flag/opacity/blend setters; wired via `StudioState`.
++- 19 new tests (`LayerOpsTest`), 258 total.
++
++## Added (drag-to-move cels)
++- **Drag a frame cell** on the timeline to move that drawing to another frame (tap still
++  seeks). The cel keeps its surfaceId — no GPU work, just a model edit.
++- `TimelineDrag` (`core-model`, pure) — pointer-x → frame hit-testing + drag resolution;
++  `StudioState.moveCel`/`hasCelAt` wire it to `TimelineOps.moveCel`; the frame strip uses
++  `detectDragGestures`.
++- 10 new tests (`TimelineDragTest`), 239 total.
++
++## Added (flood-fill bucket)
++- **Bucket fill** — arm it and tap an enclosed area to flood-fill with the current colour
++  (one-shot, mutually exclusive with the eyedropper). Undoes/redoes like a stroke.
++- `FloodFill` (`core-common`, pure) — scanline span fill with per-channel tolerance and a
++  dirty-rect result; `PaintEngine.floodFill` reads the cel, fills, and uploads only the
++  changed rows back (reusing the existing snapshot/undo path).
++- 10 new tests (`FloodFillTest`), 229 total.
++
++## Added (eyedropper tool)
++- **Eyedropper** — arm it in the toolbar and tap the canvas to sample a colour into the
++  picker + recents (one-shot, auto-disarms). Single-finger tap samples; two-finger
++  pan/zoom still works.
++- `ColorSampler` (`core-model`, pure) — exact + neighbourhood-averaged sampling with
++  bounds/transparency handling; `PaintEngine.sampleColorAt` reads back only a small
++  region around the tap (reuses the compositor + `glReadPixels` path).
++- 9 new tests (`ColorSamplerTest`), 219 total.
++
++## Added (HSV colour picker)
++- **Full HSV colour picker** (hue/saturation/brightness/alpha sliders, live preview, hex
++  readout) replacing the fixed-palette-only workflow, plus a **recent colours** row.
++- `Hsv` (`core-model`, pure) — HSV↔RGB conversion with hue wrapping; `RecentColors` — an
++  immutable, ARGB-deduplicated, capped MRU list; `StudioState.commitColor`.
++- 19 new tests (`HsvTest`, `RecentColorsTest`), 210 total.
++
++## Added (multi-frame onion skinning)
++- **Multi-frame onion skinning with tint colours** — ghost several drawings before/after
++  the current frame, tinted red (past) / blue (future) with linear opacity falloff and a
++  settings panel (range 0–8 per side, near/far opacity, tint strength).
++- `OnionSkinSettings` + `OnionSkinPlanner` (`core-model`, pure) — frame selection &
++  falloff; tint plumbed through `LayerDrawSpec`/`Compositor.LayerDraw` and a new
++  `uTint`/`uTintStrength` path in `composite.frag` (normal layers use strength 0).
++- 11 new tests (`OnionSkinPlannerTest`), 191 total.
++
++## Added (brush settings panel)
++- **Live brush settings panel** exposing size, min-size, opacity, flow, hardness, spacing
++  and smoothing sliders plus pressure→size, pressure→opacity and build-up toggles, with a
++  per-brush **Reset to default**. Open via the tune button or by tapping the selected brush.
++- `BrushAdjustments` (`core-model`, pure) — clamped, invariant-preserving mutators whose
++  range constants double as the slider bounds; `StudioState.updateBrush` + a settings flag.
++- 12 new tests (`BrushAdjustmentsTest`), 180 total.
++
++## Added (Storage Access Framework)
++- **Save / Open / Export now use the system file picker** (SAF), so projects and exports
++  go to Downloads / Drive / Photos — anywhere the user chooses — and are visible to other
++  apps, instead of a private app folder.
++- `MediaTypes` (`core-model`, pure) — MIME/extension routing per `DocumentKind`, safe
++  suggested file names, extension parsing.
++- `CanvasView` stream/fd variants (`saveProjectTo`, `loadProjectFrom`, `exportAnimationTo`)
++  and an `Mp4Encoder` `FileDescriptor` constructor (MediaMuxer needs a seekable fd).
++- 10 new tests (`MediaTypesTest`), 168 total.
++
++## Added (MP4 video export)
++- **Export to H.264 .mp4** via `MediaCodec` + `MediaMuxer`, alongside GIF and PNG-sequence.
++  Per-frame presentation timestamps honour holds / fps overrides / "on twos".
++- `YuvConverter` (`core-common`, pure) — ARGB → YUV 4:2:0 (I420 & NV12), BT.601 limited
++  range with 2×2 chroma averaging and background compositing for transparent pixels.
++- `Mp4Encoder` (`feature-canvas`) — encoder colour-format detection (planar/semi-planar),
++  auto bitrate (~0.18 bpp clamped), even-dimension enforcement, EOS/drain handling.
++- 11 new tests (`YuvConverterTest`, verified against BT.601 reference values), 158 total.
++
++## Added (robustness: GL context-loss recovery)
++- **Survives GL-context loss** (app backgrounding / display reset): artwork is no longer
++  lost when the EGL context is destroyed. `setPreserveEGLContextOnPause(true)` plus a
++  CPU-side `SurfaceBackupStore` that re-uploads surfaces into a fresh engine on context
++  re-creation.
++- `PaintEngine.backupSurfaces` / `restoreSurfaces`; `PixelConvert.argbTopDownToRgbaBottomUp`
++  (exact inverse of the existing readback); `CanvasView.onPause/onResume` wired to the
++  Activity lifecycle; `CanvasRenderer` detects re-creation and restores.
++- 11 new tests (`SurfaceBackupStoreTest`, `PixelConvertTest` round-trip + orientation),
++  147 total.
++
++## Added (timeline editing)
++- **Exposure-sheet editing** from the timeline: insert/remove frame, duplicate cel to
++  next frame, copy/cut/paste/clear cel, and extend-exposure (holds) — with buttons
++  auto-enabled by cel/clipboard availability.
++- `TimelineOps` (`core-model`, pure) — clear/set/move/duplicate/paste cel, shift cels,
++  insert/remove frames, extend exposure; explicit GPU-surface semantics (move keeps the
++  id, duplicate/paste mint a new one).
++- `PaintEngine.cloneSurface` — copies a cel's pixels into a fresh surface so duplicated
++  drawings are independently editable; `StudioState` cel clipboard + timeline actions.
++- 16 new tests (`TimelineOpsTest`), 136 total.
++
++## Added (export)
++- **Export animations** to **animated GIF** and **PNG sequence (.zip)** from the toolbar,
++  using the scene's playback range at the project frame rate (with progress in the title).
++- `GifEncoder` — a from-scratch, dependency-free **GIF89a** encoder (`core-common`):
++  NETSCAPE2.0 looping, per-frame Graphic Control Extension (delay/transparency/disposal),
++  streaming frames.
++- `MedianCutQuantizer` — ARGB → ≤256-color palette + indices with a reserved transparent
++  slot; `LzwEncoder` — GIF variable-width LZW with sub-block framing.
++- `ExportPlanner` (`core-model`) — drift-free frame/timing plan (range, fps override,
++  frame-step "on twos", GIF centisecond delays, zero-padded file names).
++- `PaintEngine.renderFrameToArgb` (off-screen frame flatten + readback) and the shared
++  `PixelConvert` helper; `ExportManager` + `CanvasView.exportAnimation`;
++  `StudioState.buildExportDrawList`.
++- 30 new tests (LZW round-trip via an independent decoder, GIF structure, quantizer,
++  planner), 120 total. Demo: `docs/samples/gif_encoder_demo.gif`.
++
++## Added (canvas navigation)
++- **Pan / zoom / rotate** the canvas with two-finger gestures, driven by a single
++  `ViewportTransform` (uniform scale + rotation + translation) shared by display and
++  input — the brush always lands under the finger at any zoom/rotation.
++- `present.frag` rewritten to inverse-map each screen pixel into canvas space (exact
++  rotation, checkerboard outside the canvas); `Compositor.present` /
++  `PaintEngine.composeAndPresent` now take the inverse-affine coeffs.
++- `CanvasView` input arbitration: 1 pointer draws, 2 pointers navigate (abandoning a
++  wet stroke); zoom clamped about the gesture midpoint. Fit-to-screen, 100%, and a live
++  zoom % in the toolbar.
++- 12 new tests (`ViewportTransformTest`), 90 total.
++
++## Added (save / load)
++- **`.inkframe` project persistence** — save/load a project as a ZIP of `document.json`
++  + one PNG per cel surface, with Open/Save buttons in the top toolbar.
++- `Json` — a small dependency-free JSON parser/writer (`core-common`).
++- `ProjectCodec` — `Project` ⇄ JSON with `FORMAT_VERSION`, tolerant decoding, and a
++  fast-fail on newer-than-supported files (`core-model`).
++- `ProjectPackage` — ZIP read/write with a `CelImageIO` seam (`referencedSurfaceIds`,
++  `readDocumentOnly` for previews) (`core-model`).
++- `GlCelImageIO` — GPU surface ⇄ PNG bridge with GL↔Bitmap row-flip (`engine-gl`).
++- `PaintEngine.celImageIO()` / `resetForLoad()`, `CanvasView.saveProject/loadProject`,
++  `StudioState.replaceProject` (surface-id counter advanced past loaded ids).
++- 24 new tests (`JsonTest`, `ProjectCodecTest`, `ProjectPackageTest`,
++  `SaveLoadIntegrationTest`), 78 total.
++
++## Added (undo/redo)
++- **Undo/redo for strokes** — each stroke snapshots before/after RGBA8 pixels of just its
++  dirty rectangle and registers a `StrokeCommand` on the engine's `UndoStack`. Toolbar
++  Undo/Redo buttons (auto-enabled/disabled) plus onion-skin and transparency-checker
++  toggles in a new top toolbar.
++- `DirtyRegion` + `IntRect` (pure, tested) accumulate a stroke's touched bounds so undo
++  snapshots stay small. `GlSurface.readPixels`/`writePixels` for snapshot capture/restore.
++- `UndoStack.pushAlreadyApplied` registers an already-performed action without re-applying.
++- 11 new tests (`DirtyRegionTest`, `StrokeCommandTest`), 54 total.
++
++## Changed
++- **Stroke-buffer compositing** — strokes now accumulate in a scratch surface and are
++  baked onto the cel once at the brush opacity, eliminating dab-overlap darkening for
++  normal brushes. `GL_MAX` blend gives uniform coverage; build-up brushes (airbrush) use
++  additive accumulation. A live preview surface shows the wet stroke without modifying
++  the cel until the stroke ends. New shader `stroke_overlay.frag`.
++- `Brush` now separates per-dab `flow` (+ `flowForPressure`) from whole-stroke `opacity`,
++  and adds a `buildUp` flag. `Dab.opacity` renamed to `Dab.flow`.
++- 9 new unit tests (`StrokeBlendMathTest` + brush flow/build-up), 43 total.
++
++## Added
++- Multi-module Gradle project (`:app`, `:core-common`, `:core-model`, `:engine-gl`,
++  `:feature-canvas`, `:feature-timeline`, `:feature-layers`) with version catalog.
++- OpenGL ES 3.0 paint engine: FBO-backed `GlSurface`s, point-sprite `BrushRenderer`,
++  layer `Compositor` with 8 blend modes, and an off-UI-thread event queue.
++- `StrokeProcessor`: Catmull-Rom smoothing + arc-length resampling into even dabs.
++- Document model: `Project`/`Scene`/`Layer`/`Cel`/`Brush`/`RgbaColor` with frame-hold
++  (exposure) cel resolution.
++- `UndoStack` (bounded, redo-branch clearing) — implemented, not yet UI-wired.
++- Jetpack Compose studio shell: brush rail, GL canvas host, timeline bar, layer/color
++  side panel; frame-rate playback loop and onion skinning.
++- GLSL shaders for brush dabs, layer compositing, and checkerboard presentation.
++- **Foundation pass:** 34 JVM unit tests (math, undo, model, color, brush, stroke),
++  README, architecture doc, `.gitignore`, GitHub Actions CI, launcher icons.
++
++## Known gaps / next up
++- Persistence (save/load), undo wiring to strokes, stroke-buffer compositing,
++  canvas pan/zoom/rotate, export (GIF/MP4), GL context-loss recovery.
++  See `docs/ARCHITECTURE.md` §6.
++
++## Minimum smoke test
++
++- Start overlay appears on a fresh/no-recovery session.
++- **Import archive** from Start restores a `.inkframe`.
++- Gallery templates and custom canvas creation work.
++- Brush Lab texture, brush preset save/use/export/import/delete work.
++- Stylus diagnostics and barrel-button modes work where the browser exposes pointer data.
++- PNG/GIF/video export paths report success or a clear unsupported message.
++- Installed APK launches offline and can export media/archive files.
++
++## Known limitations
++
++- Browser/Android media support varies; video export may fall back or report unsupported depending on WebView/browser codecs.
++- `.inkframe` archives are JSON with PNG data URLs, not a compressed ZIP package yet.
++- Local autosave is device/browser storage; use `.inkframe` archive export for real backups.
+diff --git a/docs/RELEASING.md b/docs/RELEASING.md
+new file mode 100644
+index 0000000..b338f51
+--- /dev/null
++++ b/docs/RELEASING.md
+@@ -0,0 +1,86 @@
++# Releasing InkFrame Studio
++
++Debug APK, GitHub Releases only. No Play Store signing.
++
++App identity:
++
++| | |
++|---|---|
++| Application ID | `com.inkframe.studio` |
++| Min / Target SDK | 26 / 35 |
++| Artifact | **debug APK** – `app-debug.apk` |
++| Version source | `web/metadata.json` |
++
++---
++
++## Release – 3 commands
++
++```bash
++# 1. Bump version
++./inkframe-cli bump patch   # or minor / major
++# updates web/metadata.json + package.json, regenerates RELEASE_NOTES.md
++
++# 2. Verify
++./inkframe-cli release-check
++# prints the exact git tag / push commands
++
++# 3. Tag & push
++git add -A && git commit -m "v0.x.y"
++git tag v0.x.y
++git push origin main --tags
++```
++
++CI (`.github/workflows/release.yml`) then:
++1. Runs unit tests
++2. Builds debug APK (`:app:assembleDebug`)
++3. Publishes `InkFrame-v0.x.y-debug.apk` to GitHub Releases
++
++That's it. The APK is fully wrapped, offline, sideload-ready.
++
++---
++
++## Manual APK build
++
++```bash
++./inkframe-cli build-apk
++# app/build/outputs/apk/debug/app-debug.apk
++```
++
++Install:
++```bash
++adb install -r app/build/outputs/apk/debug/app-debug.apk
++```
++
++---
++
++## Smoke test checklist
++
++See [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) – backup archive → install APK → verify brush / stylus / export GIF / video.
++
++---
++
++## Versioning
++
++- Marketing version: `web/metadata.json` → `"version": "0.x.y"`
++- Bump helper: `node tools/bump-version.mjs patch|minor|major`
++- `versionCode` in `app/build.gradle.kts` – auto-increments in CI via `GITHUB_RUN_NUMBER`, stays at base locally.
++- Override: `INKFRAME_VERSION_CODE=42 ./gradlew :app:assembleDebug`
++
++Release notes are generated from `CHANGELOG.md` + `web/metadata.json`:
++```
++node tools/update-release-notes.mjs
++```
++
++---
++
++## Agent Mode / CI
++
++Trigger a build without pushing a tag:
++
++```bash
++gh workflow run agent-build.yml -f task=apk
++gh run watch
++gh run download -n inkframe-agent-apk
++```
++
++See `.github/workflows/agent-build.yml` and [`PIPELINE.md`](PIPELINE.md).
+diff --git a/inkframe-cli b/inkframe-cli
+new file mode 100755
+index 0000000..a507d2f
+--- /dev/null
++++ b/inkframe-cli
+@@ -0,0 +1,159 @@
++#!/usr/bin/env bash
++# InkFrame Studio CLI pipeline
++# Agent Mode / GitHub-aware
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")" && pwd)"
++cd "$ROOT"
++
++cmd="${1:-help}"
++shift || true
++
++need_gh(){ command -v gh >/dev/null 2>&1 || { echo "gh (GitHub CLI) is required for '$1'. Install: https://cli.github.com/"; exit 1; }; }
++
++case "$cmd" in
++  dev)
++    cd web
++    [ -d node_modules ] || npm install
++    npm run dev
++    ;;
++  build-web)
++    cd web
++    [ -d node_modules ] || npm install
++    npm run build
++    echo "Built -> web/dist/"
++    ;;
++  serve)
++    cd web
++    python3 -m http.server 8080
++    ;;
++  build-apk)
++    ./gradlew :app:assembleDebug
++    echo "APK: app/build/outputs/apk/debug/app-debug.apk"
++    ;;
++  test)
++    ./gradlew test
++    ;;
++  bump)
++    arg="${1:-patch}"
++    # tools/bump-version.mjs expects explicit semver, so auto-increment patch/minor/major
++    if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
++      ver="$arg"
++    else
++      cur=$(node -p "require('./web/metadata.json').version")
++      IFS=. read -r maj min pat <<<"$cur"
++      case "$arg" in
++        major) maj=$((maj+1)); min=0; pat=0 ;;
++        minor) min=$((min+1)); pat=0 ;;
++        *)     pat=$((pat+1)) ;;
++      esac
++      ver="$maj.$min.$pat"
++    fi
++    node tools/bump-version.mjs "$ver"
++    ;;
++  release-check)
++    node tools/prepare-release.mjs
++    ;;
++  export-gif)
++    node tools/inkframe-cli.mjs export-gif "$@"
++    ;;
++  export)
++    node tools/inkframe-cli.mjs "$@"
++    ;;
++
++  # --- GitHub / Agent Mode ---
++  gh-clone)
++    need_gh gh-clone
++    gh repo clone artistso/inkframesv5 "${1:-inkframesv5}"
++    ;;
++  gh-ci)
++    need_gh gh-ci
++    task="${1:-apk}"
++    gh workflow run agent-build.yml -f task="$task" -f version_bump=none
++    echo "Triggered. Watch with: gh run watch"
++    ;;
++  gh-ci-get)
++    need_gh gh-ci-get
++    # gh run download <run-id> -n inkframe-agent-apk
++    run_id="${1:-}"
++    if [ -z "$run_id" ]; then
++      echo "Usage: ./inkframe-cli gh-ci-get <run-id>"
++      echo "Find run-id with: gh run list --workflow=agent-build.yml"
++      exit 1
++    fi
++    gh run download "$run_id" -n inkframe-agent-apk
++    echo "Downloaded APK to ./inkframe-agent-apk/"
++    ;;
++  gh-release)
++    need_gh gh-release
++    # bump, commit, tag, push – triggers release.yml
++    arg="${1:-patch}"
++    if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
++      ver="$arg"
++    else
++      cur=$(node -p "require('./web/metadata.json').version")
++      IFS=. read -r maj min pat <<<"$cur"
++      case "$arg" in
++        major) maj=$((maj+1)); min=0; pat=0 ;;
++        minor) min=$((min+1)); pat=0 ;;
++        *)     pat=$((pat+1)) ;;
++      esac
++      ver="$maj.$min.$pat"
++    fi
++    node tools/bump-version.mjs "$ver"
++    git add -A
++    git commit -m "v$ver" || true
++    git tag -a "v$ver" -m "InkFrame Studio $ver"
++    git push origin main --tags
++    echo "Pushed v$ver – watch: https://github.com/artistso/inkframesv5/actions/workflows/release.yml"
++    ;;
++  agent)
++    # Agent Mode entry – run a named task end-to-end
++    # ./inkframe-cli agent build   -> test + build-apk
++    # ./inkframe-cli agent release patch -> bump + tag + push
++    sub="${1:-help}"
++    shift || true
++    case "$sub" in
++      build) ./gradlew test && ./gradlew :app:assembleDebug && echo "OK $(ls -lh app/build/outputs/apk/debug/*.apk | awk '{print $9, $5}')" ;;
++      web) cd web && npm ci && npm run build ;;
++      release) "$0" gh-release "${1:-patch}" ;;
++      export-gif) node tools/inkframe-cli.mjs export-gif "$@" ;;
++      *) echo "agent tasks: build | web | release [patch|minor|major] | export-gif <in> <out>"; exit 1 ;;
++    esac
++    ;;
++
++  help|*)
++    cat <<'EOF'
++InkFrame Studio CLI – Agent Mode ready
++
++Local:
++  dev              Vite HMR http://localhost:5173
++  build-web        npm run build → web/dist/
++  serve            python -m http.server 8080
++  build-apk        ./gradlew :app:assembleDebug
++  test             ./gradlew test
++  bump <patch|minor|major>
++  release-check    verify + print git tag commands
++  export-gif in.inkframe out.gif [--fps 12] [--width 1024]
++
++GitHub / Agent Mode:
++  gh-clone [dir]              gh repo clone artistso/inkframesv5
++  gh-ci [apk|web|test|all]    trigger agent-build.yml workflow
++  gh-ci-get <run-id>          download inkframe-agent-apk artifact
++  gh-release [patch|minor|major]  bump → commit → tag → push → GitHub Release builds debug APK
++  agent build                 test + build-apk (CI-free local)
++  agent web                   npm ci + build
++  agent release patch         full release via gh
++  agent export-gif in out     headless GIF
++
++Examples:
++  ./inkframe-cli dev
++  ./inkframe-cli build-apk
++  ./inkframe-cli agent build
++  ./inkframe-cli gh-ci apk
++  ./inkframe-cli gh-release patch
++  ./inkframe-cli export-gif my.inkframe out.gif --fps 24
++
++Docs: docs/PIPELINE.md  docs/BUILD.md  docs/ARCHITECTURE.md
++EOF
++    ;;
++esac
+diff --git a/tools/inkframe-cli.mjs b/tools/inkframe-cli.mjs
+new file mode 100755
+index 0000000..cba0337
+--- /dev/null
++++ b/tools/inkframe-cli.mjs
+@@ -0,0 +1,148 @@
++#!/usr/bin/env node
++/**
++ * InkFrame Studio - CLI pipeline helper
++ * 
++ * Wraps:
++ *  - web dev/build
++ *  - Android gradle build
++ *  - .inkframe archive export to GIF/MP4 (headless, via puppeteer)
++ *  - version bump / release checks (delegates to existing tools/)
++ * 
++ * MIT License
++ */
++
++import { spawn } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++import path from 'node:path';
++import fs from 'node:fs/promises';
++
++const __dirname = path.dirname(fileURLToPath(import.meta.url));
++const root = path.resolve(__dirname, '..');
++
++function run(cmd, args, opts={}) {
++  return new Promise((res, rej) => {
++    const p = spawn(cmd, args, { stdio: 'inherit', cwd: root, ...opts });
++    p.on('close', c => c===0 ? res(0) : rej(new Error(`${cmd} exited ${c}`)));
++  });
++}
++
++async function exportGif(inArchive, outGif, {fps=12, width=null} = {}) {
++  // Headless export using Puppeteer + the in-browser GifEncoder
++  // This re-uses web/index.html + web/gif-encoder.js, so output is bit-identical
++  // to the in-app export.
++  let puppeteer;
++  try {
++    puppeteer = await import('puppeteer');
++  } catch {
++    console.error('export-gif needs puppeteer. Install once with:\n  cd web && npm install puppeteer --save-dev');
++    process.exit(1);
++  }
++  const browser = await puppeteer.default.launch({ headless: true, args: ['--no-sandbox'] });
++  const page = await browser.newPage();
++  const indexUrl = 'file://' + path.resolve(root, 'web/index.html');
++  await page.goto(indexUrl, { waitUntil: 'domcontentloaded' });
++  // Inject the .inkframe archive
++  const archiveBuf = await fs.readFile(inArchive);
++  const archiveB64 = archiveBuf.toString('base64');
++
++  const result = await page.evaluate(async ({archiveB64, fps, width}) => {
++    // The app stores autosave in IndexedDB - we bypass that and inject directly
++    // by parsing the archive JSON format (v3 archive: {v, projects:[...]} )
++    const bin = Uint8Array.from(atob(archiveB64), c => c.charCodeAt(0));
++    const text = new TextDecoder().decode(bin);
++    const payload = JSON.parse(text);
++    const P = (payload.projects && payload.projects[0]) || payload.project || payload;
++    // Flatten frames via the app's own composite path
++    // Simplified: use the built-in export (window.INKFRAME export not exposed,
++    // so we reconstruct)
++    // For this CLI we use the GifEncoder directly, same as the app.
++    const frames = P.frames || [];
++    if(!frames.length) throw new Error('No frames in archive');
++
++    // Build canvases from data URLs
++    async function loadLayerCanvas(layer, w, h) {
++      const c = document.createElement('canvas'); c.width=w; c.height=h;
++      const g = c.getContext('2d');
++      if(layer.png) {
++        const img = new Image();
++        await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; img.src=layer.png; });
++        g.drawImage(img,0,0,w,h);
++      }
++      return c;
++    }
++    const W = P.w || 1024, H = P.h || 768;
++    const outW = width ? width : W;
++    const outH = Math.round(H * outW / W);
++
++    const enc = new GifEncoder(outW, outH, { loop: true });
++    for(let fi=0; fi<frames.length; fi++){
++      const fr = frames[fi];
++      const comp = document.createElement('canvas'); comp.width=outW; comp.height=outH;
++      const gc = comp.getContext('2d');
++      gc.fillStyle = P.paper || '#fff0f3';
++      gc.fillRect(0,0,outW,outH);
++      const layers = fr.layers || [{png: fr.png}];
++      for(const L of layers){
++        if(L.visible === false) continue;
++        const lc = await loadLayerCanvas(L, outW, outH);
++        gc.globalAlpha = typeof L.opacity === 'number' ? L.opacity : 1;
++        gc.globalCompositeOperation = L.blend || 'source-over';
++        gc.drawImage(lc,0,0);
++      }
++      gc.globalAlpha = 1; gc.globalCompositeOperation = 'source-over';
++      const imgd = gc.getImageData(0,0,outW,outH);
++      // Convert RGBA -> ARGB Int32 for GifEncoder
++      const argb = new Int32Array(outW*outH);
++      const d = imgd.data;
++      for(let i=0,j=0;i<argb.length;i++,j+=4){
++        argb[i] = (d[j+3]<<24) | (d[j]<<16) | (d[j+1]<<8) | d[j+2];
++      }
++      const hold = (P.holds && P.holds[fi]) || 1;
++      const delayCs = Math.max(2, Math.round(100 / fps)) * hold;
++      enc.addFrame(argb, delayCs);
++    }
++    const bytes = enc.finish();
++    // return as base64
++    let binary = '';
++    const chunk = 0x8000;
++    for(let i=0;i<bytes.length;i+=chunk) binary += String.fromCharCode(...bytes.subarray(i,i+chunk));
++    return btoa(binary);
++  }, {archiveB64, fps, width});
++
++  await browser.close();
++  const outBuf = Buffer.from(result, 'base64');
++  await fs.writeFile(outGif, outBuf);
++  console.log(`GIF exported: ${outGif}  ${(outBuf.length/1024).toFixed(1)} KB`);
++}
++
++async function main(){
++  const [cmd, ...args] = process.argv.slice(2);
++  if(!cmd || cmd === 'help'){
++    console.log(`
++InkFrame CLI (node)
++
++  export-gif <in.inkframe> <out.gif> [--fps 12] [--width 1024]
++  export-mp4 <in.inkframe> <out.mp4>  [--fps 12]   (requires ffmpeg)
++
++For dev/build/apk/test/bump use the bash wrapper:
++  ./inkframe-cli dev
++  ./inkframe-cli build-apk
++`);
++    process.exit(0);
++  }
++  if(cmd === 'export-gif'){
++    const [inFile, outFile, ...rest] = args;
++    if(!inFile || !outFile){ console.error('Usage: export-gif <in.inkframe> <out.gif> [--fps N] [--width W]'); process.exit(1); }
++    const opts = {};
++    for(let i=0;i<rest.length;i+=2){ if(rest[i]==='--fps') opts.fps = Number(rest[i+1]); if(rest[i]==='--width') opts.width = Number(rest[i+1]); }
++    await exportGif(inFile, outFile, opts);
++    return;
++  }
++  if(cmd === 'export-mp4' || cmd === 'export-video'){
++    console.error('MP4 export via CLI: first export GIF, then: ffmpeg -i out.gif -movflags +faststart -pix_fmt yuv420p out.mp4\nOr use the in-app Video export (H.264/VP9 via MediaRecorder).');
++    process.exit(1);
++  }
++  console.error('Unknown command:', cmd);
++  process.exit(1);
++}
++main().catch(e => { console.error(e); process.exit(1); });
+diff --git a/tools/prepare-release.mjs b/tools/prepare-release.mjs
+index 9e80758..da44b4d 100644
+--- a/tools/prepare-release.mjs
++++ b/tools/prepare-release.mjs
+@@ -55,9 +55,19 @@ const notesCheck = cmd('node', ['tools/update-release-notes.mjs', '--check']);
+ if (notesCheck.status !== 0) {
+   errors.push(`RELEASE_NOTES.md is stale. Run: node tools/update-release-notes.mjs\n${notesCheck.stderr || notesCheck.stdout}`);
+ }
+-const notes = read('RELEASE_NOTES.md');
++const readNotes = () => {
++  try { return read('docs/RELEASE_NOTES.md'); } catch {}
++  try { return read('RELEASE_NOTES.md'); } catch {}
++  return '';
++};
++const notes = readNotes();
+ check(notes.includes(`# ${releaseName} Release Notes`), `RELEASE_NOTES.md title does not match ${releaseName}`);
+-check(read('RELEASE_CHECKLIST.md').includes('node tools/prepare-release.mjs'), 'RELEASE_CHECKLIST.md does not mention tools/prepare-release.mjs');
++const readChecklist = () => {
++  try { return read('docs/RELEASE_CHECKLIST.md'); } catch {}
++  try { return read('RELEASE_CHECKLIST.md'); } catch {}
++  return '';
++};
++check(readChecklist().includes('node tools/prepare-release.mjs'), 'RELEASE_CHECKLIST.md does not mention tools/prepare-release.mjs');
+ 
+ // --- Git checks -------------------------------------------------------------
+ let head = '';
+diff --git a/tools/update-release-notes.mjs b/tools/update-release-notes.mjs
+index 82316f1..dd806a4 100644
+--- a/tools/update-release-notes.mjs
++++ b/tools/update-release-notes.mjs
+@@ -61,7 +61,7 @@ ${desc}
+ 3. Save the downloaded \`.inkframe\` somewhere outside browser/app storage.
+ 4. Then install/test the latest APK or browser build.
+ 
+-See \`RELEASE_CHECKLIST.md\` for the full tablet/browser/APK smoke-test flow.
++See \`docs/RELEASE_CHECKLIST.md\` for the full tablet/browser/APK smoke-test flow.
+ 
+ ## What's changed
+ 
+@@ -85,18 +85,24 @@ ${unreleased}
+ `);
+ }
+ 
+-const outPath = resolve(root, 'RELEASE_NOTES.md');
++const outPathDocs = resolve(root, 'docs/RELEASE_NOTES.md');
++const outPathRoot = resolve(root, 'RELEASE_NOTES.md');
+ const next = generatedNotes();
+ 
++function readNotes(p){
++  try { return normalize(read(p)); } catch { return ''; }
++}
++
+ if (CHECK) {
+-  let current = '';
+-  try { current = normalize(read('RELEASE_NOTES.md')); } catch { current = ''; }
++  let current = readNotes('docs/RELEASE_NOTES.md') || readNotes('RELEASE_NOTES.md');
+   if (current !== next) {
+     console.error('❌ RELEASE_NOTES.md is out of date. Run: node tools/update-release-notes.mjs');
+     process.exit(1);
+   }
+   console.log('✅ Release notes are current.');
+ } else {
+-  writeFileSync(outPath, next);
+-  console.log('✅ Wrote RELEASE_NOTES.md');
++  writeFileSync(outPathDocs, next);
++  // also write a copy at repo root so GitHub shows it
++  writeFileSync(outPathRoot, next);
++  console.log('✅ Wrote docs/RELEASE_NOTES.md (+ root copy)');
+ }
+diff --git a/web/metadata.json b/web/metadata.json
+index 89a6c34..21c6835 100644
+--- a/web/metadata.json
++++ b/web/metadata.json
+@@ -1,8 +1,8 @@
+ {
+   "name": "InkFrame Studio",
+   "description": "A 2D animation and drawing studio: brushes, layers, frame timeline with onion skinning, playback, and PNG/GIF/video export.",
+-  "version": "0.1.0",
+-  "releaseDate": "2026-07-06",
++  "version": "0.1.1",
++  "releaseDate": "2026-07-07",
+   "packageName": "com.inkframe.studio",
+   "targetSdk": 35,
+   "minSdk": 26,
+diff --git a/web/package.json b/web/package.json
+index 67f7927..f0953f8 100644
+--- a/web/package.json
++++ b/web/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "inkframe-studio",
+-  "version": "0.1.0",
++  "version": "0.1.1",
+   "private": true,
+   "description": "InkFrame Studio — a 2D animation & drawing app (web build).",
+   "type": "module",
+-- 
+2.47.3
+

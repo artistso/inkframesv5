@@ -8,7 +8,7 @@
 
 <br/>
 
-<img src="media/demo.gif" alt="An animated GIF of a leaping cat drawn frame-by-frame in InkFrame, encoded by the built-in GIF exporter" width="320" />
+<img src="media/demo.gif" alt="An animated GIF of a leaping cat drawn frame-by-frame in InkFrame" width="320" />
 
 <br/>
 
@@ -20,174 +20,203 @@
 
 ---
 
-## What is this?
+InkFrame is a **2D drawing and frame-by-frame animation app** that doesn't look like anything else. Instead of docked toolbars, **glowing rose-quartz orbs** fan out around your canvas – brushes left, colour/actions right, timeline bottom. Everything stays out of the way of the drawing.
 
-InkFrame is a **2D drawing and frame-by-frame animation app** with a design that
-doesn't look like anything else. Instead of docked toolbars, it fans out
-**glowing rose-quartz orbs** around your canvas — brushes on the left, colour
-and actions on the right, timeline along the bottom. Every tool is one tap
-away and *stays out of the way of the drawing*.
+The entire app is a single-file HTML build (`web/index.html`) that runs in any browser and ships as an Android APK via a thin WebView shell.
 
-The entire app is a single-file HTML build that runs in any browser and ships
-as an Android APK via a thin WebView shell. That means:
+- **Zero install** – open `web/index.html`, draw.
+- **Fully offline** – IndexedDB autosaves every 800 ms. No account, no network, no AI in your artwork.
+- **Same code everywhere** – browser, PWA, tablet APK are identical.
+- **MIT Licensed**
 
-- **Zero install cost** to try — open `web/index.html` in any browser.
-- **Full offline** — nothing calls the network. IndexedDB autosaves the whole
-  session; a phone lock, refresh, or app-switch never loses work.
-- **Same code, browser and tablet** — the APK is a WebView that loads the same
-  `index.html`, so what you draw in Chrome and what you draw on your tablet
-  behave identically.
-- **Free**, as in beer *and* as in speech. Released under the MIT License (see `LICENSE`).
+---
 
-## The feature list
-
-### Drawing
-- **5 built-in brushes:** pencil (graphite tooth), ink (calligraphic
-  nib + tilt), marker (chisel + bleed), watercolour (wet-edge wash), glow, eraser
-- **Brush Lab** — long-press any brush to open a live editor with sliders for
-  size / opacity / hardness / spacing / jitter. Every value persists per brush.
-  Turn any brush into charcoal or spatter with the jitter slider alone.
-- **StreamLine** smoothing (0–100 % adjustable) + **QuickShape** (hold still,
-  a rough stroke snaps to a clean line or ellipse — Procreate-style)
-- **Catmull-Rom spline strokes** — no polygon faceting on fast curves
-- **Palm rejection** and **stylus-only mode** — rest your hand freely
-- **Tilt-aware** ink pen and pencil (real nib swivel + graphite laydown)
-- **Living Line** — inertial nib width + orientation + a "reveal" envelope so
-  strokes feel like they carry weight
-
-### Animation
-- **Multi-frame timeline** with per-frame **holds** (this frame lingers 3 ticks)
-- **Layers per frame** — add / duplicate / delete / reorder, per-layer opacity,
-  visibility, and 11 blend modes (Multiply, Screen, Overlay, Dodge, Burn, …)
-- **Onion skin** — past frames in deep magenta, future in warm rose, extra
-  "reach" while scrubbing so you can feel the arc of motion
-- **Motion blur** and **dissolve** playback modes
-- **Loop range** — set in/out points on the rail, isolate a beat to iterate
-- **Adjustable FPS** dial (1–24 fps)
-
-### I/O
-- **Import a reference image** (PNG / JPEG / GIF / WebP) — drops in as a dim
-  bottom layer for rotoscoping or tracing. Drag-and-drop onto the canvas works.
-- **Export PNG** — the current frame
-- **Export GIF** — animated, looping, respects per-frame holds. Pure-JS
-  encoder (a 1:1 port of the Kotlin `GifEncoder` in `core-common/gif/`).
-- **Export MP4 / WebM** — H.264 where the platform supports it, VP9/VP8
-  otherwise. Frame-accurate, honours holds.
-- **IndexedDB autosave** — 800 ms after any edit and on every visibility
-  change / page-hide. Restores silently on next launch.
-
-### Ergonomics
-- **Multi-project gallery** — 4 canvases you can swap between with a cinematic
-  dive transition
-- **Themes**, **Zen mode**, **fullscreen**
-- **Multi-touch** — 2-finger pinch scales the canvas, 2-finger tap = undo,
-  3-finger tap = redo
-- **PWA manifest** — installable to any browser's home screen as a standalone
-  app (violet theme, landscape, embedded SVG icon)
-
-## Try it now (no build)
-
-Just open `web/index.html` in any browser. The whole app boots.
+## Quick start
 
 ```bash
-open web/index.html          # macOS
-xdg-open web/index.html      # Linux
-start web/index.html         # Windows
+# Try it – no build
+open web/index.html
+
+# Dev server with HMR
+./inkframe-cli dev
+# → http://localhost:5173
+
+# Build web
+./inkframe-cli build-web
+# → web/dist/
+
+# Build Android APK (debug, fully wrapped)
+./inkframe-cli build-apk
+# → app/build/outputs/apk/debug/app-debug.apk
 ```
 
-For hot-reload while hacking:
+Grab a prebuilt debug APK from any green CI run: **Actions → Android CI → inkframe-debug-apk**
+
+---
+
+## CLI pipeline
+
+All build / release / export tasks go through `./inkframe-cli`:
+
+```
+dev              Vite HMR dev server
+build-web        Production build → web/dist/
+serve            Static server http://localhost:8080
+build-apk        Gradle debug APK
+test             ./gradlew test (210 JVM unit tests)
+bump <patch|minor|major>  Bump web/metadata.json + package.json
+release-check    Verify release readiness, print git tag commands
+export-gif in.inkframe out.gif [--fps 12] [--width 1024]
+help
+```
+
+Full docs: [`docs/PIPELINE.md`](docs/PIPELINE.md)
+
+### Headless export
 
 ```bash
-cd web
-npm install
-npm run dev                  # Vite dev server with HMR
+# GIF – bit-identical to the in-app encoder
+./inkframe-cli export-gif myproject.inkframe out.gif --fps 24
+
+# MP4 – via ffmpeg
+ffmpeg -i out.gif -movflags +faststart -pix_fmt yuv420p out.mp4
 ```
 
-## Build the APK
+The GIF exporter needs puppeteer once:
+`cd web && npm install puppeteer --save-dev`
 
-The Android app in `/app` is a lightweight WebView that loads
-`web/index.html` from bundled assets. To build it:
+---
+
+## Agent Mode / GitHub CLI
+
+No AI is embedded in InkFrame itself. Agent Mode drives the repo from outside via GitHub CLI:
 
 ```bash
-./gradlew :app:assembleDebug
-# APK lands at app/build/outputs/apk/debug/
+# clone
+gh repo clone artistso/inkframesv5
+
+# run a CI build remotely (apk / web / test / all)
+gh workflow run agent-build.yml -f task=apk
+gh run watch
+gh run download -n inkframe-agent-apk
+
+# cut a release – builds debug APK, publishes to GitHub Releases
+./inkframe-cli bump patch
+./inkframe-cli release-check
+git tag v0.x.y && git push origin v0.x.y
+# → .github/workflows/release.yml builds InkFrame-v0.x.y-debug.apk
 ```
 
-Or grab a fresh debug APK from any completed Android CI run in
-[Actions](https://github.com/artistso/inkframesv5/actions/workflows/android.yml).
+Agent workflow: [`.github/workflows/agent-build.yml`](.github/workflows/agent-build.yml)
 
-See `BUILD.md` for release signing and `RELEASING.md` for the Play Store
-pipeline.
+CLI helper for agents: [`tools/inkframe-cli.mjs`](tools/inkframe-cli.mjs) – `export-gif`, version bump, release check. Wrap it in your own Agent Mode runner; no API keys needed.
 
-## Release/testing helpers
+---
 
-- `RELEASE_CHECKLIST.md` — tablet/browser/APK smoke-test flow: backup archive → CI artifact → install → verify exports and stylus behavior.
-- `RELEASE_NOTES.md` — generated tester/GitHub Release summary. Regenerate with `node tools/update-release-notes.mjs` after updating `CHANGELOG.md` / `web/metadata.json`.
-- `tools/bump-version.mjs` — updates `web/metadata.json` + `web/package.json`, regenerates release notes, and runs version checks.
-- `tools/prepare-release.mjs` — verifies release readiness and prints the exact `git tag` / `git push` commands for the metadata version.
+## Features
+
+**Drawing**
+- 9 brushes: pencil, ink (tilt-aware), marker, watercolor, frost glass, smudge/blur, glow, neon, star
+- Brush Lab – long-press any brush: size / opacity / hardness / spacing / jitter / taper / texture / response – per-brush, persisted
+- StreamLine smoothing, QuickShape (hold → snap to line/ellipse)
+- Catmull-Rom spline strokes, palm rejection, stylus-only mode
+- Living Line – inertial nib width + orientation
+
+**Animation**
+- Multi-frame timeline, per-frame holds
+- Layers per frame – opacity, visibility, 11 blend modes
+- Onion skin – past/future tint, scrub-reach
+- Motion blur, dissolve playback, loop in/out, 1–24 fps
+
+**I/O**
+- Import reference image (PNG/JPEG/GIF/WebP, drag-drop)
+- Export PNG, GIF (pure-JS GIF89a), MP4/WebM (MediaRecorder)
+- IndexedDB autosave, `.inkframe` archive import/export
+- Multi-project gallery – 4 canvases
+
+**Ergonomics**
+- Themes, Zen mode, fullscreen
+- 2-finger pinch = zoom, 2-finger tap = undo, 3-finger tap = redo
+- PWA installable
+
+Full feature list & architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
+---
 
 ## Repository layout
 
 ```
 web/
-├── index.html          the whole app UI + engine (single file)
-├── gif-encoder.js      pure-JS GIF89a encoder (1:1 port of core-common/gif/)
-├── autosave.js         IndexedDB session persistence
-├── brush-math.js       pure math helpers (grain, angle ease, Catmull-Rom)
-├── manifest.webmanifest  PWA install descriptor
-├── package.json        Vite dev/build config
-└── vite.config.js
-
-app/                    Android WebView shell (Kotlin)
-core-common/            legacy pure-Kotlin utilities (GIF encoder, undo, math)
-core-model/             legacy pure-Kotlin data model (Project, Frame, Brush)
-engine-gl/              legacy OpenGL ES paint engine (currently unused)
-feature-canvas/         legacy Compose canvas UI (currently unused)
-feature-layers/         legacy Compose layer panel (currently unused)
-
-media/
-├── hero.png            marketing hero
-├── demo.gif            animated demo (built by our own encoder)
-├── demo_f{1..4}.png    demo keyframes
-└── ...
-
-.github/workflows/      Android + release CI
+  index.html          # the whole app – UI + engine, single file
+  gif-encoder.js      # GIF89a encoder (port of core-common/gif/)
+  autosave.js         # IndexedDB persistence
+  brush-math.js       # grain, angle ease, Catmull-Rom
+  manifest.webmanifest
+app/                  # Android WebView shell (Kotlin)
+core-common/          # legacy Kotlin utilities – still tested
+core-model/           # legacy Kotlin data model
+engine-gl/            # legacy OpenGL ES paint engine
+feature-canvas/
+feature-layers/
+media/                # hero.png, demo.gif, …
+.github/workflows/
+  android.yml         # CI – test + debug APK
+  release.yml         # tag → debug APK → GitHub Release
+  agent-build.yml     # workflow_dispatch – for Agent Mode
+tools/
+  inkframe-cli.mjs    # export-gif, version helpers
+  bump-version.mjs
+  prepare-release.mjs
+  update-release-notes.mjs
+docs/
+  ARCHITECTURE.md
+  BUILD.md
+  PIPELINE.md
+  PRIVACY.md
+  RELEASING.md
+  RELEASE_CHECKLIST.md
+  RELEASE_NOTES.md
 ```
 
-The `core-*`, `engine-gl`, and `feature-*` modules are the earlier native
-Kotlin implementation. They still compile and their unit tests still run in
-CI, but the app doesn't depend on them anymore — the WebView route turned
-out to be faster to ship and easier to iterate. See `ARCHITECTURE.md` for
-the full story.
+The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin implementation. They still compile and test in CI, but the shipping app is the WebView build – faster to iterate. See `docs/ARCHITECTURE.md`.
 
-## Design language
+---
 
-The interface style is called **The Glass Horizon**. Every UI element is a
-translucent rose-quartz orb hovering over a magenta-to-violet radial gradient.
-Nodes connect via soft glowing "wires" that pulse when you open them. Icons
-are hand-drawn SVGs in the same line style (the entire icon set lives in
-`ICONS = { ... }` inside `index.html`).
+## Build – Android APK
 
-The one non-orb affordance is the canvas itself — always cream-pink paper,
-always front-and-centre.
+Debug APK – fully wrapped, offline, sideload-ready. No Play signing.
+
+```bash
+./inkframe-cli build-apk
+# app/build/outputs/apk/debug/app-debug.apk
+```
+
+CI builds the same APK on every push. Tagged releases (`git tag v* && git push origin v*`) publish `InkFrame-<tag>-debug.apk` to GitHub Releases automatically.
+
+Full Android build notes: [`docs/BUILD.md`](docs/BUILD.md)
+
+---
 
 ## Contributing
 
-Open a pull request against `main`. Every push runs the Android debug APK
-build and the Kotlin unit-test suite in CI (see `.github/workflows/android.yml`).
+PRs against `main`. CI runs web smoke + JVM unit tests + debug APK.
 
-Meaningful changes should update `CHANGELOG.md`.
+Update `CHANGELOG.md` for meaningful changes.
+
+---
 
 ## License
 
-Free to use, modify, and redistribute under the MIT License. See `LICENSE`.
+MIT – free to use, modify, redistribute. See [`LICENSE`](LICENSE).
 
-## Privacy
+Privacy: InkFrame is offline-first, no account, no ads, no analytics. See [`docs/PRIVACY.md`](docs/PRIVACY.md).
 
-InkFrame is designed to run offline. See `PRIVACY.md` for the Play Store/data-safety notes.
+---
 
 <div align="center">
 
 *Built with the Glass Horizon design system · runs on stylus, finger, or mouse.*
+
+*CLI pipeline: `./inkframe-cli help`*
 
 </div>

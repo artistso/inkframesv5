@@ -1,0 +1,16 @@
+v0.1.1 – CLI pipeline, Agent Mode, debug-APK release
+
+- Add ./inkframe-cli with dev/build/test/bump/release/export-gif
+- Add tools/inkframe-cli.mjs – headless .inkframe → GIF via Puppeteer
+- Add .github/workflows/agent-build.yml – workflow_dispatch for Agent Mode
+- Add .github/workflows/export-gif.yml – headless GIF export in CI
+- Rewrite .github/workflows/release.yml – debug APK only, no Play signing
+- Rewrite README.md – CLI-first, Agent Mode / GitHub CLI section
+- Move ARCHITECTURE.md, BUILD.md, PRIVACY.md, RELEASING.md, RELEASE_CHECKLIST.md, RELEASE_NOTES.md, PIPELINE.md → docs/
+- Update docs/BUILD.md, docs/RELEASING.md – debug-APK / GitHub Releases only
+- Add AGENT.md – Agent Mode guide
+- Update tools/update-release-notes.mjs, prepare-release.mjs – docs/ paths
+- Fix inkframe-cli bump – auto-increment semver
+- Bump version: 0.1.0 → 0.1.1
+
+Legacy Kotlin modules (core-*, engine-gl, feature-*) kept – 210 tests still pass.
