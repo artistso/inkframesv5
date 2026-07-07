@@ -18,6 +18,8 @@ data class Brush(
     val spacing: Float = 0.08f,
     val pressureToSize: Boolean = true,
     val pressureToOpacity: Boolean = false,
+    val sizePressureCurve: PressureCurve = PressureCurve.LINEAR,
+    val opacityPressureCurve: PressureCurve = PressureCurve.LINEAR,
     val smoothing: Float = 0.35f,
     /**
      * When true, repeated dabs within a single stroke accumulate (darken) — the
@@ -29,7 +31,7 @@ data class Brush(
     /** Effective diameter for a given normalized pressure (0..1). */
     fun diameterForPressure(pressure: Float): Float {
         if (!pressureToSize) return sizePx
-        val p = pressure.coerceIn(0f, 1f)
+        val p = sizePressureCurve.apply(pressure)
         return minSizePx + (sizePx - minSizePx) * p
     }
 
@@ -41,22 +43,52 @@ data class Brush(
      */
     fun flowForPressure(pressure: Float): Float {
         val base = flow
-        return if (pressureToOpacity) base * pressure.coerceIn(0f, 1f) else base
+        return if (pressureToOpacity) base * opacityPressureCurve.apply(pressure) else base
+    }
+}
+
+/**
+ * Pressure response curves shared by size and opacity dynamics. These are small,
+ * deterministic curves so brush output can be tested and replayed exactly.
+ */
+enum class PressureCurve {
+    LINEAR,
+    /** Responds earlier at light pressure, useful for soft pencils and watercolor. */
+    SOFT,
+    /** Holds back until firmer pressure, useful for ink and markers. */
+    FIRM;
+
+    fun apply(pressure: Float): Float {
+        val p = pressure.coerceIn(0f, 1f)
+        return when (this) {
+            LINEAR -> p
+            SOFT -> 1f - (1f - p) * (1f - p)
+            FIRM -> p * p
+        }
     }
 }
 
 enum class BrushKind { ROUND, PENCIL, INK, AIRBRUSH, ERASER, MARKER }
 
 object DefaultBrushes {
-    val pencil = Brush("pencil", "Pencil", BrushKind.PENCIL, sizePx = 6f, hardness = 0.95f, spacing = 0.05f)
-    val ink = Brush("ink", "Ink Pen", BrushKind.INK, sizePx = 14f, hardness = 0.9f, spacing = 0.04f)
+    val pencil = Brush(
+        "pencil", "Pencil", BrushKind.PENCIL,
+        sizePx = 6f, hardness = 0.95f, spacing = 0.05f, sizePressureCurve = PressureCurve.SOFT,
+    )
+    val ink = Brush(
+        "ink", "Ink Pen", BrushKind.INK,
+        sizePx = 14f, hardness = 0.9f, spacing = 0.04f, sizePressureCurve = PressureCurve.FIRM,
+    )
     val round = Brush("round", "Round", BrushKind.ROUND, sizePx = 32f, hardness = 0.6f)
     val airbrush = Brush(
         "airbrush", "Airbrush", BrushKind.AIRBRUSH,
         sizePx = 64f, hardness = 0.15f, flow = 0.10f, spacing = 0.04f,
-        pressureToOpacity = true, buildUp = true,
+        pressureToOpacity = true, opacityPressureCurve = PressureCurve.SOFT, buildUp = true,
     )
-    val marker = Brush("marker", "Marker", BrushKind.MARKER, sizePx = 40f, hardness = 0.7f, opacity = 0.85f)
+    val marker = Brush(
+        "marker", "Marker", BrushKind.MARKER,
+        sizePx = 40f, hardness = 0.7f, opacity = 0.85f, sizePressureCurve = PressureCurve.FIRM,
+    )
     val eraser = Brush("eraser", "Eraser", BrushKind.ERASER, sizePx = 40f, hardness = 0.8f)
 
     val all = listOf(pencil, ink, round, airbrush, marker, eraser)

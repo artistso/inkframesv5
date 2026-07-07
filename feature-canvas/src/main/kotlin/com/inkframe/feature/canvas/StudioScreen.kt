@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.GridOn
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.FirstPage
@@ -68,6 +69,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.TextButton
 import com.inkframe.core.model.BrushAdjustments
 import com.inkframe.core.model.OnionSkinSettings
+import com.inkframe.core.model.PressureCurve
 import com.inkframe.core.model.TimelineDrag
 import com.inkframe.core.model.Hsv
 import com.inkframe.core.model.RgbaColor
@@ -81,6 +83,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush as UiBrush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -105,6 +110,7 @@ fun StudioScreen(state: StudioState = viewModel()) {
     var canvasView by remember { mutableStateOf<CanvasView?>(null) }
     val context = LocalContext.current
     val resolver = context.contentResolver
+    var showWelcome by remember { mutableStateOf(false) }
 
     // --- Save the project via SAF (system "create document" picker) ---
     val saveLauncher = rememberLauncherForActivityResult(
@@ -258,6 +264,10 @@ fun StudioScreen(state: StudioState = viewModel()) {
         )
     }
 
+    if (showWelcome) {
+        StudioWelcomeDialog(onDismiss = { showWelcome = false })
+    }
+
     val renamingId = state.renamingLayerId
     if (renamingId != null) {
         val layer = state.scene.layerById(renamingId)
@@ -288,6 +298,7 @@ fun StudioScreen(state: StudioState = viewModel()) {
                 onSave = onSave,
                 onOpen = onOpen,
                 onExport = { showExportDialog = true },
+                onWelcome = { showWelcome = true },
                 onFit = { canvasView?.fitToScreen() },
                 onReset100 = { canvasView?.resetZoom() },
                 onToggleOnion = {
@@ -394,6 +405,79 @@ fun StudioScreen(state: StudioState = viewModel()) {
     }
 }
 
+private object StudioMetrics {
+    val toolbarPaddingH = 8.dp
+    val toolbarPaddingV = 4.dp
+    val toolbarGap = 4.dp
+    val compactGap = 2.dp
+    val railWidth = 60.dp
+    val railPadding = 8.dp
+    val orbSize = 44.dp
+    val compactIconSize = 32.dp
+    val tinyIconSize = 28.dp
+    val frameCellDiameter = 30.dp
+    val frameCellWidth = frameCellDiameter
+    val frameCellHeight = frameCellDiameter
+    val frameCellGap = 2.dp
+    val frameStripStartPadding = 6.dp
+    val layerRowPadding = 2.dp
+}
+
+private fun Modifier.glassChrome(): Modifier = drawWithContent {
+    drawRect(
+        UiBrush.verticalGradient(
+            colors = listOf(
+                Color(0xFF3B313F).copy(alpha = 0.96f),
+                Color(0xFF24242B).copy(alpha = 0.92f),
+                Color(0xFF181820).copy(alpha = 0.98f),
+            ),
+        ),
+    )
+    drawCircle(
+        brush = UiBrush.radialGradient(
+            colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+            center = Offset(size.width * 0.18f, 0f),
+            radius = size.width * 0.65f,
+        ),
+    )
+    drawContent()
+    drawRect(
+        UiBrush.verticalGradient(
+            colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+            endY = size.height * 0.42f,
+        ),
+        size = size.copy(height = size.height * 0.42f),
+    )
+}
+
+private fun Modifier.glassOrb(selected: Boolean = false): Modifier = drawWithContent {
+    val base = if (selected) Color(0xFFBB5CFF) else Color(0xFF2C2C36)
+    drawCircle(
+        brush = UiBrush.radialGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.42f),
+                base.copy(alpha = 0.92f),
+                Color(0xFF100C16).copy(alpha = 0.98f),
+            ),
+            center = Offset(size.width * 0.33f, size.height * 0.22f),
+            radius = size.minDimension * 0.72f,
+        ),
+    )
+    drawCircle(
+        brush = UiBrush.radialGradient(
+            colors = listOf(Color.White.copy(alpha = 0.38f), Color.Transparent),
+            center = Offset(size.width * 0.30f, size.height * 0.20f),
+            radius = size.minDimension * 0.26f,
+        ),
+    )
+    drawContent()
+    drawCircle(
+        color = if (selected) Color(0xFFE9C8FF).copy(alpha = 0.78f) else Color.White.copy(alpha = 0.22f),
+        radius = size.minDimension * 0.48f,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (selected) 2.5f else 1.2f),
+    )
+}
+
 @Composable
 private fun TopToolbar(
     state: StudioState,
@@ -402,6 +486,7 @@ private fun TopToolbar(
     onSave: () -> Unit,
     onOpen: () -> Unit,
     onExport: () -> Unit,
+    onWelcome: () -> Unit,
     onFit: () -> Unit,
     onReset100: () -> Unit,
     onToggleOnion: () -> Unit,
@@ -411,9 +496,9 @@ private fun TopToolbar(
     onToggleChecker: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFF26262B)).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().glassChrome().padding(horizontal = StudioMetrics.toolbarPaddingH, vertical = StudioMetrics.toolbarPaddingV),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(StudioMetrics.toolbarGap),
     ) {
         IconButton(onClick = onOpen, enabled = !state.isBusy) {
             Icon(Icons.Filled.FolderOpen, contentDescription = "Open", tint = Color.White)
@@ -423,6 +508,9 @@ private fun TopToolbar(
         }
         IconButton(onClick = onExport, enabled = !state.isBusy) {
             Icon(Icons.Filled.Movie, contentDescription = "Export animation", tint = Color.White)
+        }
+        IconButton(onClick = onWelcome) {
+            Icon(Icons.Filled.Info, contentDescription = "Studio welcome", tint = Color.White)
         }
         IconButton(onClick = onUndo, enabled = state.canUndo) {
             Icon(
@@ -439,7 +527,7 @@ private fun TopToolbar(
             )
         }
         val title = state.statusMessage ?: state.project.name
-        Text(title, color = Color.White, modifier = Modifier.weight(1f).padding(start = 8.dp))
+        Text(title, color = Color.White, modifier = Modifier.weight(1f).padding(start = StudioMetrics.toolbarPaddingH))
 
         // Zoom controls: tap the % to reset to 100%, the frame icon to fit.
         Text(
@@ -447,7 +535,7 @@ private fun TopToolbar(
             color = Color.White,
             modifier = Modifier
                 .clickableNoRipple(onReset100)
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = StudioMetrics.frameStripStartPadding),
         )
         IconButton(onClick = onFit) {
             Icon(Icons.Filled.FitScreen, contentDescription = "Fit to screen", tint = Color.White)
@@ -492,6 +580,22 @@ private fun TopToolbar(
 }
 
 @Composable
+private fun StudioWelcomeDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Welcome to InkFrame Studio") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(StudioMetrics.railPadding)) {
+                Text("This native studio is the new tablet-first home for InkFrame: Compose controls, an OpenGL canvas, and a brush engine tuned for stylus feel.")
+                Text("Start with the left glass brush orbs, draw in the center, then use the new circular frame pucks along the bottom to animate cel by cel.")
+                Text("Next up: richer elemental controls, deeper Brush Lab texture, and smoother timeline drag/drop.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Create") } },
+    )
+}
+
+@Composable
 private fun BrushRail(
     current: Brush,
     onSelect: (Brush) -> Unit,
@@ -500,16 +604,18 @@ private fun BrushRail(
 ) {
     Column(
         modifier
-            .width(60.dp)
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .width(StudioMetrics.railWidth)
+            .padding(StudioMetrics.railPadding),
+        verticalArrangement = Arrangement.spacedBy(StudioMetrics.railPadding),
     ) {
         DefaultBrushes.all.forEach { b ->
             val selected = b.id == current.id
-            Surface(
-                color = if (selected) MaterialTheme.colorScheme.primary else Color(0xFF2C2C32),
-                shape = CircleShape,
-                modifier = Modifier.size(44.dp),
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(StudioMetrics.orbSize)
+                    .clip(CircleShape)
+                    .glassOrb(selected),
             ) {
                 // Tapping the selected brush again opens its settings; tapping another selects it.
                 IconButton(onClick = { if (selected) onOpenSettings() else onSelect(b) }) {
@@ -518,7 +624,13 @@ private fun BrushRail(
             }
         }
         // Explicit settings (tune) button so the gesture is discoverable.
-        Surface(color = Color(0xFF2C2C32), shape = CircleShape, modifier = Modifier.size(44.dp)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(StudioMetrics.orbSize)
+                .clip(CircleShape)
+                .glassOrb(),
+        ) {
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Filled.Tune, contentDescription = "Brush settings", tint = Color.White)
             }
@@ -537,7 +649,7 @@ private fun BrushSettingsPanel(
         onDismissRequest = onDismiss,
         title = { Text("Brush — ${brush.name}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(StudioMetrics.toolbarGap)) {
                 LabeledSlider(
                     label = "Size", value = brush.sizePx, range = BrushAdjustments.SIZE_RANGE,
                     valueText = "${brush.sizePx.toInt()} px",
@@ -576,8 +688,14 @@ private fun BrushSettingsPanel(
                 ToggleRow("Pressure → size", brush.pressureToSize) { e ->
                     onChange { BrushAdjustments.withPressureToSize(it, e) }
                 }
+                PressureCurvePicker("Size curve", brush.sizePressureCurve) { curve ->
+                    onChange { BrushAdjustments.withSizePressureCurve(it, curve) }
+                }
                 ToggleRow("Pressure → opacity", brush.pressureToOpacity) { e ->
                     onChange { BrushAdjustments.withPressureToOpacity(it, e) }
+                }
+                PressureCurvePicker("Opacity curve", brush.opacityPressureCurve) { curve ->
+                    onChange { BrushAdjustments.withOpacityPressureCurve(it, curve) }
                 }
                 ToggleRow("Build-up (airbrush)", brush.buildUp) { e ->
                     onChange { BrushAdjustments.withBuildUp(it, e) }
@@ -588,6 +706,50 @@ private fun BrushSettingsPanel(
         dismissButton = { TextButton(onClick = onReset) { Text("Reset") } },
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PressureCurvePicker(
+    label: String,
+    current: PressureCurve,
+    onSelect: (PressureCurve) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+        ) {
+            Surface(
+                color = Color(0xFF2C2C32),
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .menuAnchor()
+                    .widthIn(min = 96.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    Text(current.label, color = Color.White, modifier = Modifier.weight(1f))
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Color.White)
+                }
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                PressureCurve.entries.forEach { curve ->
+                    DropdownMenuItem(
+                        text = { Text(curve.label) },
+                        onClick = { onSelect(curve); expanded = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val PressureCurve.label: String
+    get() = name.lowercase().replaceFirstChar { it.titlecase() }
 
 @Composable
 private fun LabeledSlider(
@@ -631,7 +793,7 @@ private fun OnionSettingsPanel(
         onDismissRequest = onDismiss,
         title = { Text("Onion skin") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(StudioMetrics.toolbarGap)) {
                 ToggleRow("Enabled", settings.enabled) { onChange(settings.copy(enabled = it)) }
                 LabeledSlider(
                     label = "Frames before", value = settings.framesBefore.toFloat(),
@@ -729,9 +891,9 @@ private fun TimelineBar(state: StudioState, onPlayToggle: () -> Unit, onFrame: (
     // Any edit mutates the document and needs a redraw; reuse onFrame's redraw via -1.
     val redraw: () -> Unit = { onFrame(state.currentFrame) }
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFF26262B)).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().glassChrome().padding(horizontal = StudioMetrics.toolbarPaddingH, vertical = StudioMetrics.toolbarPaddingV),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(StudioMetrics.compactGap),
     ) {
         IconButton(onClick = onPlayToggle) {
             Icon(
@@ -777,8 +939,8 @@ private fun FrameStrip(
     onFrame: (Int) -> Unit,
     onMoved: () -> Unit,
 ) {
-    val cellW = 14.dp
-    val gap = 2.dp
+    val cellW = StudioMetrics.frameCellWidth
+    val gap = StudioMetrics.frameCellGap
     val density = LocalDensity.current
     val cellWpx = with(density) { cellW.toPx() }
     val gapPx = with(density) { gap.toPx() }
@@ -795,7 +957,7 @@ private fun FrameStrip(
             // so weight would not resolve here. fillMaxWidth gives the strip the same
             // "take the remaining width" behaviour without needing a parent scope.
             .fillMaxWidth()
-            .padding(start = 6.dp)
+            .padding(start = StudioMetrics.frameStripStartPadding)
             .pointerInput(frameCount) {
                 detectDragGestures(
                     onDragStart = { offset -> dragStartX[0] = offset.x; dragLastX[0] = offset.x },
@@ -816,7 +978,7 @@ private fun FrameStrip(
                     onDrag = { change, _ -> dragLastX[0] = change.position.x },
                 )
             },
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(StudioMetrics.compactGap),
     ) {
         val range = state.scene.playbackRange
         for (f in 0 until frameCount) {
@@ -825,26 +987,26 @@ private fun FrameStrip(
             val inRange = f in range
             val isEdge = f == range.first || f == range.last
             Box(
-                Modifier
-                    .size(width = cellW, height = 28.dp)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(
-                        when {
-                            active -> MaterialTheme.colorScheme.primary
-                            hasCel -> Color(0xFF4A4A52)
-                            else -> Color(0xFF333339)
-                        }.let { base -> if (inRange) base else base.copy(alpha = 0.4f) },
-                    )
-                    // Mark the loop in/out edges with a secondary accent underline bar.
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(width = cellW, height = StudioMetrics.frameCellHeight)
+                    .clip(CircleShape)
+                    .glassOrb(active)
                     .then(
                         if (isEdge) Modifier.border(
                             width = 2.dp,
                             color = MaterialTheme.colorScheme.secondary,
-                            shape = MaterialTheme.shapes.small,
+                            shape = CircleShape,
                         ) else Modifier,
                     )
                     .clickableNoRipple { onFrame(f) },
-            )
+            ) {
+                Text(
+                    text = if (hasCel) "${f + 1}" else "•",
+                    color = if (inRange) Color.White else Color.White.copy(alpha = 0.45f),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     }
 }
@@ -870,11 +1032,11 @@ private fun TimelineAction(
 @Composable
 private fun FpsStepper(fps: Int, onFps: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onFps(fps - 1) }, enabled = fps > 1, modifier = Modifier.size(28.dp)) {
+        IconButton(onClick = { onFps(fps - 1) }, enabled = fps > 1, modifier = Modifier.size(StudioMetrics.tinyIconSize)) {
             Icon(Icons.Filled.Remove, "Slower", tint = if (fps > 1) Color.White else Color(0xFF55555C))
         }
         Text("${fps}fps", color = Color.White)
-        IconButton(onClick = { onFps(fps + 1) }, enabled = fps < 120, modifier = Modifier.size(28.dp)) {
+        IconButton(onClick = { onFps(fps + 1) }, enabled = fps < 120, modifier = Modifier.size(StudioMetrics.tinyIconSize)) {
             Icon(Icons.Filled.Add, "Faster", tint = if (fps < 120) Color.White else Color(0xFF55555C))
         }
     }
@@ -898,8 +1060,8 @@ private fun LayerRow(
         color = if (active) Color(0xFF3A3A44) else Color(0xFF2C2C32),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(2.dp)) {
-            IconButton(onClick = onToggleVisible, modifier = Modifier.size(32.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(StudioMetrics.layerRowPadding)) {
+            IconButton(onClick = onToggleVisible, modifier = Modifier.size(StudioMetrics.compactIconSize)) {
                 Icon(
                     if (layer.visible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                     contentDescription = if (layer.visible) "Hide layer" else "Show layer",
@@ -915,18 +1077,18 @@ private fun LayerRow(
                     .padding(horizontal = 4.dp)
                     .clickableNoRipple(onSelect),
             )
-            IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(StudioMetrics.compactIconSize)) {
                 Icon(Icons.Filled.KeyboardArrowUp, "Move up",
                     tint = if (canMoveUp) Color.White else Color(0xFF55555C))
             }
-            IconButton(onClick = onMoveDown, enabled = canMoveDown, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onMoveDown, enabled = canMoveDown, modifier = Modifier.size(StudioMetrics.compactIconSize)) {
                 Icon(Icons.Filled.KeyboardArrowDown, "Move down",
                     tint = if (canMoveDown) Color.White else Color(0xFF55555C))
             }
-            IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onRename, modifier = Modifier.size(StudioMetrics.compactIconSize)) {
                 Icon(Icons.Filled.Edit, "Rename layer", tint = Color.White)
             }
-            IconButton(onClick = onDelete, enabled = deletable, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onDelete, enabled = deletable, modifier = Modifier.size(StudioMetrics.compactIconSize)) {
                 Icon(Icons.Filled.Delete, "Delete layer",
                     tint = if (deletable) Color.White else Color(0xFF55555C))
             }
@@ -1051,7 +1213,7 @@ private fun SidePanel(state: StudioState, onChanged: () -> Unit) {
                     .clickableNoRipple { state.showColorPicker = true },
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(StudioMetrics.toolbarGap)) {
             state.project.colorPalette.forEach { c ->
                 Box(
                     Modifier
@@ -1064,7 +1226,7 @@ private fun SidePanel(state: StudioState, onChanged: () -> Unit) {
         }
         if (!state.recentColors.isEmpty()) {
             Text("Recent", color = Color.White)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(StudioMetrics.toolbarGap)) {
                 state.recentColors.colors.take(6).forEach { c ->
                     Box(
                         Modifier
@@ -1090,7 +1252,7 @@ private fun ExportDialog(
         onDismissRequest = onDismiss,
         title = { Text("Export animation") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(StudioMetrics.railPadding)) {
                 Text("Exports use the scene's playback range at the project frame rate.")
                 TextButton(onClick = onMp4, modifier = Modifier.fillMaxWidth()) { Text("Video (.mp4)") }
                 TextButton(onClick = onGif, modifier = Modifier.fillMaxWidth()) { Text("Animated GIF") }

@@ -58,6 +58,12 @@ object BrushAdjustments {
     fun withPressureToOpacity(brush: Brush, enabled: Boolean): Brush =
         brush.copy(pressureToOpacity = enabled)
 
+    fun withSizePressureCurve(brush: Brush, curve: PressureCurve): Brush =
+        brush.copy(sizePressureCurve = curve)
+
+    fun withOpacityPressureCurve(brush: Brush, curve: PressureCurve): Brush =
+        brush.copy(opacityPressureCurve = curve)
+
     fun withBuildUp(brush: Brush, enabled: Boolean): Brush =
         brush.copy(buildUp = enabled)
 

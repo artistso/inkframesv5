@@ -2,6 +2,7 @@ package com.inkframe.engine.gl
 
 import com.inkframe.core.common.Vec2
 import com.inkframe.core.model.Brush
+import com.inkframe.core.model.PressureCurve
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -72,4 +73,57 @@ class StrokeProcessorTest {
         // All dabs should remain on/near the horizontal line (y ~ 0).
         all.forEach { assertTrue("dab strayed: ${it.center.y}", kotlin.math.abs(it.center.y) < 5f) }
     }
+
+    @Test
+    fun pressureCurvesAffectGeneratedDabSizeAndFlow() {
+        val curved = brush().copy(
+            sizePx = 100f,
+            minSizePx = 20f,
+            flow = 0.8f,
+            pressureToSize = true,
+            pressureToOpacity = true,
+            sizePressureCurve = PressureCurve.FIRM,
+            opacityPressureCurve = PressureCurve.SOFT,
+        )
+        val sp = StrokeProcessor(curved)
+        val all = ArrayList<Dab>()
+        for (i in 0..12) all += sp.add(InputSample(Vec2(i * 8f, 0f), 0.5f, i * 8L))
+        all += sp.finish()
+
+        assertTrue("expected dabs", all.isNotEmpty())
+        all.forEach { dab ->
+            assertEquals(40f, dab.size, 1e-3f)
+            assertEquals(0.6f, dab.flow, 1e-3f)
+        }
+    }
+
+    @Test
+    fun resetClearsResampleCarryBetweenStrokes() {
+        val sp = StrokeProcessor(brush())
+        val first = ArrayList<Dab>()
+        for (i in 0..8) first += sp.add(sample(i * 5f, 0f))
+        first += sp.finish()
+
+        sp.reset()
+        sp.add(sample(100f, 100f))
+        val tap = sp.finish()
+
+        assertEquals(1, tap.size)
+        assertEquals(100f, tap[0].center.x, 0.5f)
+        assertEquals(100f, tap[0].center.y, 0.5f)
+    }
+
+    @Test
+    fun shortDragStillReachesFinalPoint() {
+        val sp = StrokeProcessor(brush())
+        sp.add(sample(0f, 0f))
+        sp.add(sample(1f, 1f))
+        val dabs = sp.finish()
+
+        assertTrue("expected at least one dab", dabs.isNotEmpty())
+        val last = dabs.last()
+        assertEquals(1f, last.center.x, 0.5f)
+        assertEquals(1f, last.center.y, 0.5f)
+    }
+
 }

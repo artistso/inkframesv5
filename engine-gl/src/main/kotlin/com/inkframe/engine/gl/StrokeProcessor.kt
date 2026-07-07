@@ -30,10 +30,12 @@ data class Dab(val center: Vec2, val size: Float, val rotationRad: Float, val fl
 class StrokeProcessor(private val brush: Brush) {
     private val raw = ArrayList<InputSample>()
     private var smoothed: Vec2? = null
+    private var lastResamplePoint: Vec2? = null
+    private var lastResamplePressure = 0f
     private var carry = 0f // leftover distance from previous segment
 
     fun reset() {
-        raw.clear(); smoothed = null; carry = 0f
+        raw.clear(); smoothed = null; lastResamplePoint = null; lastResamplePressure = 0f; carry = 0f
     }
 
     /** Pushes a sample and returns any dabs produced since the previous call. */
@@ -54,12 +56,21 @@ class StrokeProcessor(private val brush: Brush) {
         if (raw.size < 2) {
             // Single tap -> one dab.
             val only = raw.firstOrNull() ?: return emptyList()
+            lastResamplePoint = only.pos
+            lastResamplePressure = only.pressure
             return listOf(dabAt(only.pos, only.pressure))
         }
         val n = raw.size
         val a = raw[max(0, n - 2)]
         val b = raw[n - 1]
-        return resampleSegment(a, a, b, b)
+        val tail = resampleSegment(a, a, b, b).toMutableList()
+        if (tail.lastOrNull()?.center?.distanceTo(b.pos) ?: Float.POSITIVE_INFINITY > 0.5f) {
+            tail += dabAt(b.pos, b.pressure)
+            lastResamplePoint = b.pos
+            lastResamplePressure = b.pressure
+            carry = 0f
+        }
+        return tail
     }
 
     private fun resampleSegment(s0: InputSample, s1: InputSample, s2: InputSample, s3: InputSample): List<Dab> {
@@ -70,25 +81,36 @@ class StrokeProcessor(private val brush: Brush) {
         val step = max(1f, brush.spacing * diameter)
         val subdiv = max(1, (approxLen / step).toInt() * 2)
 
+        var prev = lastResamplePoint ?: s1.pos
+        var prevPressure = lastResamplePoint?.let { lastResamplePressure } ?: s1.pressure
         var t = 0f
         val dt = 1f / subdiv
         var i = 0
         while (i <= subdiv) {
             val p = catmullRom(s0.pos, s1.pos, s2.pos, s3.pos, t)
             val pressure = lerp(s1.pressure, s2.pressure, t)
-            carry += if (i == 0) 0f else step / subdiv * 0f // placeholder; arc-length below
-            t += dt; i++
-            // Accumulate by true inter-point distance for even spacing.
-            if (dabs.isEmpty()) {
-                dabs.add(dabAt(p, pressure)); continue
-            }
-            val last = dabs.last().center
-            carry += p.distanceTo(last)
-            if (carry >= step) {
+            var start = prev
+            var startPressure = prevPressure
+            var remaining = start.distanceTo(p)
+            while (remaining > 0f && carry + remaining >= step) {
+                val needed = step - carry
+                val alpha = (needed / remaining).coerceIn(0f, 1f)
+                val emitPos = lerp(start, p, alpha)
+                val emitPressure = lerp(startPressure, pressure, alpha)
+                dabs.add(dabAt(emitPos, emitPressure))
+                start = emitPos
+                startPressure = emitPressure
+                remaining = start.distanceTo(p)
                 carry = 0f
-                dabs.add(dabAt(p, pressure))
             }
+            carry += remaining
+            prev = p
+            prevPressure = pressure
+            t += dt
+            i++
         }
+        lastResamplePoint = prev
+        lastResamplePressure = prevPressure
         return dabs
     }
 

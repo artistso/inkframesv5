@@ -66,6 +66,14 @@ class BrushAdjustmentsTest {
         assertTrue(BrushAdjustments.withPressureToSize(base, true).pressureToSize)
         assertFalse(BrushAdjustments.withPressureToSize(base, false).pressureToSize)
         assertTrue(BrushAdjustments.withPressureToOpacity(base, true).pressureToOpacity)
+        assertEquals(
+            PressureCurve.SOFT,
+            BrushAdjustments.withSizePressureCurve(base, PressureCurve.SOFT).sizePressureCurve,
+        )
+        assertEquals(
+            PressureCurve.FIRM,
+            BrushAdjustments.withOpacityPressureCurve(base, PressureCurve.FIRM).opacityPressureCurve,
+        )
         assertTrue(BrushAdjustments.withBuildUp(base, true).buildUp)
     }
 
@@ -107,4 +115,27 @@ class BrushAdjustmentsTest {
             assertTrue(d in b.minSizePx..b.sizePx)
         }
     }
+
+    @Test
+    fun pressureCurves_clampAndShapeResponse() {
+        assertEquals(0f, PressureCurve.LINEAR.apply(-1f), 0f)
+        assertEquals(1f, PressureCurve.LINEAR.apply(2f), 0f)
+        assertEquals(0.5f, PressureCurve.LINEAR.apply(0.5f), 1e-6f)
+        assertEquals(0.75f, PressureCurve.SOFT.apply(0.5f), 1e-6f)
+        assertEquals(0.25f, PressureCurve.FIRM.apply(0.5f), 1e-6f)
+    }
+
+    @Test
+    fun diameterAndFlowUseSelectedPressureCurves() {
+        val curved = Brush(
+            id = "curve", name = "Curve", sizePx = 100f, minSizePx = 20f,
+            flow = 0.8f, pressureToSize = true, pressureToOpacity = true,
+            sizePressureCurve = PressureCurve.FIRM, opacityPressureCurve = PressureCurve.SOFT,
+        )
+        // Firm size curve maps 0.5 pressure -> 0.25 response: 20 + 80 * .25 = 40.
+        assertEquals(40f, curved.diameterForPressure(0.5f), 1e-5f)
+        // Soft opacity curve maps 0.5 pressure -> 0.75 response: .8 * .75 = .6.
+        assertEquals(0.6f, curved.flowForPressure(0.5f), 1e-5f)
+    }
+
 }
