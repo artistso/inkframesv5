@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -18,6 +19,7 @@ import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -75,6 +77,8 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        WebView.setWebContentsDebuggingEnabled(isDebuggableBuild())
+
         webView = WebView(this).apply {
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -95,14 +99,31 @@ class MainActivity : ComponentActivity() {
                 builtInZoomControls = false
                 displayZoomControls = false
                 cacheMode = WebSettings.LOAD_DEFAULT
+                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    // Kill flicker on pause/resume.
+                    // Kill flicker on pause/resume and keep external browsing safer.
                     offscreenPreRaster = true
+                    safeBrowsingEnabled = true
                 }
             }
 
-            // Keep navigation inside the WebView; block anything external.
-            webViewClient = WebViewClient()
+            // Keep bundled file/data/blob navigation inside the WebView, but hand any
+            // real web link to Android. This prevents a tester from getting stranded
+            // away from the offline studio after tapping About/credit links.
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                ): Boolean {
+                    val uri = request?.url ?: return false
+                    return openExternalUriIfNeeded(uri)
+                }
+
+                @Deprecated("Deprecated in Android API 24; kept for older WebView callbacks.")
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                    return url?.let { openExternalUriIfNeeded(Uri.parse(it)) } ?: false
+                }
+            }
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -127,6 +148,23 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
+    }
+
+    private fun isDebuggableBuild(): Boolean =
+        (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private fun openExternalUriIfNeeded(uri: Uri): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        val staysInStudio = scheme == "file" || scheme == "data" || scheme == "blob" || scheme == "about"
+        if (staysInStudio) return false
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "No external handler for ${uri}", t)
+            toast("Couldn't open link.")
+            true
+        }
     }
 
     private fun hideSystemBars() {
