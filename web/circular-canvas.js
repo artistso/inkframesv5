@@ -69,6 +69,7 @@
       'body.circular-canvas #inkframe-timeline-ring,body.circular-canvas #inkframe-timeline-ticks,body.circular-canvas #inkframe-timeline-major-ticks,body.circular-canvas #inkframe-timeline-center,body.circular-canvas #inkframe-playhead-bead{opacity:1}',
       '#inkframe-circle-toggle{position:fixed;right:12px;bottom:58px;z-index:2147483646;min-width:78px;min-height:38px;padding:9px 12px;border-radius:999px;border:1px solid rgba(255,240,243,.55);background:linear-gradient(160deg,rgba(42,0,26,.92),rgba(187,0,55,.86));color:#fff0f3;font:800 11px/1 system-ui,sans-serif;letter-spacing:.14em;box-shadow:0 8px 26px rgba(20,0,14,.46);touch-action:manipulation}',
       'body.circular-canvas #inkframe-circle-toggle{background:linear-gradient(160deg,rgba(255,240,243,.92),rgba(187,0,55,.92));color:#2a001a}',
+      'body.inkframe-circular-debug #inkframe-circle-toggle{box-shadow:0 0 0 2px rgba(0,255,255,.95),0 0 22px rgba(0,255,255,.68),0 8px 26px rgba(20,0,14,.46)!important}',
       '#inkframe-shape-badge{position:absolute;left:50%;top:-32px;transform:translateX(-50%);z-index:14;pointer-events:none;min-width:132px;text-align:center;padding:5px 10px;border-radius:999px;opacity:0;transition:opacity .18s ease,transform .18s ease;font:850 9px/1 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.44);border:1px solid rgba(255,240,243,.20);box-shadow:0 5px 16px rgba(10,0,10,.28),inset 0 1px 0 rgba(255,255,255,.12)}',
       'body.circular-canvas #inkframe-shape-badge{opacity:.86;transform:translateX(-50%) translateY(-2px)}',
       '#inkframe-circular-debug{position:absolute;inset:0;z-index:2147483000;pointer-events:none;display:none;font:800 9px/1.2 system-ui,sans-serif;color:#fff}',
@@ -358,7 +359,7 @@
     if (btn) {
       btn.textContent = on ? 'CIRCLE' : 'SQUARE';
       btn.setAttribute('aria-pressed', String(!!on));
-      btn.title = on ? 'Circular canvas on' : 'Square canvas on';
+      btn.title = on ? 'Tap for square. Long-press for debug geometry.' : 'Tap for circle. Long-press for debug geometry.';
     }
     if (on) scheduleLayout(0); else restoreSquareBoard();
   }
@@ -377,11 +378,35 @@
     btn.id = 'inkframe-circle-toggle';
     btn.type = 'button';
     btn.textContent = 'SQUARE';
-    btn.setAttribute('aria-label', 'Toggle circular canvas');
-    btn.addEventListener('pointerdown', ev => ev.stopPropagation());
+    btn.setAttribute('aria-label', 'Toggle circular canvas. Long-press for debug geometry.');
+    let pressTimer = 0;
+    let suppressNextClick = false;
+    function clearPressTimer(){
+      if (pressTimer) clearTimeout(pressTimer);
+      pressTimer = 0;
+    }
+    btn.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      suppressNextClick = false;
+      clearPressTimer();
+      pressTimer = setTimeout(() => {
+        suppressNextClick = true;
+        setDebug(!debugOn);
+        btn.setAttribute('aria-label', 'Circular debug ' + (debugOn ? 'on' : 'off') + '. Tap for shape, long-press for debug.');
+      }, 650);
+    });
+    btn.addEventListener('pointerup', clearPressTimer);
+    btn.addEventListener('pointercancel', clearPressTimer);
+    btn.addEventListener('pointerleave', clearPressTimer);
     btn.addEventListener('touchstart', ev => ev.stopPropagation(), { passive:true });
     btn.addEventListener('click', ev => {
-      ev.preventDefault(); ev.stopPropagation();
+      ev.preventDefault();
+      ev.stopPropagation();
+      clearPressTimer();
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        return;
+      }
       setMode(!document.body.classList.contains('circular-canvas'));
     });
     document.body.appendChild(btn);
