@@ -3,7 +3,8 @@
 // Browser/WebView-only layout stabilizer for the floating node UI. This does not
 // own the studio state; it reads the existing DOM nodes and adds clearer section
 // grouping, safer spacing, focus state, and organic child-button fan expansion.
-// Root node placement is initial-only so artists can still drag controls.
+// Root node placement is initial-only so artists can still drag controls; manual
+// icon positions are remembered across sessions.
 'use strict';
 
 (function installInkFrameUILayout(){
@@ -15,6 +16,7 @@
   const ROOT_GAP = 112;
   const EDGE = 18;
   const PHI = 1.618033988749895;
+  const POS_KEY = 'inkframe.ui.rootPositions.v1';
   const $ = sel => document.querySelector(sel);
   const $$ = sel => Array.from(document.querySelectorAll(sel));
   const ready = fn => document.readyState === 'loading'
@@ -25,6 +27,7 @@
   let enabled = true;
   let lastMetrics = null;
   let rootPlacementApplied = false;
+  let savedRootPositionsApplied = false;
   let dragWatch = null;
 
   function ensureStyle(){
@@ -75,8 +78,79 @@
     return { section: 'Tools', side: 'left' };
   }
 
+  function nodeKey(node){
+    return (node.dataset.uiLabel || labelOf(node) || 'node').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function clampRootPosition(x, y){
+    const w = window.innerWidth || 1400;
+    const h = window.innerHeight || 900;
+    return {
+      x: Math.max(6, Math.min(w - 64, Number(x) || 0)),
+      y: Math.max(6, Math.min(h - 64, Number(y) || 0))
+    };
+  }
+
   function setNodePos(node, x, y){
-    node.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+    const p = clampRootPosition(x, y);
+    node.style.transform = `translate3d(${Math.round(p.x)}px,${Math.round(p.y)}px,0)`;
+  }
+
+  function readNodePos(node){
+    const t = node.style.transform || '';
+    const m = t.match(/translate3d\(([-0-9.]+)px,\s*([-0-9.]+)px/i) || t.match(/translate\(([-0-9.]+)px,\s*([-0-9.]+)px/i);
+    if (!m) return null;
+    const x = Number(m[1]);
+    const y = Number(m[2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return clampRootPosition(x, y);
+  }
+
+  function loadSavedPositions(){
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && parsed.nodes ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveRootPositions(){
+    try {
+      const data = { version: 1, viewport: (window.innerWidth || 0) + 'x' + (window.innerHeight || 0), nodes: {} };
+      roots().forEach(node => {
+        const pos = readNodePos(node);
+        const key = nodeKey(node);
+        if (pos && key) data.nodes[key] = pos;
+      });
+      localStorage.setItem(POS_KEY, JSON.stringify(data));
+      savedRootPositionsApplied = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function clearSavedPositions(){
+    try { localStorage.removeItem(POS_KEY); } catch (_) {}
+    savedRootPositionsApplied = false;
+  }
+
+  function applySavedPositions(rs){
+    const saved = loadSavedPositions();
+    if (!saved || !saved.nodes) return false;
+    let applied = 0;
+    rs.forEach(node => {
+      const pos = saved.nodes[nodeKey(node)];
+      if (!pos || !Number.isFinite(Number(pos.x)) || !Number.isFinite(Number(pos.y))) return;
+      setNodePos(node, pos.x, pos.y);
+      node.dataset.uiManual = '1';
+      applied++;
+    });
+    savedRootPositionsApplied = applied > 0;
+    return applied > 0;
   }
 
   function sectionSlots(nodes){
@@ -214,6 +288,7 @@
     lastMetrics = {
       enabled,
       rootPlacementApplied,
+      savedRootPositionsApplied,
       roots: rs.length,
       manualRoots,
       openRoots: focus.open.length,
@@ -240,7 +315,7 @@
     const rs = roots();
     if (!anyRootDragging(rs)) {
       if (!rootPlacementApplied && rs.length) {
-        sectionSlots(rs);
+        if (!applySavedPositions(rs)) sectionSlots(rs);
         rootPlacementApplied = true;
       }
       rs.forEach(layoutKidsFor);
@@ -262,6 +337,7 @@
     const lines = [
       'UI Layout: ' + (m.enabled ? 'active' : 'disabled'),
       'UI root placement applied: ' + (m.rootPlacementApplied ? 'yes' : 'no'),
+      'UI saved root positions: ' + (m.savedRootPositionsApplied ? 'yes' : 'no'),
       'UI child layout: ' + (m.childLayout || 'n/a'),
       'UI label backplates: ' + (m.labelBackplates || 'n/a'),
       'UI viewport: ' + m.viewport,
@@ -318,13 +394,19 @@
       }
     }, true);
     ['pointerup','pointercancel'].forEach(type => document.addEventListener(type, () => {
-      if (dragWatch && dragWatch.moved) setTimeout(scheduleLayout, 80);
+      if (dragWatch && dragWatch.moved) {
+        setTimeout(() => {
+          saveRootPositions();
+          scheduleLayout();
+        }, 120);
+      }
       dragWatch = null;
     }, true));
   }
 
   function resetPositions(){
     roots().forEach(n => delete n.dataset.uiManual);
+    clearSavedPositions();
     rootPlacementApplied = false;
     scheduleLayout();
     return true;
@@ -346,6 +428,7 @@
   window.InkFrameUILayout = {
     layout: scheduleLayout,
     resetPositions,
+    savePositions: saveRootPositions,
     enable(on){ enabled = on !== false; document.body.classList.toggle('inkframe-ui-layout', enabled); scheduleLayout(); return enabled; },
     sections(){ return roots().map(n => ({ label: labelOf(n), section: n.dataset.uiSection, side: n.dataset.uiSide, manual: n.dataset.uiManual === '1' })); },
     metrics(){ return lastMetrics || window.__inkframeUILayoutMetrics || null; },
