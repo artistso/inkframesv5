@@ -65,19 +65,22 @@ function catmullRom(t, p0, p1, p2, p3) {
 (function loadInkFrameBrowserModules(){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
-  if (window.__inkframeCircularCanvasScriptRequested) return;
-  window.__inkframeCircularCanvasScriptRequested = true;
+  if (window.__inkframeBrowserModulesRequested) return;
+  window.__inkframeBrowserModulesRequested = true;
 
-  const src = 'circular-canvas.js';
-  const alreadyLoaded = Array.from(document.scripts || []).some(script => {
-    const attr = script.getAttribute('src') || '';
-    return attr.endsWith(src);
-  });
-  if (alreadyLoaded) return;
+  function loadScript(src, name) {
+    const alreadyLoaded = Array.from(document.scripts || []).some(script => {
+      const attr = script.getAttribute('src') || '';
+      return attr.endsWith(src);
+    });
+    if (alreadyLoaded) return;
+    const script = document.createElement('script');
+    script.src = src;
+    script.defer = true;
+    script.dataset.inkframeModule = name || src.replace(/\.js$/, '');
+    document.head.appendChild(script);
+  }
 
-  const script = document.createElement('script');
-  script.src = src;
-  script.defer = true;
-  script.dataset.inkframeModule = 'circular-canvas';
-  document.head.appendChild(script);
+  loadScript('circular-canvas.js', 'circular-canvas');
+  loadScript('ui-layout.js', 'ui-layout');
 })();
