@@ -1,4 +1,8 @@
 // InkFrame — brush-engine math helpers
+// -----------------------------------------------------------------------------
+// Pure math used by the paint engine. No DOM, no canvas, no globals required for
+// the exported math API -- safe to unit-test in Node and safe to move to WASM
+// later without dragging the app state along.
 'use strict';
 
 const GRAIN_SIZE = 256;
@@ -56,16 +60,24 @@ function catmullRom(t, p0, p1, p2, p3) {
   if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 }
 
-// Keep circular canvas code isolated from paint math. The Android WebView and
-// browser build load this helper after brush math when the page is available;
-// Node/jsdom smoke tests safely skip it.
-(function loadCircularCanvasModule(){
+// Browser/WebView bootstrap for optional UI modules. Kept separate from the math
+// API above so Node tests still import only deterministic brush primitives.
+(function loadInkFrameBrowserModules(){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
-  if (document.querySelector('script[data-inkframe-circular-canvas]')) return;
+  if (window.__inkframeCircularCanvasScriptRequested) return;
+  window.__inkframeCircularCanvasScriptRequested = true;
+
+  const src = 'circular-canvas.js';
+  const alreadyLoaded = Array.from(document.scripts || []).some(script => {
+    const attr = script.getAttribute('src') || '';
+    return attr.endsWith(src);
+  });
+  if (alreadyLoaded) return;
+
   const script = document.createElement('script');
-  script.src = 'circular-canvas.js';
-  script.async = false;
-  script.dataset.inkframeCircularCanvas = '1';
+  script.src = src;
+  script.defer = true;
+  script.dataset.inkframeModule = 'circular-canvas';
   document.head.appendChild(script);
 })();
