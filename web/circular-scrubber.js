@@ -1,9 +1,11 @@
-// InkFrame — Circular Timeline Scrubber
+// InkFrame — Circular Timeline Scrubber + Shape Guard
 // -----------------------------------------------------------------------------
 // Adds a pointer-friendly scrub gesture to the Circular Canvas timeline without
 // blocking drawing. This module does not place an invisible hit target over the
 // canvas. It listens from the frame board, only claims input inside the thin
 // timeline annulus, and leaves canvas/stylus drawing as the highest-priority path.
+// It also guards the square↔circle transform button so it stays visible and reads
+// as an action: CIRCLE when square, SQUARE when circular.
 'use strict';
 
 (function installCircularTimelineScrubber(){
@@ -34,13 +36,32 @@
       'body.circular-canvas.scrubbing-timeline #inkframe-playhead-bead{filter:drop-shadow(0 0 18px rgba(255,240,243,.88));transform:scale(1.24)!important}',
       '#inkframe-scrub-hud{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:18;pointer-events:none;min-width:96px;text-align:center;padding:6px 10px;border-radius:999px;background:rgba(10,0,10,.46);border:1px solid rgba(255,240,243,.22);box-shadow:0 8px 24px rgba(10,0,10,.30),inset 0 1px 0 rgba(255,255,255,.12);font:900 10px/1 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000;opacity:0;transition:opacity .14s ease,transform .14s ease}',
       'body.circular-canvas.scrubbing-timeline #inkframe-scrub-hud{opacity:.90;transform:translate(-50%,-50%) scale(1.02)}',
-      '#inkframe-circle-toggle{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;z-index:2147483647!important}'
+      '#inkframe-circle-toggle{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;position:fixed!important;right:12px!important;bottom:58px!important;z-index:2147483647!important;min-width:86px!important;min-height:40px!important}',
+      'body.circular-canvas #frameGlass,body.circular-canvas canvas#c{transition:border-radius .34s cubic-bezier(.2,.9,.22,1),clip-path .34s cubic-bezier(.2,.9,.22,1),box-shadow .28s ease,background .28s ease!important}',
+      'body:not(.circular-canvas) #frameGlass,body:not(.circular-canvas) canvas#c{transition:border-radius .34s cubic-bezier(.2,.9,.22,1),clip-path .34s cubic-bezier(.2,.9,.22,1),box-shadow .28s ease,background .28s ease!important}'
     ].join('\n');
     document.head.appendChild(style);
   }
 
   function filledSlots(){
     return Array.from(document.querySelectorAll('#frameBoard .frameSlot.filled'));
+  }
+
+  function syncShapeToggle(){
+    const btn = $('inkframe-circle-toggle');
+    if (!btn) return false;
+    const isCircle = document.body.classList.contains('circular-canvas');
+    btn.textContent = isCircle ? 'SQUARE' : 'CIRCLE';
+    btn.dataset.shapeAction = isCircle ? 'square' : 'circle';
+    btn.setAttribute('aria-label', isCircle ? 'Transform circular canvas back to square' : 'Transform square canvas into circle');
+    btn.setAttribute('aria-pressed', String(isCircle));
+    btn.title = isCircle ? 'Tap to transform back to square. Long-press for debug geometry.' : 'Tap to transform into circle. Long-press for debug geometry.';
+    btn.style.display = 'block';
+    btn.style.visibility = 'visible';
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+    btn.style.zIndex = '2147483647';
+    return true;
   }
 
   function ensureVisuals(){
@@ -68,6 +89,7 @@
   }
 
   function positionZone(){
+    syncShapeToggle();
     if (!document.body.classList.contains('circular-canvas')) return;
     const ring = $('inkframe-timeline-ring');
     const board = $('frameBoard');
@@ -145,7 +167,7 @@
     dispatchSlot(slot, 'pointerup', ev);
     const hud = $('inkframe-scrub-hud');
     if (hud) hud.textContent = 'Frame ' + (index + 1);
-    lastMetrics = { active: true, lastFrame: index + 1, filledFrames: slots.length, dispatch: 'frameSlot pointerdown/up', mode: 'annulus-only' };
+    lastMetrics = { active: true, lastFrame: index + 1, filledFrames: slots.length, dispatch: 'frameSlot pointerdown/up', mode: 'annulus-only', toggleAction: document.body.classList.contains('circular-canvas') ? 'square' : 'circle' };
     window.__inkframeCircularScrubberMetrics = lastMetrics;
     if (window.InkFrameCircularCanvas && typeof window.InkFrameCircularCanvas.scheduleLayout === 'function') {
       window.InkFrameCircularCanvas.scheduleLayout(20);
@@ -168,6 +190,7 @@
     if (!board || wiredBoard === board) return;
     wiredBoard = board;
     board.addEventListener('pointerdown', ev => {
+      syncShapeToggle();
       if (!scrubFromEvent(ev)) return;
       scrubbing = true;
       lastIndex = -1;
@@ -201,10 +224,12 @@
 
   function reportLines(){
     const m = lastMetrics || window.__inkframeCircularScrubberMetrics;
-    if (!m) return ['Circular Scrubber: ready annulus-only'];
+    const action = document.body.classList.contains('circular-canvas') ? 'square' : 'circle';
+    if (!m) return ['Circular Scrubber: ready annulus-only', 'Circular transform action: ' + action];
     return [
       'Circular Scrubber: active',
       'Circular scrubber mode: ' + (m.mode || 'annulus-only'),
+      'Circular transform action: ' + action,
       'Circular scrubber last frame: ' + m.lastFrame,
       'Circular scrubber filled frames: ' + m.filledFrames,
       'Circular scrubber dispatch: ' + m.dispatch
@@ -240,17 +265,18 @@
     const board = $('frameBoard') || document.body;
     wireBoard(board);
     if (typeof MutationObserver !== 'undefined') {
-      new MutationObserver(schedule).observe(board, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+      new MutationObserver(() => { syncShapeToggle(); schedule(); }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
     }
     window.addEventListener('resize', schedule);
     window.addEventListener('orientationchange', () => setTimeout(schedule, 220));
-    for (let i = 1; i <= 12; i++) setTimeout(schedule, i * 200);
+    for (let i = 1; i <= 16; i++) setTimeout(() => { syncShapeToggle(); schedule(); }, i * 200);
     for (let i = 1; i <= 10; i++) setTimeout(bridgeIntoTesterReport, i * 250);
     bridgeIntoTesterReport();
   }
 
   window.InkFrameCircularScrubber = {
     layout: schedule,
+    syncToggle: syncShapeToggle,
     metrics(){ return lastMetrics || window.__inkframeCircularScrubberMetrics || null; },
     reportLines
   };
