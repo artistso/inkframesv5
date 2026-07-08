@@ -1,7 +1,8 @@
-// InkFrame — UI layout zones
+// InkFrame — UI section layout module
 // -----------------------------------------------------------------------------
-// Runtime layout manager for the floating circular controls. It keeps the large
-// single-file studio intact while giving the artist clearer sections and spacing.
+// Browser/WebView-only layout stabilizer for the floating node UI. This does not
+// own the studio state; it reads the existing DOM nodes and adds clearer section
+// grouping, safer spacing, and denser child-button packing.
 'use strict';
 
 (function installInkFrameUILayout(){
@@ -10,143 +11,154 @@
   if (window.__inkframeUILayoutInstalled) return;
   window.__inkframeUILayoutInstalled = true;
 
-  const $ = id => document.getElementById(id);
-  const clamp = (min, value, max) => Math.max(min, Math.min(max, value));
+  const ROOT_GAP = 112;
+  const EDGE = 18;
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
   const ready = fn => document.readyState === 'loading'
-    ? document.addEventListener('DOMContentLoaded', fn, { once:true })
+    ? document.addEventListener('DOMContentLoaded', fn, { once: true })
     : fn();
 
-  const SECTIONS = {
-    draw: { title:'DRAW', labels:['Tools','Line','Select'], side:'left' },
-    style:{ title:'STYLE', labels:['Color','FX','Themes'], side:'right' },
-    command:{ title:'COMMAND', labels:['Actions'], side:'right' },
-    project:{ title:'PROJECT', labels:['Studio','Gallery'], side:'bottom' },
-    animate:{ title:'ANIMATE', labels:['Frames','Layers'], side:'bottom' }
-  };
-
   let layoutQueued = false;
-  let layoutOn = true;
-
-  function labelOf(node){
-    const lbl = node && node.querySelector && node.querySelector('.orb .lbl, .lbl');
-    return lbl ? String(lbl.textContent || '').trim() : '';
-  }
-
-  function nodes(){
-    return Array.from(document.querySelectorAll('.node')).filter(n => labelOf(n));
-  }
-
-  function classify(label){
-    for (const [key, section] of Object.entries(SECTIONS)) {
-      if (section.labels.includes(label)) return key;
-    }
-    return 'other';
-  }
+  let enabled = true;
 
   function ensureStyle(){
-    if ($('inkframe-ui-layout-style')) return;
+    if (document.getElementById('inkframe-ui-layout-style')) return;
     const style = document.createElement('style');
     style.id = 'inkframe-ui-layout-style';
     style.textContent = [
-      'body.inkframe-ui-zones .node{transition:transform .24s cubic-bezier(.18,.9,.24,1),opacity .18s ease,filter .18s ease}',
-      'body.inkframe-ui-zones .node.ui-zone-managed>.orb{width:54px;height:54px}',
-      'body.inkframe-ui-zones .node.ui-zone-managed>.orb .lbl{top:58px;padding:3px 7px;border-radius:999px;background:rgba(10,0,10,.46);border:1px solid rgba(255,240,243,.16);box-shadow:0 4px 12px rgba(10,0,10,.22)}',
-      'body.inkframe-ui-zones .node.ui-zone-managed.open>.orb .lbl{opacity:1;transform:translateX(-50%) translateY(-2px);background:rgba(187,0,55,.36)}',
-      'body.inkframe-ui-zones .kid{width:44px;height:44px;margin:-22px 0 0 -22px}',
-      'body.inkframe-ui-zones .branch.kidwrap{width:44px!important;height:44px!important;margin:-22px 0 0 -22px!important}',
-      '.inkframe-ui-section-label{position:fixed;z-index:19;pointer-events:none;min-width:74px;text-align:center;padding:5px 9px;border-radius:999px;border:1px solid rgba(255,240,243,.22);background:rgba(10,0,10,.40);box-shadow:0 7px 20px rgba(10,0,10,.28),inset 0 1px 0 rgba(255,255,255,.10);color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);font:850 9px/1 system-ui,sans-serif;letter-spacing:.18em;opacity:.74;transition:left .22s ease,top .22s ease,opacity .16s ease}',
-      'body.zen .inkframe-ui-section-label{opacity:.18}',
-      'body.inkframe-ui-zones .node.dragging{transition:none!important}',
-      '@media (max-width:900px){body.inkframe-ui-zones .node.ui-zone-managed>.orb{width:50px;height:50px}.inkframe-ui-section-label{font-size:8px;min-width:62px}}'
+      'body.inkframe-ui-layout .node{transition:transform .22s cubic-bezier(.2,.9,.22,1),opacity .18s ease}',
+      'body.inkframe-ui-layout .orb{width:54px;height:54px}',
+      'body.inkframe-ui-layout .orb .lbl{top:58px;font-size:9px;letter-spacing:.13em;padding:3px 7px;border-radius:999px;background:rgba(10,0,10,.42);border:1px solid rgba(255,240,243,.18);box-shadow:0 4px 12px rgba(10,0,10,.24)}',
+      'body.inkframe-ui-layout .node[data-ui-section]::before{content:attr(data-ui-section);position:absolute;left:50%;top:-22px;transform:translateX(-50%);min-width:72px;text-align:center;padding:4px 8px;border-radius:999px;font:850 8px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;background:rgba(10,0,10,.46);border:1px solid rgba(255,240,243,.20);box-shadow:0 5px 14px rgba(10,0,10,.24);pointer-events:none;opacity:.82;text-shadow:0 1px 2px #000}',
+      'body.inkframe-ui-layout .node.open[data-ui-section]::before{opacity:1;background:rgba(187,0,55,.34);border-color:rgba(255,240,243,.38)}',
+      'body.inkframe-ui-layout .kids{z-index:40}',
+      'body.inkframe-ui-layout .kid,body.inkframe-ui-layout .branch{width:42px;height:42px;margin:-21px 0 0 -21px}',
+      'body.inkframe-ui-layout .kid .glyph svg{width:19px;height:19px}',
+      'body.inkframe-ui-layout .kid .glyph{font-size:16px}',
+      'body.inkframe-ui-layout .kid .sub{font-size:8px;letter-spacing:.08em;max-width:58px;line-height:1.05;text-align:center;text-shadow:0 1px 2px #000,0 0 8px rgba(0,0,0,.50)}',
+      'body.inkframe-ui-layout .node.open > .kids > .kid,body.inkframe-ui-layout .branch.open > .kids > .kid{transform:translate(var(--dx,0),var(--dy,0)) scale(var(--ui-scale,1))}',
+      'body.inkframe-ui-layout .node.open > .kids > .kidwrap{transform:translate(var(--dx,0),var(--dy,0)) scale(var(--ui-scale,1))}',
+      'body.inkframe-ui-layout .kid.on{box-shadow:0 0 0 1.5px rgba(255,255,255,.9),0 0 18px rgba(187,0,55,.70),inset 0 1px 0 rgba(255,240,243,.64)!important}',
+      '#inkframe-ui-map{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:18;pointer-events:none;display:flex;gap:7px;padding:5px 8px;border-radius:999px;background:rgba(10,0,10,.28);border:1px solid rgba(255,240,243,.14);box-shadow:0 5px 16px rgba(10,0,10,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:.70}',
+      '#inkframe-ui-map span{font:850 8px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000;opacity:.72}',
+      'body.zen #inkframe-ui-map{opacity:0}'
     ].join('\n');
     document.head.appendChild(style);
   }
 
-  function ensureLabels(){
-    let layer = $('inkframe-ui-section-layer');
-    if (!layer) {
-      layer = document.createElement('div');
-      layer.id = 'inkframe-ui-section-layer';
-      document.body.appendChild(layer);
-    }
-    for (const [key, section] of Object.entries(SECTIONS)) {
-      let label = $('inkframe-ui-section-' + key);
-      if (!label) {
-        label = document.createElement('div');
-        label.id = 'inkframe-ui-section-' + key;
-        label.className = 'inkframe-ui-section-label';
-        label.textContent = section.title;
-        layer.appendChild(label);
+  function labelOf(node){
+    const lbl = node.querySelector(':scope > .orb .lbl');
+    return (lbl && lbl.textContent ? lbl.textContent.trim() : '').replace(/\s+/g, ' ');
+  }
+
+  function roots(){
+    return $$('.node').filter(node => node.querySelector(':scope > .orb .lbl'));
+  }
+
+  function classify(label){
+    const key = label.toLowerCase();
+    if (['tools','line','select'].includes(key)) return { section: 'Create', side: 'left' };
+    if (['color','actions','fx'].includes(key)) return { section: 'Adjust', side: 'right' };
+    if (['frames','layers'].includes(key)) return { section: 'Animate', side: 'bottom' };
+    if (['studio','gallery','theme','themes','help','project'].includes(key)) return { section: 'Studio', side: 'top' };
+    return { section: 'Tools', side: 'left' };
+  }
+
+  function setNodePos(node, x, y){
+    node.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+  }
+
+  function sectionSlots(nodes){
+    const h = window.innerHeight || 900;
+    const w = window.innerWidth || 1400;
+    const left = nodes.filter(n => classify(labelOf(n)).side === 'left');
+    const right = nodes.filter(n => classify(labelOf(n)).side === 'right');
+    const bottom = nodes.filter(n => classify(labelOf(n)).side === 'bottom');
+    const top = nodes.filter(n => classify(labelOf(n)).side === 'top');
+
+    left.forEach((node, i) => setNodePos(node, EDGE, 86 + i * ROOT_GAP));
+    right.forEach((node, i) => setNodePos(node, w - 72, 86 + i * ROOT_GAP));
+    bottom.forEach((node, i) => {
+      const total = bottom.length;
+      const step = total > 1 ? Math.min(112, (w - 220) / (total - 1)) : 0;
+      const start = w / 2 - step * (total - 1) / 2;
+      setNodePos(node, Math.max(84, Math.min(w - 84, start + i * step)), h - 88);
+    });
+    top.forEach((node, i) => setNodePos(node, 160 + i * 96, 24));
+  }
+
+  function markSections(){
+    roots().forEach(node => {
+      const label = labelOf(node);
+      const info = classify(label);
+      node.dataset.uiLabel = label || 'Node';
+      node.dataset.uiSection = info.section;
+      node.dataset.uiSide = info.side;
+    });
+  }
+
+  function layoutKidsFor(node){
+    if (!node.classList.contains('open')) return;
+    const kidsWrap = node.querySelector(':scope > .kids');
+    const orb = node.querySelector(':scope > .orb');
+    if (!kidsWrap || !orb) return;
+    const kids = Array.from(kidsWrap.children).filter(k => !k._pinned);
+    const n = kids.length;
+    if (!n) return;
+
+    const side = node.dataset.uiSide || classify(labelOf(node)).side;
+    const dense = n > 8;
+    const item = dense ? 48 : 56;
+    const cols = n > 12 ? 4 : n > 8 ? 3 : n > 5 ? 2 : 1;
+    const rows = Math.ceil(n / cols);
+    const outwardX = side === 'right' ? -1 : side === 'left' ? 1 : 0;
+    const outwardY = side === 'bottom' ? -1 : side === 'top' ? 1 : 0;
+    const baseX = outwardX * 84;
+    const baseY = outwardY * 84;
+    const fan = side === 'left' || side === 'right';
+
+    kids.forEach((kid, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      let dx, dy;
+      if (fan) {
+        dx = baseX + outwardX * col * item;
+        dy = (row - (rows - 1) / 2) * item;
+      } else {
+        dx = (col - (cols - 1) / 2) * item;
+        dy = baseY + outwardY * row * item;
       }
-    }
+      kid.style.setProperty('--dx', dx.toFixed(1) + 'px');
+      kid.style.setProperty('--dy', dy.toFixed(1) + 'px');
+      kid.style.setProperty('--ui-scale', dense ? '.92' : '1');
+      kid.style.transitionDelay = (Math.min(i, 14) * 18) + 'ms';
+    });
   }
 
-  function moveNode(node, x, y){
-    node.classList.add('ui-zone-managed');
-    if (typeof node._setPos === 'function') node._setPos(Math.round(x), Math.round(y));
-    else node.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
-    if (node.classList.contains('open') && typeof node._relayout === 'function') {
-      requestAnimationFrame(() => node._relayout());
-    }
-  }
-
-  function placeSectionLabel(key, x, y){
-    const label = $('inkframe-ui-section-' + key);
-    if (!label) return;
-    label.style.left = Math.round(x) + 'px';
-    label.style.top = Math.round(y) + 'px';
+  function ensureMap(){
+    if (document.getElementById('inkframe-ui-map')) return;
+    const map = document.createElement('div');
+    map.id = 'inkframe-ui-map';
+    ['Create','Adjust','Animate','Studio'].forEach(name => {
+      const s = document.createElement('span');
+      s.textContent = name;
+      map.appendChild(s);
+    });
+    document.body.appendChild(map);
   }
 
   function layout(){
-    if (!layoutOn) return;
-    ensureStyle();
-    ensureLabels();
-    document.body.classList.add('inkframe-ui-zones');
-
-    const all = nodes();
-    if (!all.length) return;
-    const byLabel = new Map(all.map(n => [labelOf(n), n]));
-    const vw = window.innerWidth || 1024;
-    const vh = window.innerHeight || 768;
-    const orb = vw < 900 ? 50 : 54;
-    const gap = clamp(68, Math.round(vh * 0.105), 132);
-    const top = clamp(84, Math.round(vh * 0.12), 150);
-    const leftX = clamp(14, Math.round(vw * 0.018), 34);
-    const rightX = Math.max(leftX, vw - orb - clamp(22, Math.round(vw * 0.026), 46));
-    const bottomY = Math.max(top + gap * 3, vh - orb - clamp(24, Math.round(vh * 0.038), 58));
-    const bottomGap = clamp(94, Math.round(vw * 0.105), 178);
-    const projectStartX = clamp(24, Math.round(vw * 0.045), 86);
-    const animateStartX = clamp(projectStartX + bottomGap * 2.15, Math.round(vw * 0.40), vw - bottomGap * 2.2);
-
-    const draw = ['Tools','Line','Select'];
-    const style = ['Color','FX','Themes'];
-    const command = ['Actions'];
-    const project = ['Studio','Gallery'];
-    const animate = ['Frames','Layers'];
-
-    draw.forEach((name, i) => { const n = byLabel.get(name); if (n) moveNode(n, leftX, top + gap * i); });
-    style.forEach((name, i) => { const n = byLabel.get(name); if (n) moveNode(n, rightX, top + gap * i); });
-    command.forEach((name, i) => { const n = byLabel.get(name); if (n) moveNode(n, rightX, top + gap * (style.length + 0.9 + i)); });
-    project.forEach((name, i) => { const n = byLabel.get(name); if (n) moveNode(n, projectStartX + bottomGap * i, bottomY); });
-    animate.forEach((name, i) => { const n = byLabel.get(name); if (n) moveNode(n, animateStartX + bottomGap * i, bottomY); });
-
-    placeSectionLabel('draw', leftX - 8, top - 42);
-    placeSectionLabel('style', rightX - 16, top - 42);
-    placeSectionLabel('command', rightX - 22, top + gap * style.length + 12);
-    placeSectionLabel('project', projectStartX + 6, bottomY - 46);
-    placeSectionLabel('animate', animateStartX + 2, bottomY - 46);
-
-    window.__inkframeUILayoutMetrics = {
-      mode: 'zones',
-      viewport: `${vw}x${vh}`,
-      managedNodes: all.map(labelOf).filter(Boolean),
-      leftX, rightX, top, gap, bottomY, bottomGap,
-      sections: Object.fromEntries(Object.entries(SECTIONS).map(([k, v]) => [k, v.labels]))
-    };
+    if (!enabled) return;
+    document.body.classList.add('inkframe-ui-layout');
+    markSections();
+    const rs = roots();
+    sectionSlots(rs);
+    rs.forEach(layoutKidsFor);
+    ensureMap();
   }
 
-  function scheduleLayout(delay){
-    if (delay) { setTimeout(scheduleLayout, delay); return; }
+  function scheduleLayout(){
     if (layoutQueued) return;
     layoutQueued = true;
     const raf = window.requestAnimationFrame || (fn => setTimeout(fn, 16));
@@ -154,26 +166,19 @@
   }
 
   function boot(){
-    scheduleLayout(0);
-    for (let i = 1; i <= 12; i++) setTimeout(() => scheduleLayout(0), i * 180);
-    window.addEventListener('resize', () => scheduleLayout(80));
-    window.addEventListener('orientationchange', () => scheduleLayout(240));
-    if (typeof MutationObserver !== 'undefined') {
-      new MutationObserver(mutations => {
-        if (mutations.some(m => m.addedNodes && m.addedNodes.length)) scheduleLayout(60);
-      }).observe(document.body, { childList:true, subtree:true });
-    }
+    ensureStyle();
+    scheduleLayout();
+    const mo = new MutationObserver(scheduleLayout);
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', scheduleLayout);
+    window.addEventListener('orientationchange', () => setTimeout(scheduleLayout, 220));
+    for (let i = 1; i <= 12; i++) setTimeout(scheduleLayout, i * 220);
   }
 
   window.InkFrameUILayout = {
-    layout: () => { layoutOn = true; scheduleLayout(0); },
-    enabled: value => {
-      if (typeof value === 'boolean') layoutOn = value;
-      document.body.classList.toggle('inkframe-ui-zones', layoutOn);
-      if (layoutOn) scheduleLayout(0);
-      return layoutOn;
-    },
-    metrics: () => window.__inkframeUILayoutMetrics || null
+    layout: scheduleLayout,
+    enable(on){ enabled = on !== false; document.body.classList.toggle('inkframe-ui-layout', enabled); scheduleLayout(); return enabled; },
+    sections(){ return roots().map(n => ({ label: labelOf(n), section: n.dataset.uiSection, side: n.dataset.uiSide })); }
   };
 
   ready(boot);
