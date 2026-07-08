@@ -45,6 +45,7 @@ jobs:
           node --check tools/bump-version.mjs
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
+          node web/tests/brush-engine-smoke.mjs
           node web/tests/boot-smoke.mjs
 
   test:
