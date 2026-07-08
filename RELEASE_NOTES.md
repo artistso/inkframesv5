@@ -17,9 +17,7 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 
 ## What's changed
 
-## Recovery validation
-
-- Triggered a clean drawing-recovery APK workflow after disabling the circular timeline scrubber and adding safe square/circle transform controls.
+_No user-facing changes since the last release._
 
 ## Minimum smoke test
 
