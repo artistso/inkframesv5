@@ -83,4 +83,5 @@ function catmullRom(t, p0, p1, p2, p3) {
 
   loadScript('circular-canvas.js', 'circular-canvas');
   loadScript('ui-layout.js', 'ui-layout');
+  loadScript('ui-icon-polish.js', 'ui-icon-polish');
 })();
