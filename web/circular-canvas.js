@@ -23,6 +23,7 @@
   let layoutTimer = 0;
   let lastCurIndex = 0;
   let lastFrameTotal = 0;
+  let debugOn = false;
 
   function scheduleLayout(delay) {
     if (layoutRunning) return;
@@ -69,7 +70,15 @@
       '#inkframe-circle-toggle{position:fixed;right:12px;bottom:58px;z-index:2147483646;min-width:78px;min-height:38px;padding:9px 12px;border-radius:999px;border:1px solid rgba(255,240,243,.55);background:linear-gradient(160deg,rgba(42,0,26,.92),rgba(187,0,55,.86));color:#fff0f3;font:800 11px/1 system-ui,sans-serif;letter-spacing:.14em;box-shadow:0 8px 26px rgba(20,0,14,.46);touch-action:manipulation}',
       'body.circular-canvas #inkframe-circle-toggle{background:linear-gradient(160deg,rgba(255,240,243,.92),rgba(187,0,55,.92));color:#2a001a}',
       '#inkframe-shape-badge{position:absolute;left:50%;top:-32px;transform:translateX(-50%);z-index:14;pointer-events:none;min-width:132px;text-align:center;padding:5px 10px;border-radius:999px;opacity:0;transition:opacity .18s ease,transform .18s ease;font:850 9px/1 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.44);border:1px solid rgba(255,240,243,.20);box-shadow:0 5px 16px rgba(10,0,10,.28),inset 0 1px 0 rgba(255,255,255,.12)}',
-      'body.circular-canvas #inkframe-shape-badge{opacity:.86;transform:translateX(-50%) translateY(-2px)}'
+      'body.circular-canvas #inkframe-shape-badge{opacity:.86;transform:translateX(-50%) translateY(-2px)}',
+      '#inkframe-circular-debug{position:absolute;inset:0;z-index:2147483000;pointer-events:none;display:none;font:800 9px/1.2 system-ui,sans-serif;color:#fff}',
+      'body.inkframe-circular-debug #inkframe-circular-debug{display:block}',
+      '#inkframe-circular-debug .dbg{position:absolute;box-sizing:border-box;border-radius:50%;mix-blend-mode:screen}',
+      '#inkframe-circular-debug .dbg-circle{border:2px solid rgba(0,255,255,.95);box-shadow:0 0 12px rgba(0,255,255,.55)}',
+      '#inkframe-circular-debug .dbg-orbit{border:1px dashed rgba(255,255,0,.95);box-shadow:0 0 10px rgba(255,255,0,.42)}',
+      '#inkframe-circular-debug .dbg-ring{border:1px solid rgba(0,255,100,.90);box-shadow:0 0 8px rgba(0,255,100,.38)}',
+      '#inkframe-circular-debug .dbg-center{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(187,0,55,.9),0 0 14px rgba(255,255,255,.9)}',
+      '#inkframe-circular-debug .dbg-label{position:absolute;left:8px;top:8px;max-width:260px;padding:7px 9px;border-radius:10px;background:rgba(10,0,10,.72);border:1px solid rgba(255,240,243,.32);box-shadow:0 6px 18px rgba(0,0,0,.35);white-space:pre-line;text-shadow:0 1px 2px #000}'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -101,6 +110,68 @@
   }
 
   function slots(){ return Array.prototype.slice.call(document.querySelectorAll('#frameBoard .frameSlot')); }
+
+  function ensureDebugLayer(){
+    const board = $('frameBoard');
+    if (!board) return null;
+    let layer = $('inkframe-circular-debug');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = 'inkframe-circular-debug';
+      ['circle','orbit','ring'].forEach(name => {
+        const box = document.createElement('div');
+        box.className = 'dbg dbg-' + name;
+        box.dataset.name = name;
+        layer.appendChild(box);
+      });
+      const center = document.createElement('div');
+      center.className = 'dbg-center';
+      layer.appendChild(center);
+      const label = document.createElement('div');
+      label.className = 'dbg-label';
+      layer.appendChild(label);
+      board.appendChild(layer);
+    } else if (layer.parentElement !== board) {
+      board.appendChild(layer);
+    }
+    return layer;
+  }
+
+  function positionCircleBox(node, cx, cy, radius) {
+    if (!node) return;
+    const size = radius * 2;
+    setStyle(node, 'left', (cx - radius) + 'px');
+    setStyle(node, 'top', (cy - radius) + 'px');
+    setStyle(node, 'width', size + 'px');
+    setStyle(node, 'height', size + 'px');
+  }
+
+  function updateDebugLayer(orbit, circle, metrics) {
+    if (!debugOn) return;
+    const layer = ensureDebugLayer();
+    if (!layer) return;
+    positionCircleBox(layer.querySelector('.dbg-circle'), circle.cx, circle.cy, orbit.canvasRadius);
+    positionCircleBox(layer.querySelector('.dbg-orbit'), orbit.cx, orbit.cy, orbit.orbitRadius);
+    positionCircleBox(layer.querySelector('.dbg-ring'), orbit.cx, orbit.cy, orbit.ringRadius);
+    const center = layer.querySelector('.dbg-center');
+    if (center) {
+      setStyle(center, 'left', orbit.cx + 'px');
+      setStyle(center, 'top', orbit.cy + 'px');
+    }
+    const label = layer.querySelector('.dbg-label');
+    if (label) {
+      label.textContent = [
+        'Circular debug',
+        'anchor: ' + metrics.anchorLayer,
+        'canvas: ' + metrics.canvasCss,
+        'visible: ' + metrics.visibleCircleCss,
+        'center: ' + Math.round(orbit.cx) + ',' + Math.round(orbit.cy),
+        'orbit/ring: ' + metrics.orbitRadius + '/' + metrics.ringRadius,
+        'slot: ' + metrics.slotSize,
+        'frames: ' + metrics.frames + ' cur ' + metrics.currentFrameSlot
+      ].join('\n');
+    }
+  }
 
   function saveSquare(slot){
     if (slot.dataset.circleSaved === '1') return;
@@ -252,11 +323,13 @@
         progressDeg: Number(progressDeg.toFixed(2)),
         canvasCss: Math.round(cRect.width) + 'x' + Math.round(cRect.height),
         visibleCircleCss: Math.round(circle.width) + 'x' + Math.round(circle.height),
-        anchorLayer: '#frameBoard'
+        anchorLayer: '#frameBoard',
+        debug: debugOn
       };
       window.__inkframeCircularMetrics = metrics;
       window.timelineFrames = Array.from({ length: total }, (_, i) => i + 1);
       window.currentFrame = curIndex + 1;
+      updateDebugLayer(orbit, circle, metrics);
     } finally {
       layoutRunning = false;
     }
@@ -288,6 +361,14 @@
       btn.title = on ? 'Circular canvas on' : 'Square canvas on';
     }
     if (on) scheduleLayout(0); else restoreSquareBoard();
+  }
+
+  function setDebug(on) {
+    debugOn = !!on;
+    document.body.classList.toggle('inkframe-circular-debug', debugOn);
+    if (debugOn) ensureDebugLayer();
+    scheduleLayout(0);
+    return debugOn;
   }
 
   function ensureButton(){
@@ -343,6 +424,7 @@
 
   window.InkFrameCircularCanvas = {
     scheduleLayout,
+    debug: setDebug,
     metrics: () => window.__inkframeCircularMetrics || null,
     reportLines: () => {
       const m = window.__inkframeCircularMetrics;
@@ -350,6 +432,7 @@
       return [
         'Circular Canvas: active',
         'Circular anchor: ' + m.anchorLayer,
+        'Circular debug: ' + (m.debug ? 'on' : 'off'),
         'Visible circle: ' + m.visibleCircleCss,
         'Canvas CSS: ' + m.canvasCss,
         'Frames: ' + m.frames,
