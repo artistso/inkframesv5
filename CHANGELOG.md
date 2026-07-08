@@ -6,9 +6,6 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
-### Recovery validation
-- Triggered a clean drawing-recovery APK workflow after disabling the circular timeline scrubber and adding safe square/circle transform controls.
-
 ## [0.1.2] - 2026-07-07
 
 ### Brush engine — stabilizer overhaul
