@@ -1,9 +1,9 @@
 // InkFrame — Circular Timeline Scrubber
 // -----------------------------------------------------------------------------
-// Adds a pointer-friendly scrub zone over the Circular Canvas timeline. This is a
-// thin interaction layer: it does not own frame state. It computes the closest
-// filled frame from the circular ring angle, then dispatches normal frame-slot
-// pointer events so InkFrame's native timeline logic remains authoritative.
+// Adds a pointer-friendly scrub gesture to the Circular Canvas timeline without
+// blocking drawing. This module does not place an invisible hit target over the
+// canvas. It listens from the frame board, only claims input inside the thin
+// timeline annulus, and leaves canvas/stylus drawing as the highest-priority path.
 'use strict';
 
 (function installCircularTimelineScrubber(){
@@ -16,6 +16,7 @@
   let scrubbing = false;
   let lastIndex = -1;
   let lastMetrics = null;
+  let wiredBoard = null;
 
   const $ = id => document.getElementById(id);
   const ready = fn => document.readyState === 'loading'
@@ -27,13 +28,13 @@
     const style = document.createElement('style');
     style.id = 'inkframe-circular-scrubber-style';
     style.textContent = [
-      '#inkframe-timeline-scrubber-zone{position:absolute;z-index:14;border-radius:50%;pointer-events:none;opacity:0;touch-action:none;transition:opacity .16s ease,left .16s ease,top .16s ease,width .16s ease,height .16s ease}',
-      'body.circular-canvas #inkframe-timeline-scrubber-zone{pointer-events:auto}',
+      '#inkframe-timeline-scrubber-zone{position:absolute;z-index:14;border-radius:50%;pointer-events:none!important;opacity:0;touch-action:none;transition:opacity .16s ease,left .16s ease,top .16s ease,width .16s ease,height .16s ease}',
       'body.circular-canvas #inkframe-timeline-scrubber-zone::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from -90deg,rgba(255,240,243,.26),rgba(187,0,55,.30),rgba(255,240,243,.18));-webkit-mask:radial-gradient(circle,transparent 62%,#000 66%,#000 78%,transparent 82%);mask:radial-gradient(circle,transparent 62%,#000 66%,#000 78%,transparent 82%);opacity:.0;transition:opacity .16s ease;filter:drop-shadow(0 0 12px rgba(187,0,55,.20))}',
       'body.circular-canvas.scrubbing-timeline #inkframe-timeline-scrubber-zone::before{opacity:.78}',
       'body.circular-canvas.scrubbing-timeline #inkframe-playhead-bead{filter:drop-shadow(0 0 18px rgba(255,240,243,.88));transform:scale(1.24)!important}',
       '#inkframe-scrub-hud{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:18;pointer-events:none;min-width:96px;text-align:center;padding:6px 10px;border-radius:999px;background:rgba(10,0,10,.46);border:1px solid rgba(255,240,243,.22);box-shadow:0 8px 24px rgba(10,0,10,.30),inset 0 1px 0 rgba(255,255,255,.12);font:900 10px/1 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000;opacity:0;transition:opacity .14s ease,transform .14s ease}',
-      'body.circular-canvas.scrubbing-timeline #inkframe-scrub-hud{opacity:.90;transform:translate(-50%,-50%) scale(1.02)}'
+      'body.circular-canvas.scrubbing-timeline #inkframe-scrub-hud{opacity:.90;transform:translate(-50%,-50%) scale(1.02)}',
+      '#inkframe-circle-toggle{display:block!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;z-index:2147483647!important}'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -42,7 +43,7 @@
     return Array.from(document.querySelectorAll('#frameBoard .frameSlot.filled'));
   }
 
-  function ensureZone(){
+  function ensureVisuals(){
     const board = $('frameBoard');
     if (!board) return null;
     let zone = $('inkframe-timeline-scrubber-zone');
@@ -50,7 +51,6 @@
       zone = document.createElement('div');
       zone.id = 'inkframe-timeline-scrubber-zone';
       board.appendChild(zone);
-      wireZone(zone);
     } else if (zone.parentElement !== board) {
       board.appendChild(zone);
     }
@@ -63,6 +63,7 @@
     } else if (hud.parentElement !== board) {
       board.appendChild(hud);
     }
+    wireBoard(board);
     return zone;
   }
 
@@ -70,7 +71,7 @@
     if (!document.body.classList.contains('circular-canvas')) return;
     const ring = $('inkframe-timeline-ring');
     const board = $('frameBoard');
-    const zone = ensureZone();
+    const zone = ensureVisuals();
     const hud = $('inkframe-scrub-hud');
     if (!ring || !board || !zone) return;
     const rr = ring.getBoundingClientRect();
@@ -86,19 +87,32 @@
     }
   }
 
-  function indexFromEvent(ev){
-    const zone = $('inkframe-timeline-scrubber-zone');
+  function isProtectedDrawingTarget(ev){
+    const target = ev && ev.target;
+    if (!target || !target.closest) return false;
+    if (target === $('c') || target.closest('canvas#c')) return true;
+    if (target.closest('#inkframe-circle-toggle,#inkframe-test-report-btn,button,input,textarea,.orb,.kid,.branch')) return true;
+    return false;
+  }
+
+  function annulusInfoFromEvent(ev){
+    const ring = $('inkframe-timeline-ring');
     const slots = filledSlots();
-    if (!zone || !slots.length) return -1;
-    const r = zone.getBoundingClientRect();
+    if (!ring || !slots.length) return null;
+    const r = ring.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
     const cx = r.left + r.width / 2;
     const cy = r.top + r.height / 2;
     const dx = ev.clientX - cx;
     const dy = ev.clientY - cy;
-    const minRing = Math.min(r.width, r.height) * 0.26;
-    if ((dx * dx + dy * dy) < (minRing * minRing)) return -1;
+    const radius = Math.min(r.width, r.height) / 2;
+    const dist = Math.hypot(dx, dy);
+    const inner = radius * 0.62;
+    const outer = radius * 0.84;
+    if (dist < inner || dist > outer) return null;
     const normalized = (Math.atan2(dy, dx) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
-    return Math.max(0, Math.min(slots.length - 1, Math.round((normalized / (Math.PI * 2)) * slots.length) % slots.length));
+    const index = Math.max(0, Math.min(slots.length - 1, Math.round((normalized / (Math.PI * 2)) * slots.length) % slots.length));
+    return { index, slots };
   }
 
   function dispatchSlot(slot, type, ev){
@@ -123,16 +137,15 @@
     slot.dispatchEvent(event);
   }
 
-  function activateIndex(index, ev){
-    const slots = filledSlots();
-    const slot = slots[index];
+  function activateIndex(index, slots, ev){
+    const slot = slots && slots[index];
     if (!slot || index === lastIndex) return;
     lastIndex = index;
     dispatchSlot(slot, 'pointerdown', ev);
     dispatchSlot(slot, 'pointerup', ev);
     const hud = $('inkframe-scrub-hud');
     if (hud) hud.textContent = 'Frame ' + (index + 1);
-    lastMetrics = { active: true, lastFrame: index + 1, filledFrames: slots.length, dispatch: 'frameSlot pointerdown/up' };
+    lastMetrics = { active: true, lastFrame: index + 1, filledFrames: slots.length, dispatch: 'frameSlot pointerdown/up', mode: 'annulus-only' };
     window.__inkframeCircularScrubberMetrics = lastMetrics;
     if (window.InkFrameCircularCanvas && typeof window.InkFrameCircularCanvas.scheduleLayout === 'function') {
       window.InkFrameCircularCanvas.scheduleLayout(20);
@@ -140,40 +153,39 @@
   }
 
   function scrubFromEvent(ev){
-    const idx = indexFromEvent(ev);
-    if (idx < 0) return;
+    if (!document.body.classList.contains('circular-canvas')) return false;
+    if (isProtectedDrawingTarget(ev)) return false;
+    const info = annulusInfoFromEvent(ev);
+    if (!info) return false;
     ev.preventDefault();
     ev.stopPropagation();
-    activateIndex(idx, ev);
+    if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+    activateIndex(info.index, info.slots, ev);
+    return true;
   }
 
-  function wireZone(zone){
-    zone.addEventListener('pointerdown', ev => {
-      if (!document.body.classList.contains('circular-canvas')) return;
+  function wireBoard(board){
+    if (!board || wiredBoard === board) return;
+    wiredBoard = board;
+    board.addEventListener('pointerdown', ev => {
+      if (!scrubFromEvent(ev)) return;
       scrubbing = true;
       lastIndex = -1;
       document.body.classList.add('scrubbing-timeline');
-      try { zone.setPointerCapture(ev.pointerId); } catch (_) {}
-      scrubFromEvent(ev);
-    });
-    zone.addEventListener('pointermove', ev => {
+    }, true);
+    board.addEventListener('pointermove', ev => {
       if (!scrubbing) return;
       scrubFromEvent(ev);
-    });
+    }, true);
     function stop(ev){
       if (!scrubbing) return;
       scrubFromEvent(ev);
       scrubbing = false;
       document.body.classList.remove('scrubbing-timeline');
-      try { zone.releasePointerCapture(ev.pointerId); } catch (_) {}
       setTimeout(schedule, 30);
     }
-    zone.addEventListener('pointerup', stop);
-    zone.addEventListener('pointercancel', stop);
-    zone.addEventListener('lostpointercapture', () => {
-      scrubbing = false;
-      document.body.classList.remove('scrubbing-timeline');
-    });
+    board.addEventListener('pointerup', stop, true);
+    board.addEventListener('pointercancel', stop, true);
   }
 
   function schedule(){
@@ -189,9 +201,10 @@
 
   function reportLines(){
     const m = lastMetrics || window.__inkframeCircularScrubberMetrics;
-    if (!m) return ['Circular Scrubber: ready'];
+    if (!m) return ['Circular Scrubber: ready annulus-only'];
     return [
       'Circular Scrubber: active',
+      'Circular scrubber mode: ' + (m.mode || 'annulus-only'),
       'Circular scrubber last frame: ' + m.lastFrame,
       'Circular scrubber filled frames: ' + m.filledFrames,
       'Circular scrubber dispatch: ' + m.dispatch
@@ -225,6 +238,7 @@
     ensureStyle();
     schedule();
     const board = $('frameBoard') || document.body;
+    wireBoard(board);
     if (typeof MutationObserver !== 'undefined') {
       new MutationObserver(schedule).observe(board, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
     }
