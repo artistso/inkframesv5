@@ -1,30 +1,8 @@
 // InkFrame — brush-engine math helpers
-// -----------------------------------------------------------------------------
-// Pure math used by the paint engine. No DOM, no canvas, no globals -- safe to
-// unit-test in Node and safe to move to WASM later without dragging the app
-// state along. The heavier dab()/seg*() live in index.html because they touch
-// module-level paint state (brush, color, opacity, size, ...); this file is
-// just the underlying primitives they compose.
 'use strict';
 
-// ============================================================================
-// Paper grain -- a value-noise field the dry-media brushes (pencil / marker)
-// bite into. Tiled at GW=256 so repeat passes reveal the same tooth (like
-// graphite catching on paper fibres).
-// ============================================================================
-
-/** Default grain field size in pixels; tiled. */
 const GRAIN_SIZE = 256;
 
-/**
- * Build a fresh grain field. Returns a Float32Array of length `size*size`
- * with values in [0, 1]. Blur-soft clumps + fine raw fibre mixed 60/40.
- *
- * @param {number} [size]  side length in px (default 256)
- * @param {() => number} [rand]  RNG (default Math.random); accept an override
- *                                so tests get deterministic output.
- * @returns {Float32Array}
- */
 function buildGrain(size, rand) {
   const N = size || GRAIN_SIZE;
   const r = rand || Math.random;
@@ -33,7 +11,6 @@ function buildGrain(size, rand) {
   const out = new Float32Array(N * N);
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
-      // 3x3 box blur, wrapped
       let s = 0;
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++)
@@ -44,14 +21,6 @@ function buildGrain(size, rand) {
   return out;
 }
 
-/**
- * Sample the tiled grain field at canvas-space (x, y). Returns [0, 1].
- * @param {Float32Array} grain
- * @param {number} x
- * @param {number} y
- * @param {number} [size]
- * @returns {number}
- */
 function sampleGrain(grain, x, y, size) {
   const N = size || GRAIN_SIZE;
   const ix = (((x | 0) % N) + N) % N;
@@ -59,91 +28,49 @@ function sampleGrain(grain, x, y, size) {
   return grain[iy * N + ix];
 }
 
-// ============================================================================
-// Angle + colour utilities
-// ============================================================================
-
-/**
- * Shortest-path angle ease (handles the -PI..PI wrap so a swivelling nib never
- * spins the long way round). k in [0, 1]; typical values 0.15..0.35.
- * @param {number} cur   current angle in radians
- * @param {number} tgt   target angle in radians
- * @param {number} k     lerp amount
- * @returns {number}     eased angle in radians
- */
 function easeAngle(cur, tgt, k) {
   let dA = ((tgt - cur + Math.PI) % (2 * Math.PI)) - Math.PI;
   return cur + dA * k;
 }
 
-/**
- * Convert a #rrggbb hex color + alpha into a CSS `rgba(r,g,b,a)` string.
- * @param {string} hex  '#RRGGBB'
- * @param {number} a    alpha 0..1
- * @returns {string}
- */
 function hexWithAlpha(hex, a) {
   const n = parseInt(hex.slice(1), 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-// ============================================================================
-// Catmull-Rom (centripetal, tension 0.5) point sampler.
-// Feeds the smooth stroke path -- pushSample() in index.html accumulates a
-// rolling 4-sample window and this function paints the segment between p1
-// and p2 as a curve rather than a straight line.
-// ============================================================================
-
-/**
- * Evaluate a Catmull-Rom segment through (p1, p2) using p0 and p3 as tangent
- * hints. Standard tension-0.5 basis; adequate for the sample density the
- * paint engine emits (StreamLine already smooths inputs).
- * @param {number} t   0..1 within the (p1, p2) segment
- * @param {[number,number]} p0
- * @param {[number,number]} p1
- * @param {[number,number]} p2
- * @param {[number,number]} p3
- * @returns {[number, number]}
- */
 function catmullRom(t, p0, p1, p2, p3) {
   const tt = t * t, ttt = tt * t;
-  const b0 = -0.5 * ttt +     tt - 0.5 * t;
-  const b1 =  1.5 * ttt - 2.5 * tt         + 1;
+  const b0 = -0.5 * ttt + tt - 0.5 * t;
+  const b1 = 1.5 * ttt - 2.5 * tt + 1;
   const b2 = -1.5 * ttt + 2.0 * tt + 0.5 * t;
-  const b3 =  0.5 * ttt - 0.5 * tt;
+  const b3 = 0.5 * ttt - 0.5 * tt;
   return [
     b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0],
     b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1],
   ];
 }
 
-// ---- UMD-lite export ------------------------------------------------------
-// Block-scoped so multiple modules inlined into one <script> (e.g. the CI
-// boot smoke test) don't collide on top-level `const _api`.
 {
   const _api = { GRAIN_SIZE, buildGrain, sampleGrain, easeAngle, hexWithAlpha, catmullRom };
   if (typeof window !== 'undefined') window.InkFrameBrushMath = _api;
   if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 }
 
-// ---- Circular Canvas APK/PWA prototype -----------------------------------
-// This file is already loaded by index.html before the main studio boot script.
-// Keep the first circular-canvas implementation here so we can ship a small,
-// reversible feature slice without replacing the full single-file studio yet.
+// Circular Canvas v1 prototype. This runs only in real browsers/WebView, not Node/jsdom smoke.
 (function installCircularCanvasPrototype(){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
   if (window.__inkframeCircularCanvasPrototype) return;
   window.__inkframeCircularCanvasPrototype = true;
 
   const KEY = 'inkframe.circularCanvas.v1';
-
-  function ready(fn){
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once:true });
-    else fn();
-  }
+  const $ = id => document.getElementById(id);
+  const ready = fn => document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', fn, { once:true })
+    : fn();
 
   function ensureStyle(){
-    if (document.getElementById('inkframe-circular-canvas-style')) return;
+    if ($('inkframe-circular-canvas-style')) return;
     const style = document.createElement('style');
     style.id = 'inkframe-circular-canvas-style';
     style.textContent = [
@@ -160,9 +87,9 @@ function catmullRom(t, p0, p1, p2, p3) {
   }
 
   function ensureBadge(){
-    const fg = document.getElementById('frameGlass');
+    const fg = $('frameGlass');
     if (!fg) return null;
-    let badge = document.getElementById('inkframe-shape-badge');
+    let badge = $('inkframe-shape-badge');
     if (!badge) {
       badge = document.createElement('div');
       badge.id = 'inkframe-shape-badge';
@@ -198,21 +125,17 @@ function catmullRom(t, p0, p1, p2, p3) {
 
   function layoutCircularBoard(){
     if (!document.body.classList.contains('circular-canvas')) return;
-    const board = document.getElementById('frameBoard');
-    const fg = document.getElementById('frameGlass');
+    const board = $('frameBoard'), fg = $('frameGlass');
     if (!board || !fg) return;
     ensureBadge();
     const list = slots();
     if (!list.length) return;
-    const w = fg.clientWidth || 1;
-    const h = fg.clientHeight || 1;
-    const cx = w / 2;
-    const cy = h / 2;
+    const w = fg.clientWidth || 1, h = fg.clientHeight || 1;
+    const cx = w / 2, cy = h / 2;
     const radius = Math.max(34, Math.min(w, h) / 2 - 30);
-    const total = list.length;
     list.forEach((slot, i) => {
       saveSquare(slot);
-      const angle = (i / total) * Math.PI * 2 - Math.PI / 2;
+      const angle = (i / list.length) * Math.PI * 2 - Math.PI / 2;
       slot.style.left = (cx + Math.cos(angle) * radius) + 'px';
       slot.style.top = (cy + Math.sin(angle) * radius) + 'px';
       slot.style.transform = 'translate(-50%,-50%)';
@@ -223,24 +146,20 @@ function catmullRom(t, p0, p1, p2, p3) {
 
   function insideCircle(ev){
     if (!document.body.classList.contains('circular-canvas')) return true;
-    const canvas = document.getElementById('c');
+    const canvas = $('c');
     if (!canvas || ev.target !== canvas) return true;
     const r = canvas.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return true;
-    const x = ev.clientX - r.left;
-    const y = ev.clientY - r.top;
-    const cx = r.width / 2;
-    const cy = r.height / 2;
-    const rad = Math.min(r.width, r.height) / 2;
-    const dx = x - cx;
-    const dy = y - cy;
+    const x = ev.clientX - r.left, y = ev.clientY - r.top;
+    const cx = r.width / 2, cy = r.height / 2, rad = Math.min(r.width, r.height) / 2;
+    const dx = x - cx, dy = y - cy;
     return (dx * dx + dy * dy) <= (rad * rad);
   }
 
   function setMode(on){
     document.body.classList.toggle('circular-canvas', !!on);
     try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (_) {}
-    const btn = document.getElementById('inkframe-circle-toggle');
+    const btn = $('inkframe-circle-toggle');
     if (btn) {
       btn.textContent = on ? 'CIRCLE' : 'SQUARE';
       btn.setAttribute('aria-pressed', String(!!on));
@@ -250,7 +169,7 @@ function catmullRom(t, p0, p1, p2, p3) {
   }
 
   function ensureButton(){
-    if (document.getElementById('inkframe-circle-toggle')) return;
+    if ($('inkframe-circle-toggle')) return;
     const btn = document.createElement('button');
     btn.id = 'inkframe-circle-toggle';
     btn.type = 'button';
@@ -259,8 +178,7 @@ function catmullRom(t, p0, p1, p2, p3) {
     btn.addEventListener('pointerdown', ev => ev.stopPropagation());
     btn.addEventListener('touchstart', ev => ev.stopPropagation(), { passive:true });
     btn.addEventListener('click', ev => {
-      ev.preventDefault();
-      ev.stopPropagation();
+      ev.preventDefault(); ev.stopPropagation();
       setMode(!document.body.classList.contains('circular-canvas'));
     });
     document.body.appendChild(btn);
@@ -269,21 +187,16 @@ function catmullRom(t, p0, p1, p2, p3) {
   function boot(){
     ensureStyle();
     ensureButton();
-    const saved = (() => { try { return localStorage.getItem(KEY) === '1'; } catch (_) { return false; } })();
+    let saved = false;
+    try { saved = localStorage.getItem(KEY) === '1'; } catch (_) {}
     setMode(saved);
     document.addEventListener('pointerdown', ev => { if (!insideCircle(ev)) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true);
     document.addEventListener('pointermove', ev => { if (!insideCircle(ev)) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true);
-    const board = document.getElementById('frameBoard');
+    const board = $('frameBoard');
     if (board && typeof MutationObserver !== 'undefined') new MutationObserver(layoutCircularBoard).observe(board, { childList:true });
     window.addEventListener('resize', () => setTimeout(layoutCircularBoard, 60));
-    setInterval(layoutCircularBoard, 1500);
+    for (let i = 1; i <= 8; i++) setTimeout(layoutCircularBoard, i * 250);
   }
 
-  ready(() => {
-    boot();
-    // The main studio script builds frame slots after this helper loads, so give
-    // it a few layout passes to catch first render without requiring app internals.
-    setTimeout(layoutCircularBoard, 250);
-    setTimeout(layoutCircularBoard, 800);
-  });
+  ready(boot);
 })();
