@@ -2,7 +2,8 @@
 // -----------------------------------------------------------------------------
 // Browser/WebView-only layout stabilizer for the floating node UI. This does not
 // own the studio state; it reads the existing DOM nodes and adds clearer section
-// grouping, safer spacing, focus state, and denser child-button packing.
+// grouping, safer spacing, focus state, and denser child-button packing. Root
+// node placement is initial-only so artists can still drag/rearrange controls.
 'use strict';
 
 (function installInkFrameUILayout(){
@@ -22,6 +23,8 @@
   let layoutQueued = false;
   let enabled = true;
   let lastMetrics = null;
+  let rootPlacementApplied = false;
+  let dragWatch = null;
 
   function ensureStyle(){
     if (document.getElementById('inkframe-ui-layout-style')) return;
@@ -29,6 +32,7 @@
     style.id = 'inkframe-ui-layout-style';
     style.textContent = [
       'body.inkframe-ui-layout .node{transition:transform .22s cubic-bezier(.2,.9,.22,1),opacity .18s ease,filter .18s ease}',
+      'body.inkframe-ui-layout .node.dragging,body.inkframe-ui-layout .node[data-ui-manual="1"]{transition:opacity .18s ease,filter .18s ease!important}',
       'body.inkframe-ui-layout .orb{width:54px;height:54px}',
       'body.inkframe-ui-layout .orb .lbl{top:58px;font-size:9px;letter-spacing:.13em;padding:3px 7px;border-radius:999px;background:rgba(10,0,10,.42);border:1px solid rgba(255,240,243,.18);box-shadow:0 4px 12px rgba(10,0,10,.24)}',
       'body.inkframe-ui-layout .node[data-ui-section]::before{content:attr(data-ui-section);position:absolute;left:50%;top:-22px;transform:translateX(-50%);min-width:72px;text-align:center;padding:4px 8px;border-radius:999px;font:850 8px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;background:rgba(10,0,10,.46);border:1px solid rgba(255,240,243,.20);box-shadow:0 5px 14px rgba(10,0,10,.24);pointer-events:none;opacity:.82;text-shadow:0 1px 2px #000}',
@@ -196,9 +200,12 @@
       if (n.classList.contains('open')) sections[section].open += 1;
     });
     const childCount = rs.reduce((sum, n) => sum + n.querySelectorAll(':scope > .kids > .kid,:scope > .kids > .kidwrap').length, 0);
+    const manualRoots = rs.filter(n => n.dataset.uiManual === '1').length;
     lastMetrics = {
       enabled,
+      rootPlacementApplied,
       roots: rs.length,
+      manualRoots,
       openRoots: focus.open.length,
       active: focus.active ? labelOf(focus.active) : 'none',
       activeSection: focus.activeSection || 'none',
@@ -210,13 +217,22 @@
     return lastMetrics;
   }
 
+  function anyRootDragging(rs){
+    return rs.some(n => n.classList.contains('dragging'));
+  }
+
   function layout(){
     if (!enabled) return;
     document.body.classList.add('inkframe-ui-layout');
     markSections();
     const rs = roots();
-    sectionSlots(rs);
-    rs.forEach(layoutKidsFor);
+    if (!anyRootDragging(rs)) {
+      if (!rootPlacementApplied && rs.length) {
+        sectionSlots(rs);
+        rootPlacementApplied = true;
+      }
+      rs.forEach(layoutKidsFor);
+    }
     const focus = updateFocus(rs);
     collectMetrics(rs, focus);
   }
@@ -233,8 +249,10 @@
     if (!m) return ['UI Layout: n/a'];
     const lines = [
       'UI Layout: ' + (m.enabled ? 'active' : 'disabled'),
+      'UI root placement applied: ' + (m.rootPlacementApplied ? 'yes' : 'no'),
       'UI viewport: ' + m.viewport,
       'UI roots: ' + m.roots,
+      'UI manual roots: ' + m.manualRoots,
       'UI open roots: ' + m.openRoots,
       'UI active: ' + m.active,
       'UI active section: ' + m.activeSection,
@@ -270,8 +288,37 @@
     };
   }
 
+  function installDragRespect(){
+    document.addEventListener('pointerdown', ev => {
+      const orb = ev.target && ev.target.closest ? ev.target.closest('.node > .orb') : null;
+      if (!orb) return;
+      const node = orb.parentElement;
+      if (!node) return;
+      dragWatch = { node, x: ev.clientX, y: ev.clientY, moved: false };
+    }, true);
+    document.addEventListener('pointermove', ev => {
+      if (!dragWatch || dragWatch.moved) return;
+      if (Math.hypot(ev.clientX - dragWatch.x, ev.clientY - dragWatch.y) > 8) {
+        dragWatch.moved = true;
+        dragWatch.node.dataset.uiManual = '1';
+      }
+    }, true);
+    ['pointerup','pointercancel'].forEach(type => document.addEventListener(type, () => {
+      if (dragWatch && dragWatch.moved) setTimeout(scheduleLayout, 80);
+      dragWatch = null;
+    }, true));
+  }
+
+  function resetPositions(){
+    roots().forEach(n => delete n.dataset.uiManual);
+    rootPlacementApplied = false;
+    scheduleLayout();
+    return true;
+  }
+
   function boot(){
     ensureStyle();
+    installDragRespect();
     scheduleLayout();
     const mo = new MutationObserver(scheduleLayout);
     mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
@@ -284,8 +331,9 @@
 
   window.InkFrameUILayout = {
     layout: scheduleLayout,
+    resetPositions,
     enable(on){ enabled = on !== false; document.body.classList.toggle('inkframe-ui-layout', enabled); scheduleLayout(); return enabled; },
-    sections(){ return roots().map(n => ({ label: labelOf(n), section: n.dataset.uiSection, side: n.dataset.uiSide })); },
+    sections(){ return roots().map(n => ({ label: labelOf(n), section: n.dataset.uiSection, side: n.dataset.uiSide, manual: n.dataset.uiManual === '1' })); },
     metrics(){ return lastMetrics || window.__inkframeUILayoutMetrics || null; },
     reportLines
   };
