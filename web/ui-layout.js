@@ -247,6 +247,29 @@
     return lines;
   }
 
+  function bridgeIntoTesterReport(){
+    if (window.__inkframeUILayoutReportBridge) return;
+    const circular = window.InkFrameCircularCanvas;
+    if (!circular || typeof circular.reportLines !== 'function') return;
+    const originalReportLines = circular.reportLines.bind(circular);
+    window.__inkframeUILayoutReportBridge = true;
+    circular.reportLines = function bridgedCircularAndUILayoutReport(){
+      let lines = [];
+      try {
+        const original = originalReportLines();
+        if (Array.isArray(original)) lines = lines.concat(original.map(String));
+      } catch (e) {
+        lines.push('Circular Canvas: report error');
+      }
+      try {
+        lines = lines.concat(reportLines().map(String));
+      } catch (e) {
+        lines.push('UI Layout: report error');
+      }
+      return lines;
+    };
+  }
+
   function boot(){
     ensureStyle();
     scheduleLayout();
@@ -255,6 +278,8 @@
     window.addEventListener('resize', scheduleLayout);
     window.addEventListener('orientationchange', () => setTimeout(scheduleLayout, 220));
     for (let i = 1; i <= 12; i++) setTimeout(scheduleLayout, i * 220);
+    for (let i = 1; i <= 10; i++) setTimeout(bridgeIntoTesterReport, i * 250);
+    bridgeIntoTesterReport();
   }
 
   window.InkFrameUILayout = {
