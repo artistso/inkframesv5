@@ -56,7 +56,7 @@ function catmullRom(t, p0, p1, p2, p3) {
   if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 }
 
-// Circular Canvas v2 prototype. This runs only in real browsers/WebView, not Node/jsdom smoke.
+// Circular Canvas v3 prototype. This runs only in real browsers/WebView, not Node/jsdom smoke.
 (function installCircularCanvasPrototype(){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
@@ -75,18 +75,19 @@ function catmullRom(t, p0, p1, p2, p3) {
     const style = document.createElement('style');
     style.id = 'inkframe-circular-canvas-style';
     style.textContent = [
-      'body.circular-canvas #frameGlass{border-radius:999px!important;padding:20px!important;box-shadow:0 18px 72px rgba(20,0,14,.70),inset 0 1px 0 rgba(255,240,243,.44),0 0 0 1px rgba(255,240,243,.22)!important}',
-      'body.circular-canvas #frameGlass:before{content:"";position:absolute;inset:9px;border-radius:50%;pointer-events:none;z-index:12;border:1px solid rgba(255,240,243,.50);box-shadow:inset 0 0 24px rgba(255,240,243,.20),0 0 32px rgba(187,0,55,.28)}',
+      'body.circular-canvas #frameGlass{border-radius:999px!important;padding:22px!important;box-shadow:0 18px 76px rgba(20,0,14,.72),inset 0 1px 0 rgba(255,240,243,.46),0 0 0 1px rgba(255,240,243,.24)!important}',
+      'body.circular-canvas #frameGlass:before{content:"";position:absolute;inset:10px;border-radius:50%;pointer-events:none;z-index:12;border:1px solid rgba(255,240,243,.52);box-shadow:inset 0 0 26px rgba(255,240,243,.20),0 0 34px rgba(187,0,55,.30)}',
       'body.circular-canvas canvas#c{border-radius:50%!important;clip-path:circle(50% at 50% 50%)!important}',
       'body.circular-canvas .frameSlot{border-radius:50%!important;transition:left .18s ease,top .18s ease,width .18s ease,height .18s ease,transform .12s ease,opacity .16s ease!important}',
-      'body.circular-canvas .frameSlot.empty{opacity:.30!important}',
-      'body.circular-canvas .frameSlot.filled{opacity:.92!important}',
-      'body.circular-canvas .frameSlot.cur{opacity:1!important;box-shadow:0 0 0 2px rgba(255,255,255,.95),0 0 18px rgba(187,0,55,.85),inset 0 1px 0 rgba(255,240,243,.85)!important}',
-      '#inkframe-timeline-ring{position:absolute;pointer-events:none;border-radius:50%;z-index:11;opacity:0;transition:opacity .18s ease,left .18s ease,top .18s ease,width .18s ease,height .18s ease;background:conic-gradient(from -90deg,rgba(255,240,243,.48) 0deg,rgba(187,0,55,.45) var(--inkframe-progress,0deg),rgba(255,240,243,.10) var(--inkframe-progress,0deg),rgba(255,240,243,.08) 360deg);-webkit-mask:radial-gradient(circle,transparent 66%,#000 68%,#000 72%,transparent 74%);mask:radial-gradient(circle,transparent 66%,#000 68%,#000 72%,transparent 74%);filter:drop-shadow(0 0 12px rgba(187,0,55,.28))}',
-      'body.circular-canvas #inkframe-timeline-ring{opacity:1}',
+      'body.circular-canvas .frameSlot.empty{opacity:.28!important}',
+      'body.circular-canvas .frameSlot.filled{opacity:.94!important}',
+      'body.circular-canvas .frameSlot.cur{opacity:1!important;box-shadow:0 0 0 2px rgba(255,255,255,.96),0 0 20px rgba(187,0,55,.88),inset 0 1px 0 rgba(255,240,243,.88)!important}',
+      '#inkframe-timeline-ring{position:absolute;pointer-events:none;border-radius:50%;z-index:11;opacity:0;transition:opacity .18s ease,left .18s ease,top .18s ease,width .18s ease,height .18s ease;background:conic-gradient(from -90deg,rgba(255,240,243,.50) 0deg,rgba(187,0,55,.48) var(--inkframe-progress,0deg),rgba(255,240,243,.11) var(--inkframe-progress,0deg),rgba(255,240,243,.08) 360deg);-webkit-mask:radial-gradient(circle,transparent 63%,#000 65%,#000 72%,transparent 75%);mask:radial-gradient(circle,transparent 63%,#000 65%,#000 72%,transparent 75%);filter:drop-shadow(0 0 14px rgba(187,0,55,.30))}',
+      '#inkframe-timeline-center{position:absolute;pointer-events:none;border-radius:50%;z-index:11;opacity:0;transition:opacity .18s ease,left .18s ease,top .18s ease,width .18s ease,height .18s ease;border:1px dashed rgba(255,240,243,.18);box-shadow:inset 0 0 28px rgba(255,240,243,.07)}',
+      'body.circular-canvas #inkframe-timeline-ring,body.circular-canvas #inkframe-timeline-center{opacity:1}',
       '#inkframe-circle-toggle{position:fixed;right:12px;bottom:58px;z-index:2147483646;min-width:78px;min-height:38px;padding:9px 12px;border-radius:999px;border:1px solid rgba(255,240,243,.55);background:linear-gradient(160deg,rgba(42,0,26,.92),rgba(187,0,55,.86));color:#fff0f3;font:800 11px/1 system-ui,sans-serif;letter-spacing:.14em;box-shadow:0 8px 26px rgba(20,0,14,.46);touch-action:manipulation}',
       'body.circular-canvas #inkframe-circle-toggle{background:linear-gradient(160deg,rgba(255,240,243,.92),rgba(187,0,55,.92));color:#2a001a}',
-      '#inkframe-shape-badge{position:absolute;left:50%;top:-36px;transform:translateX(-50%);z-index:14;pointer-events:none;min-width:132px;text-align:center;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .18s ease,transform .18s ease;font:850 10px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.50);border:1px solid rgba(255,240,243,.24);box-shadow:0 6px 20px rgba(10,0,10,.32),inset 0 1px 0 rgba(255,255,255,.15)}',
+      '#inkframe-shape-badge{position:absolute;left:50%;top:-38px;transform:translateX(-50%);z-index:14;pointer-events:none;min-width:150px;text-align:center;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .18s ease,transform .18s ease;font:850 10px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.50);border:1px solid rgba(255,240,243,.24);box-shadow:0 6px 20px rgba(10,0,10,.32),inset 0 1px 0 rgba(255,255,255,.15)}',
       'body.circular-canvas #inkframe-shape-badge{opacity:1;transform:translateX(-50%) translateY(-2px)}'
     ].join('\n');
     document.head.appendChild(style);
@@ -99,22 +100,21 @@ function catmullRom(t, p0, p1, p2, p3) {
     if (!badge) {
       badge = document.createElement('div');
       badge.id = 'inkframe-shape-badge';
-      badge.textContent = 'Circular Canvas';
       fg.appendChild(badge);
     }
     return badge;
   }
 
-  function ensureRing(){
+  function ensureOrbitElement(id){
     const fg = $('frameGlass');
     if (!fg) return null;
-    let ring = $('inkframe-timeline-ring');
-    if (!ring) {
-      ring = document.createElement('div');
-      ring.id = 'inkframe-timeline-ring';
-      fg.insertBefore(ring, fg.firstChild);
+    let node = $(id);
+    if (!node) {
+      node = document.createElement('div');
+      node.id = id;
+      fg.insertBefore(node, fg.firstChild);
     }
-    return ring;
+    return node;
   }
 
   function slots(){ return Array.prototype.slice.call(document.querySelectorAll('#frameBoard .frameSlot')); }
@@ -141,6 +141,9 @@ function catmullRom(t, p0, p1, p2, p3) {
       slot.style.opacity = slot.dataset.squareOpacity || '';
       delete slot.dataset.circleSaved;
     });
+    const badge = $('inkframe-shape-badge');
+    if (badge) badge.textContent = '';
+    window.__inkframeCircularMetrics = null;
   }
 
   function currentSlotIndex(list){
@@ -150,12 +153,27 @@ function catmullRom(t, p0, p1, p2, p3) {
     return cur >= 0 ? cur : 0;
   }
 
+  function computeOrbit(cRect, fgRect, total){
+    const cx = cRect.left - fgRect.left + cRect.width / 2;
+    const cy = cRect.top - fgRect.top + cRect.height / 2;
+    const canvasRadius = Math.min(cRect.width, cRect.height) / 2;
+    const circumference = Math.max(1, Math.PI * 2 * canvasRadius);
+    const density = total > 96 ? 2.45 : total > 64 ? 2.15 : total > 40 ? 1.9 : 1.68;
+    const idealSlot = clamp(10, Math.floor(circumference / Math.max(total * density, 1)), 25);
+    const maxOrbit = Math.max(canvasRadius, Math.min(cx, cy, fgRect.width - cx, fgRect.height - cy) - idealSlot * 0.58);
+    const preferredOrbit = canvasRadius + clamp(7, idealSlot * 0.68, 16) + idealSlot * 0.45;
+    const orbitRadius = clamp(canvasRadius + 3, preferredOrbit, maxOrbit);
+    const ringRadius = Math.max(canvasRadius + 2, orbitRadius - idealSlot * 0.22);
+    return { cx, cy, canvasRadius, circumference, idealSlot, orbitRadius, ringRadius };
+  }
+
   function layoutCircularBoard(){
     if (!document.body.classList.contains('circular-canvas')) return;
     const board = $('frameBoard'), fg = $('frameGlass'), canvas = $('c');
     if (!board || !fg || !canvas) return;
-    ensureBadge();
-    const ring = ensureRing();
+    const badge = ensureBadge();
+    const ring = ensureOrbitElement('inkframe-timeline-ring');
+    const center = ensureOrbitElement('inkframe-timeline-center');
     const list = slots();
     if (!list.length) return;
 
@@ -163,25 +181,27 @@ function catmullRom(t, p0, p1, p2, p3) {
     const cRect = canvas.getBoundingClientRect();
     if (!fgRect.width || !fgRect.height || !cRect.width || !cRect.height) return;
 
-    const cx = cRect.left - fgRect.left + cRect.width / 2;
-    const cy = cRect.top - fgRect.top + cRect.height / 2;
-    const canvasRadius = Math.min(cRect.width, cRect.height) / 2;
     const total = list.length;
-    const circumference = Math.max(1, Math.PI * 2 * canvasRadius);
-    const idealSlot = clamp(12, Math.floor(circumference / Math.max(total * 1.85, 1)), 24);
-    const orbitGap = clamp(8, idealSlot * 0.72, 18);
-    const orbitRadius = canvasRadius + idealSlot / 2 + orbitGap;
-    const orbitSize = orbitRadius * 2;
+    const orbit = computeOrbit(cRect, fgRect, total);
     const curIndex = currentSlotIndex(list);
     const progressDeg = total > 1 ? ((curIndex + 1) / total) * 360 : 360;
+    const orbitSize = orbit.ringRadius * 2;
+    const centerSize = orbit.canvasRadius * 2;
 
     if (ring) {
-      ring.style.left = (cx - orbitRadius) + 'px';
-      ring.style.top = (cy - orbitRadius) + 'px';
+      ring.style.left = (orbit.cx - orbit.ringRadius) + 'px';
+      ring.style.top = (orbit.cy - orbit.ringRadius) + 'px';
       ring.style.width = orbitSize + 'px';
       ring.style.height = orbitSize + 'px';
       ring.style.setProperty('--inkframe-progress', progressDeg + 'deg');
     }
+    if (center) {
+      center.style.left = (orbit.cx - orbit.canvasRadius) + 'px';
+      center.style.top = (orbit.cy - orbit.canvasRadius) + 'px';
+      center.style.width = centerSize + 'px';
+      center.style.height = centerSize + 'px';
+    }
+    if (badge) badge.textContent = `Circular · ${total} frames · ${Math.round(orbit.idealSlot)}px orbit`;
 
     list.forEach((slot, i) => {
       saveSquare(slot);
@@ -190,17 +210,28 @@ function catmullRom(t, p0, p1, p2, p3) {
       const isSel = slot.classList.contains('sel');
       const isEmpty = slot.classList.contains('empty');
       const scale = isCur ? 1.34 : isSel ? 1.16 : 1;
-      const size = Math.round(idealSlot * scale);
-      const microOrbit = isCur ? 2 : isEmpty ? -1 : 0;
-      const r = orbitRadius + microOrbit;
-      slot.style.left = (cx + Math.cos(angle) * r) + 'px';
-      slot.style.top = (cy + Math.sin(angle) * r) + 'px';
+      const size = Math.round(orbit.idealSlot * scale);
+      const microOrbit = isCur ? Math.max(2, orbit.idealSlot * 0.12) : isEmpty ? -Math.max(1, orbit.idealSlot * 0.08) : 0;
+      const radius = orbit.orbitRadius + microOrbit;
+      slot.style.left = (orbit.cx + Math.cos(angle) * radius) + 'px';
+      slot.style.top = (orbit.cy + Math.sin(angle) * radius) + 'px';
       slot.style.transform = 'translate(-50%,-50%)';
       slot.style.width = size + 'px';
       slot.style.height = size + 'px';
-      if (isEmpty) slot.style.opacity = total > 48 ? '.22' : '.32';
+      if (isEmpty) slot.style.opacity = total > 72 ? '.18' : total > 48 ? '.24' : '.32';
       else slot.style.opacity = '1';
     });
+
+    window.__inkframeCircularMetrics = {
+      mode: 'circle',
+      frames: total,
+      currentFrameSlot: curIndex + 1,
+      canvasRadius: Math.round(orbit.canvasRadius),
+      orbitRadius: Math.round(orbit.orbitRadius),
+      ringRadius: Math.round(orbit.ringRadius),
+      slotSize: Math.round(orbit.idealSlot),
+      canvasCss: Math.round(cRect.width) + 'x' + Math.round(cRect.height)
+    };
   }
 
   function insideCircle(ev){
@@ -254,7 +285,8 @@ function catmullRom(t, p0, p1, p2, p3) {
     const board = $('frameBoard');
     if (board && typeof MutationObserver !== 'undefined') new MutationObserver(layoutCircularBoard).observe(board, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style'] });
     window.addEventListener('resize', () => setTimeout(layoutCircularBoard, 60));
-    for (let i = 1; i <= 10; i++) setTimeout(layoutCircularBoard, i * 220);
+    window.addEventListener('orientationchange', () => setTimeout(layoutCircularBoard, 220));
+    for (let i = 1; i <= 12; i++) setTimeout(layoutCircularBoard, i * 180);
   }
 
   ready(boot);
