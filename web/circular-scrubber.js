@@ -6,6 +6,7 @@
 // timeline annulus, and leaves canvas/stylus drawing as the highest-priority path.
 // It also guards the square↔circle transform button so it stays visible and reads
 // as an action: CIRCLE when square, SQUARE when circular.
+// Rebuild marker: circular-input-fix-apk-v1.
 'use strict';
 
 (function installCircularTimelineScrubber(){
