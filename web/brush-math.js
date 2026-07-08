@@ -83,7 +83,9 @@ function catmullRom(t, p0, p1, p2, p3) {
 
   loadScript('brush-engine.js', 'brush-engine');
   loadScript('circular-canvas.js', 'circular-canvas');
-  loadScript('circular-scrubber.js', 'circular-scrubber');
+  loadScript('circular-transform-safe.js', 'circular-transform-safe');
+  // circular-scrubber.js is intentionally not loaded in this recovery build.
+  // It will return later after drawing responsiveness is verified on-device.
   loadScript('ui-layout.js', 'ui-layout');
   loadScript('ui-icon-polish.js', 'ui-icon-polish');
   loadScript('ui-glass.js', 'ui-glass');
