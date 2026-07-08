@@ -12,9 +12,11 @@ function buildGrain(size, rand) {
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
       let s = 0;
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
           s += raw[(((y + dy) + N) % N) * N + (((x + dx) + N) % N)];
+        }
+      }
       out[y * N + x] = (s / 9) * 0.6 + raw[y * N + x] * 0.4;
     }
   }
@@ -29,7 +31,7 @@ function sampleGrain(grain, x, y, size) {
 }
 
 function easeAngle(cur, tgt, k) {
-  let dA = ((tgt - cur + Math.PI) % (2 * Math.PI)) - Math.PI;
+  const dA = ((tgt - cur + Math.PI) % (2 * Math.PI)) - Math.PI;
   return cur + dA * k;
 }
 
@@ -39,7 +41,8 @@ function hexWithAlpha(hex, a) {
 }
 
 function catmullRom(t, p0, p1, p2, p3) {
-  const tt = t * t, ttt = tt * t;
+  const tt = t * t;
+  const ttt = tt * t;
   const b0 = -0.5 * ttt + tt - 0.5 * t;
   const b1 = 1.5 * ttt - 2.5 * tt + 1;
   const b2 = -1.5 * ttt + 2.0 * tt + 0.5 * t;
@@ -56,7 +59,7 @@ function catmullRom(t, p0, p1, p2, p3) {
   if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 }
 
-// Circular Canvas v3 prototype. This runs only in real browsers/WebView, not Node/jsdom smoke.
+// Circular Canvas v3 prototype. Browser/WebView only; Node/jsdom smoke skips it.
 (function installCircularCanvasPrototype(){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
@@ -70,24 +73,27 @@ function catmullRom(t, p0, p1, p2, p3) {
     ? document.addEventListener('DOMContentLoaded', fn, { once:true })
     : fn();
 
+  let lastLayout = null;
+
   function ensureStyle(){
     if ($('inkframe-circular-canvas-style')) return;
     const style = document.createElement('style');
     style.id = 'inkframe-circular-canvas-style';
     style.textContent = [
-      'body.circular-canvas #frameGlass{border-radius:999px!important;padding:22px!important;box-shadow:0 18px 76px rgba(20,0,14,.72),inset 0 1px 0 rgba(255,240,243,.46),0 0 0 1px rgba(255,240,243,.24)!important}',
-      'body.circular-canvas #frameGlass:before{content:"";position:absolute;inset:10px;border-radius:50%;pointer-events:none;z-index:12;border:1px solid rgba(255,240,243,.52);box-shadow:inset 0 0 26px rgba(255,240,243,.20),0 0 34px rgba(187,0,55,.30)}',
+      'body.circular-canvas #frameGlass{border-radius:999px!important;padding:20px!important;box-shadow:0 18px 72px rgba(20,0,14,.70),inset 0 1px 0 rgba(255,240,243,.44),0 0 0 1px rgba(255,240,243,.22)!important}',
+      'body.circular-canvas #frameGlass:before{content:"";position:absolute;inset:9px;border-radius:50%;pointer-events:none;z-index:12;border:1px solid rgba(255,240,243,.50);box-shadow:inset 0 0 24px rgba(255,240,243,.20),0 0 32px rgba(187,0,55,.28)}',
       'body.circular-canvas canvas#c{border-radius:50%!important;clip-path:circle(50% at 50% 50%)!important}',
-      'body.circular-canvas .frameSlot{border-radius:50%!important;transition:left .18s ease,top .18s ease,width .18s ease,height .18s ease,transform .12s ease,opacity .16s ease!important}',
-      'body.circular-canvas .frameSlot.empty{opacity:.28!important}',
+      'body.circular-canvas .frameSlot{border-radius:50%!important;transition:left .16s ease,top .16s ease,width .16s ease,height .16s ease,transform .12s ease,opacity .16s ease,box-shadow .16s ease!important}',
+      'body.circular-canvas .frameSlot.empty{opacity:.26!important}',
       'body.circular-canvas .frameSlot.filled{opacity:.94!important}',
-      'body.circular-canvas .frameSlot.cur{opacity:1!important;box-shadow:0 0 0 2px rgba(255,255,255,.96),0 0 20px rgba(187,0,55,.88),inset 0 1px 0 rgba(255,240,243,.88)!important}',
-      '#inkframe-timeline-ring{position:absolute;pointer-events:none;border-radius:50%;z-index:11;opacity:0;transition:opacity .18s ease,left .18s ease,top .18s ease,width .18s ease,height .18s ease;background:conic-gradient(from -90deg,rgba(255,240,243,.50) 0deg,rgba(187,0,55,.48) var(--inkframe-progress,0deg),rgba(255,240,243,.11) var(--inkframe-progress,0deg),rgba(255,240,243,.08) 360deg);-webkit-mask:radial-gradient(circle,transparent 63%,#000 65%,#000 72%,transparent 75%);mask:radial-gradient(circle,transparent 63%,#000 65%,#000 72%,transparent 75%);filter:drop-shadow(0 0 14px rgba(187,0,55,.30))}',
-      '#inkframe-timeline-center{position:absolute;pointer-events:none;border-radius:50%;z-index:11;opacity:0;transition:opacity .18s ease,left .18s ease,top .18s ease,width .18s ease,height .18s ease;border:1px dashed rgba(255,240,243,.18);box-shadow:inset 0 0 28px rgba(255,240,243,.07)}',
-      'body.circular-canvas #inkframe-timeline-ring,body.circular-canvas #inkframe-timeline-center{opacity:1}',
+      'body.circular-canvas .frameSlot.cur{opacity:1!important;box-shadow:0 0 0 2px rgba(255,255,255,.96),0 0 18px rgba(187,0,55,.88),inset 0 1px 0 rgba(255,240,243,.88)!important}',
+      '#inkframe-timeline-ring{position:absolute;pointer-events:none;border-radius:50%;z-index:11;opacity:0;transition:opacity .18s ease,left .18s ease,top .18s ease,width .18s ease,height .18s ease;background:conic-gradient(from -90deg,rgba(255,240,243,.60) 0deg,rgba(187,0,55,.54) var(--inkframe-progress,0deg),rgba(255,240,243,.13) var(--inkframe-progress,0deg),rgba(255,240,243,.07) 360deg);-webkit-mask:radial-gradient(circle,transparent var(--ring-mask-inner,65%),#000 var(--ring-mask-core,68%),#000 var(--ring-mask-outer,73%),transparent var(--ring-mask-fade,76%));mask:radial-gradient(circle,transparent var(--ring-mask-inner,65%),#000 var(--ring-mask-core,68%),#000 var(--ring-mask-outer,73%),transparent var(--ring-mask-fade,76%));filter:drop-shadow(0 0 13px rgba(187,0,55,.30))}',
+      '#inkframe-orbit-playhead{position:absolute;pointer-events:none;z-index:15;width:20px;height:20px;border-radius:50%;opacity:0;transform:translate(-50%,-50%);transition:left .16s ease,top .16s ease,width .16s ease,height .16s ease,opacity .18s ease;background:radial-gradient(circle at 35% 30%,#fff 0%,#fff0f3 28%,#f7cac9 46%,#bb0037 72%,rgba(187,0,55,.20) 100%);box-shadow:0 0 0 2px rgba(255,240,243,.75),0 0 18px rgba(187,0,55,.90),0 0 34px rgba(255,240,243,.38)}',
+      '#inkframe-orbit-count{position:absolute;pointer-events:none;z-index:14;left:50%;bottom:-35px;transform:translateX(-50%);opacity:0;transition:opacity .18s ease;min-width:116px;text-align:center;padding:6px 12px;border-radius:999px;font:850 10px/1 system-ui,sans-serif;letter-spacing:.13em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.50);border:1px solid rgba(255,240,243,.22);box-shadow:0 6px 18px rgba(10,0,10,.30),inset 0 1px 0 rgba(255,255,255,.14)}',
+      'body.circular-canvas #inkframe-timeline-ring,body.circular-canvas #inkframe-orbit-playhead,body.circular-canvas #inkframe-orbit-count{opacity:1}',
       '#inkframe-circle-toggle{position:fixed;right:12px;bottom:58px;z-index:2147483646;min-width:78px;min-height:38px;padding:9px 12px;border-radius:999px;border:1px solid rgba(255,240,243,.55);background:linear-gradient(160deg,rgba(42,0,26,.92),rgba(187,0,55,.86));color:#fff0f3;font:800 11px/1 system-ui,sans-serif;letter-spacing:.14em;box-shadow:0 8px 26px rgba(20,0,14,.46);touch-action:manipulation}',
       'body.circular-canvas #inkframe-circle-toggle{background:linear-gradient(160deg,rgba(255,240,243,.92),rgba(187,0,55,.92));color:#2a001a}',
-      '#inkframe-shape-badge{position:absolute;left:50%;top:-38px;transform:translateX(-50%);z-index:14;pointer-events:none;min-width:150px;text-align:center;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .18s ease,transform .18s ease;font:850 10px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.50);border:1px solid rgba(255,240,243,.24);box-shadow:0 6px 20px rgba(10,0,10,.32),inset 0 1px 0 rgba(255,255,255,.15)}',
+      '#inkframe-shape-badge{position:absolute;left:50%;top:-36px;transform:translateX(-50%);z-index:14;pointer-events:none;min-width:132px;text-align:center;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .18s ease,transform .18s ease;font:850 10px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px rgba(0,0,0,.85);background:rgba(10,0,10,.50);border:1px solid rgba(255,240,243,.24);box-shadow:0 6px 20px rgba(10,0,10,.32),inset 0 1px 0 rgba(255,255,255,.15)}',
       'body.circular-canvas #inkframe-shape-badge{opacity:1;transform:translateX(-50%) translateY(-2px)}'
     ].join('\n');
     document.head.appendChild(style);
@@ -100,21 +106,34 @@ function catmullRom(t, p0, p1, p2, p3) {
     if (!badge) {
       badge = document.createElement('div');
       badge.id = 'inkframe-shape-badge';
+      badge.textContent = 'Circular Canvas';
       fg.appendChild(badge);
     }
     return badge;
   }
 
-  function ensureOrbitElement(id){
+  function ensureOrbitParts(){
     const fg = $('frameGlass');
-    if (!fg) return null;
-    let node = $(id);
-    if (!node) {
-      node = document.createElement('div');
-      node.id = id;
-      fg.insertBefore(node, fg.firstChild);
+    if (!fg) return {};
+    let ring = $('inkframe-timeline-ring');
+    if (!ring) {
+      ring = document.createElement('div');
+      ring.id = 'inkframe-timeline-ring';
+      fg.insertBefore(ring, fg.firstChild);
     }
-    return node;
+    let playhead = $('inkframe-orbit-playhead');
+    if (!playhead) {
+      playhead = document.createElement('div');
+      playhead.id = 'inkframe-orbit-playhead';
+      fg.appendChild(playhead);
+    }
+    let count = $('inkframe-orbit-count');
+    if (!count) {
+      count = document.createElement('div');
+      count.id = 'inkframe-orbit-count';
+      fg.appendChild(count);
+    }
+    return { ring, playhead, count };
   }
 
   function slots(){ return Array.prototype.slice.call(document.querySelectorAll('#frameBoard .frameSlot')); }
@@ -141,9 +160,6 @@ function catmullRom(t, p0, p1, p2, p3) {
       slot.style.opacity = slot.dataset.squareOpacity || '';
       delete slot.dataset.circleSaved;
     });
-    const badge = $('inkframe-shape-badge');
-    if (badge) badge.textContent = '';
-    window.__inkframeCircularMetrics = null;
   }
 
   function currentSlotIndex(list){
@@ -153,27 +169,18 @@ function catmullRom(t, p0, p1, p2, p3) {
     return cur >= 0 ? cur : 0;
   }
 
-  function computeOrbit(cRect, fgRect, total){
-    const cx = cRect.left - fgRect.left + cRect.width / 2;
-    const cy = cRect.top - fgRect.top + cRect.height / 2;
-    const canvasRadius = Math.min(cRect.width, cRect.height) / 2;
-    const circumference = Math.max(1, Math.PI * 2 * canvasRadius);
-    const density = total > 96 ? 2.45 : total > 64 ? 2.15 : total > 40 ? 1.9 : 1.68;
-    const idealSlot = clamp(10, Math.floor(circumference / Math.max(total * density, 1)), 25);
-    const maxOrbit = Math.max(canvasRadius, Math.min(cx, cy, fgRect.width - cx, fgRect.height - cy) - idealSlot * 0.58);
-    const preferredOrbit = canvasRadius + clamp(7, idealSlot * 0.68, 16) + idealSlot * 0.45;
-    const orbitRadius = clamp(canvasRadius + 3, preferredOrbit, maxOrbit);
-    const ringRadius = Math.max(canvasRadius + 2, orbitRadius - idealSlot * 0.22);
-    return { cx, cy, canvasRadius, circumference, idealSlot, orbitRadius, ringRadius };
+  function slotStats(list){
+    const filled = list.filter(slot => !slot.classList.contains('empty')).length;
+    const current = currentSlotIndex(list);
+    return { total:list.length, filled, current };
   }
 
   function layoutCircularBoard(){
     if (!document.body.classList.contains('circular-canvas')) return;
     const board = $('frameBoard'), fg = $('frameGlass'), canvas = $('c');
     if (!board || !fg || !canvas) return;
-    const badge = ensureBadge();
-    const ring = ensureOrbitElement('inkframe-timeline-ring');
-    const center = ensureOrbitElement('inkframe-timeline-center');
+    ensureBadge();
+    const parts = ensureOrbitParts();
     const list = slots();
     if (!list.length) return;
 
@@ -181,27 +188,50 @@ function catmullRom(t, p0, p1, p2, p3) {
     const cRect = canvas.getBoundingClientRect();
     if (!fgRect.width || !fgRect.height || !cRect.width || !cRect.height) return;
 
-    const total = list.length;
-    const orbit = computeOrbit(cRect, fgRect, total);
-    const curIndex = currentSlotIndex(list);
+    const cx = cRect.left - fgRect.left + cRect.width / 2;
+    const cy = cRect.top - fgRect.top + cRect.height / 2;
+    const canvasRadius = Math.min(cRect.width, cRect.height) / 2;
+    const stats = slotStats(list);
+    const circumference = Math.max(1, Math.PI * 2 * canvasRadius);
+    const total = Math.max(1, stats.total);
+    const filled = Math.max(1, stats.filled);
+    const density = Math.max(filled, Math.min(total, 72));
+    const idealSlot = clamp(11, Math.floor(circumference / Math.max(density * 1.58, 1)), 24);
+    const emptySlot = clamp(8, Math.floor(idealSlot * 0.68), 14);
+    const currentSlot = clamp(18, Math.floor(idealSlot * 1.38), 32);
+    const orbitGap = clamp(10, Math.round(idealSlot * 0.86), 22);
+    const orbitRadius = canvasRadius + Math.max(idealSlot, currentSlot) / 2 + orbitGap;
+    const orbitSize = orbitRadius * 2;
+    const curIndex = stats.current;
     const progressDeg = total > 1 ? ((curIndex + 1) / total) * 360 : 360;
-    const orbitSize = orbit.ringRadius * 2;
-    const centerSize = orbit.canvasRadius * 2;
+    const curAngle = (curIndex / total) * Math.PI * 2 - Math.PI / 2;
+    const curX = cx + Math.cos(curAngle) * (orbitRadius + 1);
+    const curY = cy + Math.sin(curAngle) * (orbitRadius + 1);
 
-    if (ring) {
-      ring.style.left = (orbit.cx - orbit.ringRadius) + 'px';
-      ring.style.top = (orbit.cy - orbit.ringRadius) + 'px';
-      ring.style.width = orbitSize + 'px';
-      ring.style.height = orbitSize + 'px';
-      ring.style.setProperty('--inkframe-progress', progressDeg + 'deg');
+    if (parts.ring) {
+      parts.ring.style.left = (cx - orbitRadius) + 'px';
+      parts.ring.style.top = (cy - orbitRadius) + 'px';
+      parts.ring.style.width = orbitSize + 'px';
+      parts.ring.style.height = orbitSize + 'px';
+      parts.ring.style.setProperty('--inkframe-progress', progressDeg + 'deg');
+      const railWidth = clamp(3, Math.round(idealSlot * 0.28), 7);
+      const railPct = clamp(1.4, (railWidth / orbitRadius) * 100, 3.6);
+      parts.ring.style.setProperty('--ring-mask-inner', (68 - railPct) + '%');
+      parts.ring.style.setProperty('--ring-mask-core', (69 - railPct / 2) + '%');
+      parts.ring.style.setProperty('--ring-mask-outer', (70 + railPct / 2) + '%');
+      parts.ring.style.setProperty('--ring-mask-fade', (72 + railPct) + '%');
     }
-    if (center) {
-      center.style.left = (orbit.cx - orbit.canvasRadius) + 'px';
-      center.style.top = (orbit.cy - orbit.canvasRadius) + 'px';
-      center.style.width = centerSize + 'px';
-      center.style.height = centerSize + 'px';
+
+    if (parts.playhead) {
+      parts.playhead.style.left = curX + 'px';
+      parts.playhead.style.top = curY + 'px';
+      parts.playhead.style.width = currentSlot + 'px';
+      parts.playhead.style.height = currentSlot + 'px';
     }
-    if (badge) badge.textContent = `Circular · ${total} frames · ${Math.round(orbit.idealSlot)}px orbit`;
+
+    if (parts.count) {
+      parts.count.textContent = `${filled}/${total} frames`;
+    }
 
     list.forEach((slot, i) => {
       saveSquare(slot);
@@ -209,29 +239,25 @@ function catmullRom(t, p0, p1, p2, p3) {
       const isCur = slot.classList.contains('cur');
       const isSel = slot.classList.contains('sel');
       const isEmpty = slot.classList.contains('empty');
-      const scale = isCur ? 1.34 : isSel ? 1.16 : 1;
-      const size = Math.round(orbit.idealSlot * scale);
-      const microOrbit = isCur ? Math.max(2, orbit.idealSlot * 0.12) : isEmpty ? -Math.max(1, orbit.idealSlot * 0.08) : 0;
-      const radius = orbit.orbitRadius + microOrbit;
-      slot.style.left = (orbit.cx + Math.cos(angle) * radius) + 'px';
-      slot.style.top = (orbit.cy + Math.sin(angle) * radius) + 'px';
+      const fillBias = isEmpty ? -2 : 0;
+      const selectBias = isCur ? 2 : isSel ? 1 : 0;
+      const r = orbitRadius + fillBias + selectBias;
+      const size = isCur ? currentSlot : isSel ? Math.round(idealSlot * 1.16) : isEmpty ? emptySlot : idealSlot;
+      slot.style.left = (cx + Math.cos(angle) * r) + 'px';
+      slot.style.top = (cy + Math.sin(angle) * r) + 'px';
       slot.style.transform = 'translate(-50%,-50%)';
       slot.style.width = size + 'px';
       slot.style.height = size + 'px';
-      if (isEmpty) slot.style.opacity = total > 72 ? '.18' : total > 48 ? '.24' : '.32';
+      if (isEmpty) slot.style.opacity = total > 72 ? '.18' : total > 48 ? '.22' : '.30';
       else slot.style.opacity = '1';
     });
 
-    window.__inkframeCircularMetrics = {
-      mode: 'circle',
-      frames: total,
-      currentFrameSlot: curIndex + 1,
-      canvasRadius: Math.round(orbit.canvasRadius),
-      orbitRadius: Math.round(orbit.orbitRadius),
-      ringRadius: Math.round(orbit.ringRadius),
-      slotSize: Math.round(orbit.idealSlot),
-      canvasCss: Math.round(cRect.width) + 'x' + Math.round(cRect.height)
+    lastLayout = {
+      mode:'circle', total, filled, current:curIndex + 1,
+      canvas:Math.round(canvasRadius * 2), orbit:Math.round(orbitRadius * 2),
+      slot:idealSlot, emptySlot, playhead:currentSlot
     };
+    window.InkFrameCircularCanvas = lastLayout;
   }
 
   function insideCircle(ev){
@@ -241,7 +267,8 @@ function catmullRom(t, p0, p1, p2, p3) {
     const r = canvas.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return true;
     const x = ev.clientX - r.left, y = ev.clientY - r.top;
-    const cx = r.width / 2, cy = r.height / 2, rad = Math.min(r.width, r.height) / 2;
+    const cx = r.width / 2, cy = r.height / 2;
+    const rad = Math.min(r.width, r.height) / 2;
     const dx = x - cx, dy = y - cy;
     return (dx * dx + dy * dy) <= (rad * rad);
   }
@@ -255,7 +282,10 @@ function catmullRom(t, p0, p1, p2, p3) {
       btn.setAttribute('aria-pressed', String(!!on));
       btn.title = on ? 'Circular canvas on' : 'Square canvas on';
     }
-    if (on) layoutCircularBoard(); else restoreSquareBoard();
+    if (on) layoutCircularBoard(); else {
+      restoreSquareBoard();
+      window.InkFrameCircularCanvas = { mode:'square' };
+    }
   }
 
   function ensureButton(){
@@ -268,7 +298,8 @@ function catmullRom(t, p0, p1, p2, p3) {
     btn.addEventListener('pointerdown', ev => ev.stopPropagation());
     btn.addEventListener('touchstart', ev => ev.stopPropagation(), { passive:true });
     btn.addEventListener('click', ev => {
-      ev.preventDefault(); ev.stopPropagation();
+      ev.preventDefault();
+      ev.stopPropagation();
       setMode(!document.body.classList.contains('circular-canvas'));
     });
     document.body.appendChild(btn);
@@ -283,9 +314,10 @@ function catmullRom(t, p0, p1, p2, p3) {
     document.addEventListener('pointerdown', ev => { if (!insideCircle(ev)) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true);
     document.addEventListener('pointermove', ev => { if (!insideCircle(ev)) { ev.preventDefault(); ev.stopImmediatePropagation(); } }, true);
     const board = $('frameBoard');
-    if (board && typeof MutationObserver !== 'undefined') new MutationObserver(layoutCircularBoard).observe(board, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style'] });
+    if (board && typeof MutationObserver !== 'undefined') {
+      new MutationObserver(layoutCircularBoard).observe(board, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style'] });
+    }
     window.addEventListener('resize', () => setTimeout(layoutCircularBoard, 60));
-    window.addEventListener('orientationchange', () => setTimeout(layoutCircularBoard, 220));
     for (let i = 1; i <= 12; i++) setTimeout(layoutCircularBoard, i * 180);
   }
 
