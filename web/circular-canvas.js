@@ -146,14 +146,7 @@
     const side = Math.min(canvasRect.width, canvasRect.height);
     const left = canvasRect.left - boardRect.left + (canvasRect.width - side) / 2;
     const top = canvasRect.top - boardRect.top + (canvasRect.height - side) / 2;
-    return {
-      left,
-      top,
-      side,
-      cx: left + side / 2,
-      cy: top + side / 2,
-      radius: side / 2,
-    };
+    return { left, top, side, cx: left + side / 2, cy: top + side / 2, radius: side / 2 };
   }
 
   function computeOrbit(circle, boardRect, total) {
@@ -263,6 +256,69 @@
     }
   }
 
+  function circularMetricLines() {
+    const metrics = window.__inkframeCircularMetrics;
+    if (!metrics) return ['Circle metrics: n/a'];
+    return [
+      'Circle metrics:',
+      `- Mode: ${metrics.mode}`,
+      `- Frames: ${metrics.frames}`,
+      `- Current frame slot: ${metrics.currentFrameSlot}`,
+      `- Board CSS: ${metrics.boardCss}`,
+      `- Canvas CSS: ${metrics.canvasCss}`,
+      `- Visible circle: ${metrics.visibleCircleCss}`,
+      `- Visible circle offset: ${metrics.visibleCircleOffset}`,
+      `- Circle center: ${metrics.center}`,
+      `- Canvas radius: ${metrics.canvasRadius}`,
+      `- Orbit radius: ${metrics.orbitRadius}`,
+      `- Ring radius: ${metrics.ringRadius}`,
+      `- Orbit gap: ${metrics.orbitGap}`,
+      `- Slot size: ${metrics.slotSize}`,
+      `- Tick step: ${metrics.tickStepDeg}`,
+      `- Major tick step: ${metrics.majorStepDeg}`,
+      `- Progress degrees: ${metrics.progressDeg}`,
+    ];
+  }
+
+  function buildCircularTesterReport() {
+    const canvas = $('c');
+    return [
+      'InkFrame Circular Canvas Tester Report',
+      `Generated: ${new Date().toISOString()}`,
+      `URL: ${location.href}`,
+      `Page title: ${document.title || ''}`,
+      `Circle mode active: ${document.body.classList.contains('circular-canvas')}`,
+      `Viewport: ${window.innerWidth}x${window.innerHeight} @${window.devicePixelRatio}`,
+      `Screen: ${screen.width}x${screen.height}`,
+      `Canvas element: ${canvas ? `${canvas.width}x${canvas.height}` : 'n/a'}`,
+      `User agent: ${navigator.userAgent}`,
+      '',
+      ...circularMetricLines(),
+      '',
+      'Test notes:',
+      '- What I tapped:',
+      '- What happened:',
+      '- What I expected:',
+      '- Does the orbit sit centered on the visible circle?',
+      '- Does timeline UI interfere with drawing?',
+    ].join('\n');
+  }
+
+  function bindTesterReportEnhancer() {
+    const btn = $('inkframe-test-report-btn');
+    const bridge = window.InkFrameAndroidBridge;
+    if (!btn || !bridge || !bridge.copyTesterReport || btn.dataset.circularMetricsBound === '1') return false;
+    btn.dataset.circularMetricsBound = '1';
+    btn.addEventListener('click', ev => {
+      // Replace the debug wrapper report with geometry-focused circular metrics.
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      scheduleLayout(0);
+      setTimeout(() => bridge.copyTesterReport(buildCircularTesterReport()), 30);
+    }, true);
+    return true;
+  }
+
   function insideCircle(ev) {
     if (!document.body.classList.contains('circular-canvas')) return true;
     const canvas = $('c');
@@ -341,12 +397,14 @@
     window.addEventListener('resize', () => scheduleLayout(70));
     window.addEventListener('orientationchange', () => scheduleLayout(240));
     for (let i = 1; i <= 12; i++) setTimeout(() => scheduleLayout(0), i * 180);
+    [250, 800, 1500, 2500, 4000].forEach(ms => setTimeout(bindTesterReportEnhancer, ms));
   }
 
   window.InkFrameCircularCanvas = {
     scheduleLayout,
     setMode,
     metrics: () => window.__inkframeCircularMetrics || null,
+    report: buildCircularTesterReport,
   };
 
   ready(boot);
