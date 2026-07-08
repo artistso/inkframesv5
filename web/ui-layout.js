@@ -2,9 +2,9 @@
 // -----------------------------------------------------------------------------
 // Browser/WebView-only layout stabilizer for the floating node UI. This does not
 // own the studio state; it reads the existing DOM nodes and adds clearer section
-// grouping, safer spacing, focus state, and organic child-button fan expansion.
-// Root node placement is initial-only so artists can still drag controls; manual
-// icon positions are remembered across sessions.
+// grouping, safer spacing, focus state, organic child-button fan expansion, and
+// icon-label polish. Root node placement is initial-only so artists can still
+// drag controls; manual icon positions are remembered across sessions.
 'use strict';
 
 (function installInkFrameUILayout(){
@@ -17,6 +17,55 @@
   const EDGE = 18;
   const PHI = 1.618033988749895;
   const POS_KEY = 'inkframe.ui.rootPositions.v1';
+  const TAXONOMY_VERSION = 'v2-draw-edit-animate-layers-studio';
+  const SECTION_ORDER = ['Draw', 'Edit', 'Animate', 'Layers', 'Studio'];
+  const SECTION_META = {
+    Draw:    { side: 'left',   accent: 'rgba(255,240,243,.58)' },
+    Edit:    { side: 'right',  accent: 'rgba(255,123,181,.55)' },
+    Animate: { side: 'bottom', accent: 'rgba(128,220,255,.50)' },
+    Layers:  { side: 'bottom', accent: 'rgba(180,255,210,.45)' },
+    Studio:  { side: 'top',    accent: 'rgba(255,220,140,.46)' },
+  };
+  const ROOT_TAXONOMY = {
+    tools:   { section: 'Draw', role: 'Brushes', priority: 10 },
+    color:   { section: 'Draw', role: 'Color & Size', priority: 20 },
+    line:    { section: 'Draw', role: 'Linework', priority: 30 },
+    select:  { section: 'Edit', role: 'Selection', priority: 10 },
+    actions: { section: 'Edit', role: 'Undo & Canvas', priority: 20 },
+    fx:      { section: 'Edit', role: 'Effects', priority: 30 },
+    frames:  { section: 'Animate', role: 'Timeline', priority: 10 },
+    layers:  { section: 'Layers', role: 'Layer Stack', priority: 10 },
+    studio:  { section: 'Studio', role: 'Project', priority: 10 },
+    project: { section: 'Studio', role: 'Project', priority: 10 },
+    gallery: { section: 'Studio', role: 'Gallery', priority: 20 },
+    themes:  { section: 'Studio', role: 'Theme', priority: 30 },
+    theme:   { section: 'Studio', role: 'Theme', priority: 30 },
+    help:    { section: 'Studio', role: 'Help', priority: 40 },
+  };
+  const LABEL_ALIASES = {
+    'h+': 'Hold +',
+    'h−': 'Hold −',
+    'h-': 'Hold −',
+    rev: 'Reverse',
+    ping: 'Ping-Pong',
+    twos: 'On 2s',
+    dup: 'Duplicate',
+    del: 'Delete',
+    flat: 'Flatten',
+    'l·op': 'Layer Opacity',
+    'l-op': 'Layer Opacity',
+    'o·depth': 'Onion Depth',
+    'o-depth': 'Onion Depth',
+    ghost: 'Onion Ghost',
+    none: 'None',
+    all: 'All',
+    list: 'List',
+    stack: 'Stack',
+    sel: 'Select',
+    rect: 'Rect',
+    gif: 'GIF',
+    fps: 'FPS',
+  };
   const $ = sel => document.querySelector(sel);
   const $$ = sel => Array.from(document.querySelectorAll(sel));
   const ready = fn => document.readyState === 'loading'
@@ -37,20 +86,24 @@
     style.textContent = [
       'body.inkframe-ui-layout .node{transition:transform .22s cubic-bezier(.2,.9,.22,1),opacity .18s ease,filter .18s ease}',
       'body.inkframe-ui-layout .node.dragging,body.inkframe-ui-layout .node[data-ui-manual="1"]{transition:opacity .18s ease,filter .18s ease!important}',
-      'body.inkframe-ui-layout .orb{width:54px;height:54px}',
+      'body.inkframe-ui-layout .orb{width:54px;height:54px;box-shadow:0 0 0 1px var(--ui-accent,rgba(255,240,243,.32)),0 8px 26px rgba(20,0,14,.34),inset 0 1px 0 rgba(255,240,243,.32)}',
+      'body.inkframe-ui-layout .orb svg,body.inkframe-ui-layout .kid svg{stroke-linecap:round;stroke-linejoin:round}',
       'body.inkframe-ui-layout .orb .lbl{top:58px;font-size:9px;letter-spacing:.13em;padding:0;background:transparent!important;border:0!important;box-shadow:none!important;text-shadow:0 1px 2px #000,0 0 9px rgba(0,0,0,.66)}',
       'body.inkframe-ui-layout .node[data-ui-section]::before{display:none!important;content:none!important}',
+      'body.inkframe-ui-layout .node[data-ui-role]::after{content:attr(data-ui-role);position:absolute;left:50%;top:71px;transform:translateX(-50%);pointer-events:none;opacity:.48;white-space:nowrap;font:800 7px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000,0 0 9px rgba(0,0,0,.68)}',
+      'body.inkframe-ui-layout .node.open[data-ui-role]::after{opacity:.76}',
       'body.inkframe-ui-focus .node.ui-muted{opacity:.42;filter:saturate(.72) brightness(.82)}',
       'body.inkframe-ui-focus .node.ui-active{opacity:1;filter:saturate(1.08) brightness(1.08);z-index:34!important}',
-      'body.inkframe-ui-focus .node.ui-active > .orb{box-shadow:0 0 0 1.5px rgba(255,240,243,.68),0 0 22px rgba(187,0,55,.55),inset 0 1px 0 rgba(255,240,243,.52)!important}',
+      'body.inkframe-ui-focus .node.ui-active > .orb{box-shadow:0 0 0 1.5px rgba(255,240,243,.78),0 0 24px var(--ui-accent,rgba(187,0,55,.55)),inset 0 1px 0 rgba(255,240,243,.52)!important}',
       'body.inkframe-ui-layout .kids{z-index:40}',
       'body.inkframe-ui-layout .kid,body.inkframe-ui-layout .branch{width:44px;height:44px;margin:-22px 0 0 -22px}',
+      'body.inkframe-ui-layout .kid{box-shadow:0 0 0 1px rgba(255,240,243,.20),0 7px 18px rgba(20,0,14,.28),inset 0 1px 0 rgba(255,240,243,.28)}',
       'body.inkframe-ui-layout .kid .glyph svg{width:20px;height:20px}',
       'body.inkframe-ui-layout .kid .glyph{font-size:16px}',
-      'body.inkframe-ui-layout .kid .sub{font-size:8px;letter-spacing:.08em;max-width:60px;line-height:1.05;text-align:center;background:transparent!important;border:0!important;box-shadow:none!important;text-shadow:0 1px 2px #000,0 0 9px rgba(0,0,0,.62)}',
+      'body.inkframe-ui-layout .kid .sub{font-size:8px;letter-spacing:.075em;max-width:68px;line-height:1.05;text-align:center;background:transparent!important;border:0!important;box-shadow:none!important;text-shadow:0 1px 2px #000,0 0 9px rgba(0,0,0,.62)}',
       'body.inkframe-ui-layout .node.open > .kids > .kid,body.inkframe-ui-layout .branch.open > .kids > .kid{transform:translate(var(--dx,0),var(--dy,0)) scale(var(--ui-scale,1))}',
       'body.inkframe-ui-layout .node.open > .kids > .kidwrap{transform:translate(var(--dx,0),var(--dy,0)) scale(var(--ui-scale,1))}',
-      'body.inkframe-ui-layout .kid.on{box-shadow:0 0 0 1.5px rgba(255,255,255,.9),0 0 18px rgba(187,0,55,.70),inset 0 1px 0 rgba(255,240,243,.64)!important}',
+      'body.inkframe-ui-layout .kid.on{box-shadow:0 0 0 1.5px rgba(255,255,255,.9),0 0 18px var(--ui-accent,rgba(187,0,55,.70)),inset 0 1px 0 rgba(255,240,243,.64)!important}',
       '#inkframe-ui-map{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:18;pointer-events:none;display:flex;gap:7px;padding:5px 8px;border-radius:999px;background:rgba(10,0,10,.22);border:1px solid rgba(255,240,243,.10);box-shadow:0 5px 16px rgba(10,0,10,.14);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:.58;transition:opacity .18s ease,background .18s ease,border-color .18s ease}',
       '#inkframe-ui-map span{font:850 8px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000;opacity:.54;padding:2px 4px;border-radius:999px;transition:opacity .18s ease,background .18s ease}',
       '#inkframe-ui-map span.on{opacity:1;background:rgba(187,0,55,.28)}',
@@ -58,6 +111,10 @@
       'body.zen #inkframe-ui-map{opacity:0}'
     ].join('\n');
     document.head.appendChild(style);
+  }
+
+  function normalizeKey(value){
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9·+−-]+/g, '').replace(/^-|-$/g, '');
   }
 
   function labelOf(node){
@@ -70,12 +127,13 @@
   }
 
   function classify(label){
-    const key = label.toLowerCase();
-    if (['tools','line','select'].includes(key)) return { section: 'Create', side: 'left' };
-    if (['color','actions','fx'].includes(key)) return { section: 'Adjust', side: 'right' };
-    if (['frames','layers'].includes(key)) return { section: 'Animate', side: 'bottom' };
-    if (['studio','gallery','theme','themes','help','project'].includes(key)) return { section: 'Studio', side: 'top' };
-    return { section: 'Tools', side: 'left' };
+    const key = normalizeKey(label);
+    const mapped = ROOT_TAXONOMY[key];
+    if (mapped) {
+      const meta = SECTION_META[mapped.section] || SECTION_META.Draw;
+      return { section: mapped.section, side: meta.side, role: mapped.role, priority: mapped.priority || 50, accent: meta.accent };
+    }
+    return { section: 'Draw', side: 'left', role: 'Tool', priority: 90, accent: SECTION_META.Draw.accent };
   }
 
   function nodeKey(node){
@@ -156,10 +214,13 @@
   function sectionSlots(nodes){
     const h = window.innerHeight || 900;
     const w = window.innerWidth || 1400;
-    const left = nodes.filter(n => classify(labelOf(n)).side === 'left');
-    const right = nodes.filter(n => classify(labelOf(n)).side === 'right');
-    const bottom = nodes.filter(n => classify(labelOf(n)).side === 'bottom');
-    const top = nodes.filter(n => classify(labelOf(n)).side === 'top');
+    const bySide = side => nodes
+      .filter(n => classify(labelOf(n)).side === side)
+      .sort((a, b) => classify(labelOf(a)).priority - classify(labelOf(b)).priority || labelOf(a).localeCompare(labelOf(b)));
+    const left = bySide('left');
+    const right = bySide('right');
+    const bottom = bySide('bottom');
+    const top = bySide('top');
 
     left.forEach((node, i) => setNodePos(node, EDGE, 86 + i * ROOT_GAP));
     right.forEach((node, i) => setNodePos(node, w - 72, 86 + i * ROOT_GAP));
@@ -172,6 +233,17 @@
     top.forEach((node, i) => setNodePos(node, 160 + i * 96, 24));
   }
 
+  function polishChildLabels(root){
+    const rootInfo = classify(labelOf(root));
+    root.querySelectorAll(':scope > .kids .sub').forEach(sub => {
+      if (!sub.dataset.uiOriginalLabel) sub.dataset.uiOriginalLabel = sub.textContent || '';
+      const original = sub.dataset.uiOriginalLabel || sub.textContent || '';
+      const alias = LABEL_ALIASES[normalizeKey(original)];
+      if (alias && sub.textContent !== alias) sub.textContent = alias;
+      sub.title = original === sub.textContent ? `${rootInfo.section} · ${sub.textContent}` : `${rootInfo.section} · ${original}`;
+    });
+  }
+
   function markSections(){
     roots().forEach(node => {
       const label = labelOf(node);
@@ -179,6 +251,10 @@
       node.dataset.uiLabel = label || 'Node';
       node.dataset.uiSection = info.section;
       node.dataset.uiSide = info.side;
+      node.dataset.uiRole = info.role || '';
+      node.style.setProperty('--ui-accent', info.accent || SECTION_META.Draw.accent);
+      node.title = [info.section, info.role, label].filter(Boolean).join(' · ');
+      polishChildLabels(node);
     });
   }
 
@@ -248,16 +324,21 @@
 
   function ensureMap(){
     let map = document.getElementById('inkframe-ui-map');
-    if (map) return map;
-    map = document.createElement('div');
-    map.id = 'inkframe-ui-map';
-    ['Create','Adjust','Animate','Studio'].forEach(name => {
-      const s = document.createElement('span');
-      s.textContent = name;
-      s.dataset.section = name;
-      map.appendChild(s);
-    });
-    document.body.appendChild(map);
+    if (!map) {
+      map = document.createElement('div');
+      map.id = 'inkframe-ui-map';
+      document.body.appendChild(map);
+    }
+    const current = Array.from(map.children).map(c => c.dataset.section || c.textContent).join('|');
+    if (current !== SECTION_ORDER.join('|')) {
+      map.innerHTML = '';
+      SECTION_ORDER.forEach(name => {
+        const s = document.createElement('span');
+        s.textContent = name;
+        s.dataset.section = name;
+        map.appendChild(s);
+      });
+    }
     return map;
   }
 
@@ -289,6 +370,7 @@
       enabled,
       rootPlacementApplied,
       savedRootPositionsApplied,
+      taxonomy: TAXONOMY_VERSION,
       roots: rs.length,
       manualRoots,
       openRoots: focus.open.length,
@@ -336,6 +418,7 @@
     if (!m) return ['UI Layout: n/a'];
     const lines = [
       'UI Layout: ' + (m.enabled ? 'active' : 'disabled'),
+      'UI taxonomy: ' + (m.taxonomy || 'n/a'),
       'UI root placement applied: ' + (m.rootPlacementApplied ? 'yes' : 'no'),
       'UI saved root positions: ' + (m.savedRootPositionsApplied ? 'yes' : 'no'),
       'UI child layout: ' + (m.childLayout || 'n/a'),
@@ -430,7 +513,7 @@
     resetPositions,
     savePositions: saveRootPositions,
     enable(on){ enabled = on !== false; document.body.classList.toggle('inkframe-ui-layout', enabled); scheduleLayout(); return enabled; },
-    sections(){ return roots().map(n => ({ label: labelOf(n), section: n.dataset.uiSection, side: n.dataset.uiSide, manual: n.dataset.uiManual === '1' })); },
+    sections(){ return roots().map(n => ({ label: labelOf(n), role: n.dataset.uiRole, section: n.dataset.uiSection, side: n.dataset.uiSide, manual: n.dataset.uiManual === '1' })); },
     metrics(){ return lastMetrics || window.__inkframeUILayoutMetrics || null; },
     reportLines
   };
