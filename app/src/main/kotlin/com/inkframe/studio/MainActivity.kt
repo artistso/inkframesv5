@@ -3,6 +3,8 @@ package com.inkframe.studio
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.DownloadManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -123,6 +125,11 @@ class MainActivity : ComponentActivity() {
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                     return url?.let { openExternalUriIfNeeded(Uri.parse(it)) } ?: false
                 }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    injectTesterReportTool()
+                }
             }
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
@@ -153,6 +160,13 @@ class MainActivity : ComponentActivity() {
     private fun isDebuggableBuild(): Boolean =
         (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
+    private fun appVersionName(): String = try {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "unknown"
+    } catch (_: Throwable) {
+        "unknown"
+    }
+
     private fun openExternalUriIfNeeded(uri: Uri): Boolean {
         val scheme = uri.scheme?.lowercase() ?: return false
         val staysInStudio = scheme == "file" || scheme == "data" || scheme == "blob" || scheme == "about"
@@ -165,6 +179,112 @@ class MainActivity : ComponentActivity() {
             toast("Couldn't open link.")
             true
         }
+    }
+
+    private fun injectTesterReportTool() {
+        // Keep this debug-only so release builds do not expose tester UI.
+        if (!isDebuggableBuild()) return
+        val androidLabel = "${Build.MANUFACTURER} ${Build.MODEL} / Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})"
+        val js = """
+            (function(){
+              if (document.getElementById('inkframe-test-report-btn')) return;
+              if (!window.InkFrameAndroidBridge || !window.InkFrameAndroidBridge.copyTesterReport) return;
+
+              function readGlobal(name) {
+                try { return window[name]; } catch (e) { return undefined; }
+              }
+              function countGlobal(name) {
+                var value = readGlobal(name);
+                return Array.isArray(value) ? value.length : null;
+              }
+              function compact(value) {
+                if (value === undefined || value === null) return 'n/a';
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+                try {
+                  if (value.name) return String(value.name);
+                  if (value.id) return String(value.id);
+                  return JSON.stringify(value).slice(0, 180);
+                } catch (e) {
+                  return Object.prototype.toString.call(value);
+                }
+              }
+              function activeBrushName() {
+                var candidates = [readGlobal('brush'), readGlobal('currentBrush'), readGlobal('activeBrush')];
+                for (var i = 0; i < candidates.length; i++) {
+                  var brush = candidates[i];
+                  if (!brush) continue;
+                  if (typeof brush === 'string') return brush;
+                  if (brush.name) return brush.name;
+                  if (brush.id) return brush.id;
+                }
+                return 'n/a';
+              }
+              function projectName() {
+                var candidates = [readGlobal('project'), readGlobal('currentProject'), readGlobal('activeProject')];
+                for (var i = 0; i < candidates.length; i++) {
+                  var project = candidates[i];
+                  if (!project) continue;
+                  if (project.name) return project.name;
+                  if (project.title) return project.title;
+                }
+                return document.title || 'InkFrame';
+              }
+              function buildReport() {
+                var frames = countGlobal('frames') || countGlobal('timelineFrames') || countGlobal('FRAME_LIST');
+                var layers = countGlobal('layers') || countGlobal('layerStack');
+                var lines = [
+                  'InkFrame Tester Report',
+                  'Generated: ' + new Date().toISOString(),
+                  'APK package: ' + ${jsString(packageName)},
+                  'APK version: ' + ${jsString(appVersionName())},
+                  'Android device: ' + ${jsString(androidLabel)},
+                  'URL: ' + String(location.href),
+                  'Page title: ' + String(document.title || ''),
+                  'Project: ' + projectName(),
+                  'Canvas: ' + (document.querySelector('canvas') ? (document.querySelector('canvas').width + 'x' + document.querySelector('canvas').height) : 'n/a'),
+                  'Viewport: ' + window.innerWidth + 'x' + window.innerHeight + ' @' + window.devicePixelRatio,
+                  'Screen: ' + screen.width + 'x' + screen.height,
+                  'Frames: ' + compact(frames),
+                  'Current frame: ' + compact(readGlobal('currentFrame')),
+                  'Layers: ' + compact(layers),
+                  'Brush: ' + activeBrushName(),
+                  'FPS: ' + compact(readGlobal('fps')),
+                  'User agent: ' + navigator.userAgent,
+                  '',
+                  'Test notes:',
+                  '- What I tapped:',
+                  '- What happened:',
+                  '- What I expected:',
+                  '- Export/save still works?'
+                ];
+                return lines.join('\n');
+              }
+
+              var btn = document.createElement('button');
+              btn.id = 'inkframe-test-report-btn';
+              btn.type = 'button';
+              btn.textContent = 'REPORT';
+              btn.setAttribute('aria-label', 'Copy InkFrame tester report');
+              btn.style.cssText = [
+                'position:fixed', 'right:12px', 'bottom:12px', 'z-index:2147483647',
+                'min-width:76px', 'min-height:38px', 'padding:9px 12px',
+                'border-radius:999px', 'border:1px solid rgba(255,240,243,.55)',
+                'background:linear-gradient(160deg,rgba(42,0,26,.92),rgba(187,0,55,.86))',
+                'color:#fff0f3', 'font:800 11px/1 system-ui,sans-serif',
+                'letter-spacing:.14em', 'box-shadow:0 8px 26px rgba(20,0,14,.46)',
+                'touch-action:manipulation'
+              ].join(';');
+              btn.addEventListener('pointerdown', function(ev){ ev.stopPropagation(); });
+              btn.addEventListener('touchstart', function(ev){ ev.stopPropagation(); }, { passive:true });
+              btn.addEventListener('click', function(ev){
+                ev.preventDefault();
+                ev.stopPropagation();
+                window.InkFrameAndroidBridge.copyTesterReport(buildReport());
+              });
+              document.body.appendChild(btn);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
     }
 
     private fun hideSystemBars() {
@@ -217,6 +337,16 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 val resolvedName = safeFileName(suggestedName, mimeType)
                 saveDataUrl(dataUrl, resolvedName, mimeType ?: resolveMimeType(resolvedName, null))
+            }
+        }
+
+        /** Copies a compact tester report generated by the WebView UI. */
+        @JavascriptInterface
+        fun copyTesterReport(report: String) {
+            runOnUiThread {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("InkFrame tester report", report))
+                toast("Tester report copied")
             }
         }
     }
