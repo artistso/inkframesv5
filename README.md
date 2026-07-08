@@ -4,7 +4,7 @@
 
 ### The Glass Horizon · A free 2D animation & drawing studio
 
-<img src="media/hero.png" alt="InkFrame Studio — the Glass Horizon interface, floating rose-quartz orbs around a paper-white canvas" width="100%" />
+<img src="media/The_Glass_Horizon_Project_Philosophy.png" alt="InkFrame Studio — the Glass Horizon interface, floating rose-quartz orbs around a paper-white canvas" width="100%" />
 
 <br/>
 
@@ -70,7 +70,7 @@ export-gif in.inkframe out.gif [--fps 12] [--width 1024]
 help
 ```
 
-Full docs: [`docs/PIPELINE.md`](docs/PIPELINE.md)
+Full docs: [`AGENT.md`](AGENT.md)
 
 ### Headless export
 
@@ -139,7 +139,7 @@ CLI helper for agents: [`tools/inkframe-cli.mjs`](tools/inkframe-cli.mjs) – `e
 - 2-finger pinch = zoom, 2-finger tap = undo, 3-finger tap = redo
 - PWA installable
 
-Full feature list & architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+Full feature list & architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 ---
 
@@ -168,17 +168,21 @@ tools/
   bump-version.mjs
   prepare-release.mjs
   update-release-notes.mjs
+ARCHITECTURE.md       # app structure and module map
+BUILD.md              # Android/web build notes
+AGENT.md              # CLI + agent workflow guide
+PRIVACY.md            # offline/privacy notes
+RELEASING.md          # GitHub Release process
+RELEASE_CHECKLIST.md  # tester smoke checklist
+RELEASE_NOTES.md      # generated tester-facing notes
+CIRCULAR_CANVAS_PLAN.md
+TIMELINE_IMPROVEMENTS_PLAN.md
+
 docs/
-  ARCHITECTURE.md
-  BUILD.md
-  PIPELINE.md
-  PRIVACY.md
-  RELEASING.md
-  RELEASE_CHECKLIST.md
-  RELEASE_NOTES.md
+  BRUSH_ENGINE_ROADMAP.md
 ```
 
-The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin implementation. They still compile and test in CI, but the shipping app is the WebView build – faster to iterate. See `docs/ARCHITECTURE.md`.
+The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin implementation. They still compile and test in CI, but the shipping app is the WebView build – faster to iterate. See `ARCHITECTURE.md`.
 
 ---
 
@@ -193,7 +197,7 @@ Debug APK – fully wrapped, offline, sideload-ready. No Play signing.
 
 CI builds the same APK on every push. Tagged releases (`git tag v* && git push origin v*`) publish `InkFrame-<tag>-debug.apk` to GitHub Releases automatically.
 
-Full Android build notes: [`docs/BUILD.md`](docs/BUILD.md)
+Full Android build notes: [`BUILD.md`](BUILD.md)
 
 ---
 
@@ -209,7 +213,7 @@ Update `CHANGELOG.md` for meaningful changes.
 
 MIT – free to use, modify, redistribute. See [`LICENSE`](LICENSE).
 
-Privacy: InkFrame is offline-first, no account, no ads, no analytics. See [`docs/PRIVACY.md`](docs/PRIVACY.md).
+Privacy: InkFrame is offline-first, no account, no ads, no analytics. See [`PRIVACY.md`](PRIVACY.md).
 
 ---
 
