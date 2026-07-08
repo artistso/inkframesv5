@@ -81,6 +81,7 @@ function catmullRom(t, p0, p1, p2, p3) {
     document.head.appendChild(script);
   }
 
+  loadScript('brush-engine.js', 'brush-engine');
   loadScript('circular-canvas.js', 'circular-canvas');
   loadScript('circular-scrubber.js', 'circular-scrubber');
   loadScript('ui-layout.js', 'ui-layout');
