@@ -2,8 +2,8 @@
 // -----------------------------------------------------------------------------
 // Browser/WebView-only layout stabilizer for the floating node UI. This does not
 // own the studio state; it reads the existing DOM nodes and adds clearer section
-// grouping, safer spacing, focus state, and denser child-button packing. Root
-// node placement is initial-only so artists can still drag/rearrange controls.
+// grouping, safer spacing, focus state, and organic child-button fan expansion.
+// Root node placement is initial-only so artists can still drag controls.
 'use strict';
 
 (function installInkFrameUILayout(){
@@ -14,6 +14,7 @@
 
   const ROOT_GAP = 112;
   const EDGE = 18;
+  const PHI = 1.618033988749895;
   const $ = sel => document.querySelector(sel);
   const $$ = sel => Array.from(document.querySelectorAll(sel));
   const ready = fn => document.readyState === 'loading'
@@ -34,24 +35,23 @@
       'body.inkframe-ui-layout .node{transition:transform .22s cubic-bezier(.2,.9,.22,1),opacity .18s ease,filter .18s ease}',
       'body.inkframe-ui-layout .node.dragging,body.inkframe-ui-layout .node[data-ui-manual="1"]{transition:opacity .18s ease,filter .18s ease!important}',
       'body.inkframe-ui-layout .orb{width:54px;height:54px}',
-      'body.inkframe-ui-layout .orb .lbl{top:58px;font-size:9px;letter-spacing:.13em;padding:3px 7px;border-radius:999px;background:rgba(10,0,10,.42);border:1px solid rgba(255,240,243,.18);box-shadow:0 4px 12px rgba(10,0,10,.24)}',
-      'body.inkframe-ui-layout .node[data-ui-section]::before{content:attr(data-ui-section);position:absolute;left:50%;top:-22px;transform:translateX(-50%);min-width:72px;text-align:center;padding:4px 8px;border-radius:999px;font:850 8px/1 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#fff0f3;background:rgba(10,0,10,.46);border:1px solid rgba(255,240,243,.20);box-shadow:0 5px 14px rgba(10,0,10,.24);pointer-events:none;opacity:.82;text-shadow:0 1px 2px #000}',
-      'body.inkframe-ui-layout .node.open[data-ui-section]::before{opacity:1;background:rgba(187,0,55,.34);border-color:rgba(255,240,243,.38)}',
+      'body.inkframe-ui-layout .orb .lbl{top:58px;font-size:9px;letter-spacing:.13em;padding:0;background:transparent!important;border:0!important;box-shadow:none!important;text-shadow:0 1px 2px #000,0 0 9px rgba(0,0,0,.66)}',
+      'body.inkframe-ui-layout .node[data-ui-section]::before{display:none!important;content:none!important}',
       'body.inkframe-ui-focus .node.ui-muted{opacity:.42;filter:saturate(.72) brightness(.82)}',
       'body.inkframe-ui-focus .node.ui-active{opacity:1;filter:saturate(1.08) brightness(1.08);z-index:34!important}',
       'body.inkframe-ui-focus .node.ui-active > .orb{box-shadow:0 0 0 1.5px rgba(255,240,243,.68),0 0 22px rgba(187,0,55,.55),inset 0 1px 0 rgba(255,240,243,.52)!important}',
       'body.inkframe-ui-layout .kids{z-index:40}',
-      'body.inkframe-ui-layout .kid,body.inkframe-ui-layout .branch{width:42px;height:42px;margin:-21px 0 0 -21px}',
-      'body.inkframe-ui-layout .kid .glyph svg{width:19px;height:19px}',
+      'body.inkframe-ui-layout .kid,body.inkframe-ui-layout .branch{width:44px;height:44px;margin:-22px 0 0 -22px}',
+      'body.inkframe-ui-layout .kid .glyph svg{width:20px;height:20px}',
       'body.inkframe-ui-layout .kid .glyph{font-size:16px}',
-      'body.inkframe-ui-layout .kid .sub{font-size:8px;letter-spacing:.08em;max-width:58px;line-height:1.05;text-align:center;text-shadow:0 1px 2px #000,0 0 8px rgba(0,0,0,.50)}',
+      'body.inkframe-ui-layout .kid .sub{font-size:8px;letter-spacing:.08em;max-width:60px;line-height:1.05;text-align:center;background:transparent!important;border:0!important;box-shadow:none!important;text-shadow:0 1px 2px #000,0 0 9px rgba(0,0,0,.62)}',
       'body.inkframe-ui-layout .node.open > .kids > .kid,body.inkframe-ui-layout .branch.open > .kids > .kid{transform:translate(var(--dx,0),var(--dy,0)) scale(var(--ui-scale,1))}',
       'body.inkframe-ui-layout .node.open > .kids > .kidwrap{transform:translate(var(--dx,0),var(--dy,0)) scale(var(--ui-scale,1))}',
       'body.inkframe-ui-layout .kid.on{box-shadow:0 0 0 1.5px rgba(255,255,255,.9),0 0 18px rgba(187,0,55,.70),inset 0 1px 0 rgba(255,240,243,.64)!important}',
-      '#inkframe-ui-map{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:18;pointer-events:none;display:flex;gap:7px;padding:5px 8px;border-radius:999px;background:rgba(10,0,10,.28);border:1px solid rgba(255,240,243,.14);box-shadow:0 5px 16px rgba(10,0,10,.18);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:.70;transition:opacity .18s ease,background .18s ease,border-color .18s ease}',
-      '#inkframe-ui-map span{font:850 8px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000;opacity:.62;padding:3px 5px;border-radius:999px;transition:opacity .18s ease,background .18s ease}',
-      '#inkframe-ui-map span.on{opacity:1;background:rgba(187,0,55,.38)}',
-      'body.inkframe-ui-focus #inkframe-ui-map{opacity:.90;background:rgba(10,0,10,.42);border-color:rgba(255,240,243,.22)}',
+      '#inkframe-ui-map{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:18;pointer-events:none;display:flex;gap:7px;padding:5px 8px;border-radius:999px;background:rgba(10,0,10,.22);border:1px solid rgba(255,240,243,.10);box-shadow:0 5px 16px rgba(10,0,10,.14);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);opacity:.58;transition:opacity .18s ease,background .18s ease,border-color .18s ease}',
+      '#inkframe-ui-map span{font:850 8px/1 system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#fff0f3;text-shadow:0 1px 2px #000;opacity:.54;padding:2px 4px;border-radius:999px;transition:opacity .18s ease,background .18s ease}',
+      '#inkframe-ui-map span.on{opacity:1;background:rgba(187,0,55,.28)}',
+      'body.inkframe-ui-focus #inkframe-ui-map{opacity:.76;background:rgba(10,0,10,.30);border-color:rgba(255,240,243,.16)}',
       'body.zen #inkframe-ui-map{opacity:0}'
     ].join('\n');
     document.head.appendChild(style);
@@ -112,7 +112,7 @@
     const rect = node.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    const margin = 46;
+    const margin = 48;
     const minX = margin - cx;
     const maxX = (window.innerWidth || 1400) - margin - cx;
     const minY = margin - cy;
@@ -121,6 +121,18 @@
       dx: Math.max(minX, Math.min(maxX, dx)),
       dy: Math.max(minY, Math.min(maxY, dy))
     };
+  }
+
+  function outwardBaseAngle(node){
+    const side = node.dataset.uiSide || classify(labelOf(node)).side;
+    if (side === 'left') return 0;
+    if (side === 'right') return Math.PI;
+    if (side === 'bottom') return -Math.PI / 2;
+    if (side === 'top') return Math.PI / 2;
+    const rect = node.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(cy - (window.innerHeight || 900) / 2, cx - (window.innerWidth || 1400) / 2);
   }
 
   function layoutKidsFor(node){
@@ -132,33 +144,31 @@
     const n = kids.length;
     if (!n) return;
 
-    const side = node.dataset.uiSide || classify(labelOf(node)).side;
-    const dense = n > 8;
-    const item = dense ? 48 : 56;
-    const cols = n > 12 ? 4 : n > 8 ? 3 : n > 5 ? 2 : 1;
-    const rows = Math.ceil(n / cols);
-    const outwardX = side === 'right' ? -1 : side === 'left' ? 1 : 0;
-    const outwardY = side === 'bottom' ? -1 : side === 'top' ? 1 : 0;
-    const baseX = outwardX * 84;
-    const baseY = outwardY * 84;
-    const fan = side === 'left' || side === 'right';
+    // Restore the original organic fan feel: buttons spiral/fan outward from the
+    // orb instead of forming a rigid grid. Radius still grows with count, and a
+    // viewport clamp keeps the fan usable near edges.
+    const kidDiameter = kids.reduce((m, k) => Math.max(m, k.getBoundingClientRect().width || 44), 44);
+    const need = kidDiameter + (n > 10 ? 16 : 20);
+    const spread = Math.min(Math.PI * 1.22, 0.46 * n + 0.58);
+    const step = n > 1 ? spread / (n - 1) : 0;
+    const safeStep = Math.max(step, 0.28);
+    let radius = n > 1 ? need / (2 * Math.sin(safeStep / 2)) : kidDiameter + 58;
+    radius = Math.max(radius, 82);
+    radius = Math.min(radius, 118 + 34 * Math.log(n + 1) * PHI);
+    const base = outwardBaseAngle(node);
+    const spiralBreathe = Math.min(34, Math.max(8, radius * 0.12));
 
     kids.forEach((kid, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      let dx, dy;
-      if (fan) {
-        dx = baseX + outwardX * col * item;
-        dy = (row - (rows - 1) / 2) * item;
-      } else {
-        dx = (col - (cols - 1) / 2) * item;
-        dy = baseY + outwardY * row * item;
-      }
-      const clamped = clampChildToViewport(node, dx, dy);
+      const centered = i - (n - 1) / 2;
+      const angle = base + centered * step;
+      const ring = Math.floor(i / 9);
+      const breathe = ((i % 3) - 1) * spiralBreathe * 0.42;
+      const r = radius + ring * (kidDiameter * 0.72) + breathe;
+      const clamped = clampChildToViewport(node, Math.cos(angle) * r, Math.sin(angle) * r);
       kid.style.setProperty('--dx', clamped.dx.toFixed(1) + 'px');
       kid.style.setProperty('--dy', clamped.dy.toFixed(1) + 'px');
-      kid.style.setProperty('--ui-scale', dense ? '.92' : '1');
-      kid.style.transitionDelay = (Math.min(i, 14) * 18) + 'ms';
+      kid.style.setProperty('--ui-scale', n > 12 ? '.88' : n > 8 ? '.94' : '1');
+      kid.style.transitionDelay = (Math.min(i, 18) * 22) + 'ms';
     });
   }
 
@@ -210,6 +220,8 @@
       active: focus.active ? labelOf(focus.active) : 'none',
       activeSection: focus.activeSection || 'none',
       childButtons: childCount,
+      childLayout: 'organic-fan',
+      labelBackplates: 'off',
       sections,
       viewport: (window.innerWidth || 0) + 'x' + (window.innerHeight || 0)
     };
@@ -250,6 +262,8 @@
     const lines = [
       'UI Layout: ' + (m.enabled ? 'active' : 'disabled'),
       'UI root placement applied: ' + (m.rootPlacementApplied ? 'yes' : 'no'),
+      'UI child layout: ' + (m.childLayout || 'n/a'),
+      'UI label backplates: ' + (m.labelBackplates || 'n/a'),
       'UI viewport: ' + m.viewport,
       'UI roots: ' + m.roots,
       'UI manual roots: ' + m.manualRoots,
