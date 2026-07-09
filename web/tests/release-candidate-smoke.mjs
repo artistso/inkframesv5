@@ -8,7 +8,6 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
-import vm from 'node:vm';
 
 const require = createRequire(import.meta.url);
 let JSDOM;
@@ -55,6 +54,7 @@ const dom = new JSDOM(`<!doctype html><html><head></head><body>
   <div id="inkframe-timeline-scrubber-zone" style="pointer-events:auto"></div>
 </body></html>`, {
   pretendToBeVisual: true,
+  runScripts: 'outside-only',
   url: 'https://inkframe.local/',
 });
 
@@ -78,30 +78,9 @@ window.InkFrameCircularTransformSafe = {
   }
 };
 
-// Make browser globals explicit. jsdom exposes them on window, but vm contexts do
-// not always surface inherited Window properties as unqualified globals.
-const sandbox = {
-  window,
-  document: window.document,
-  console,
-  setTimeout: window.setTimeout.bind(window),
-  clearTimeout: window.clearTimeout.bind(window),
-  MutationObserver: window.MutationObserver,
-  getComputedStyle: window.getComputedStyle.bind(window),
-};
-Object.assign(sandbox, window);
-sandbox.window = sandbox;
-sandbox.globalThis = sandbox;
-sandbox.document = window.document;
-sandbox.getComputedStyle = window.getComputedStyle.bind(window);
-sandbox.setTimeout = window.setTimeout.bind(window);
-sandbox.clearTimeout = window.clearTimeout.bind(window);
-sandbox.MutationObserver = window.MutationObserver;
-
-const context = vm.createContext(sandbox);
-vm.runInContext(readFileSync(resolve(webDir, 'release-candidate.js'), 'utf8'), context, { filename: 'release-candidate.js' });
-context.InkFrameReleaseCandidate.apply();
-const metrics = context.InkFrameReleaseCandidate.metrics();
+window.eval(readFileSync(resolve(webDir, 'release-candidate.js'), 'utf8'));
+window.InkFrameReleaseCandidate.apply();
+const metrics = window.InkFrameReleaseCandidate.metrics();
 
 check(metrics.active === true, 'release candidate guard not active');
 check(metrics.canvasPresent === true, 'canvas missing');
@@ -117,8 +96,8 @@ check(metrics.brushDynamics === true, 'brush dynamics not detected');
 check(metrics.vectorEngine === true, 'vector engine not detected');
 check(metrics.flatControls === true, 'flat controls not detected');
 
-const report = context.InkFrameCircularCanvas.reportLines();
-check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report not bridged');
+const report = window.InkFrameReleaseCandidate.reportLines();
+check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report lines missing stable guard');
 check(report.some(line => line.includes('Release Candidate scrubber loaded: no')), 'release report should confirm scrubber disabled');
 
 if (failed) {
