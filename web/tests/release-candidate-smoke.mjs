@@ -78,10 +78,30 @@ window.InkFrameCircularTransformSafe = {
   }
 };
 
-const context = vm.createContext(window);
+// Make browser globals explicit. jsdom exposes them on window, but vm contexts do
+// not always surface inherited Window properties as unqualified globals.
+const sandbox = {
+  window,
+  document: window.document,
+  console,
+  setTimeout: window.setTimeout.bind(window),
+  clearTimeout: window.clearTimeout.bind(window),
+  MutationObserver: window.MutationObserver,
+  getComputedStyle: window.getComputedStyle.bind(window),
+};
+Object.assign(sandbox, window);
+sandbox.window = sandbox;
+sandbox.globalThis = sandbox;
+sandbox.document = window.document;
+sandbox.getComputedStyle = window.getComputedStyle.bind(window);
+sandbox.setTimeout = window.setTimeout.bind(window);
+sandbox.clearTimeout = window.clearTimeout.bind(window);
+sandbox.MutationObserver = window.MutationObserver;
+
+const context = vm.createContext(sandbox);
 vm.runInContext(readFileSync(resolve(webDir, 'release-candidate.js'), 'utf8'), context, { filename: 'release-candidate.js' });
-window.InkFrameReleaseCandidate.apply();
-const metrics = window.InkFrameReleaseCandidate.metrics();
+context.InkFrameReleaseCandidate.apply();
+const metrics = context.InkFrameReleaseCandidate.metrics();
 
 check(metrics.active === true, 'release candidate guard not active');
 check(metrics.canvasPresent === true, 'canvas missing');
@@ -97,7 +117,7 @@ check(metrics.brushDynamics === true, 'brush dynamics not detected');
 check(metrics.vectorEngine === true, 'vector engine not detected');
 check(metrics.flatControls === true, 'flat controls not detected');
 
-const report = window.InkFrameCircularCanvas.reportLines();
+const report = context.InkFrameCircularCanvas.reportLines();
 check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report not bridged');
 check(report.some(line => line.includes('Release Candidate scrubber loaded: no')), 'release report should confirm scrubber disabled');
 
