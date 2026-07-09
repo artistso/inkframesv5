@@ -1,16 +1,17 @@
-// InkFrame -- release-candidate smoke test
+// InkFrame -- release candidate stability smoke
 // -----------------------------------------------------------------------------
-// Validates the stable APK boot contract: passive brush/vector/dynamics engines
-// are loaded, risky scrubber is not loaded, flat controls and RC guard load last.
+// Validates the final APK guardrails: drawing canvas accepts input, the
+// square/circle toggle can be repaired, retired scrubber overlays stay
+// non-blocking, and passive engine modules are available.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import vm from 'node:vm';
+import { JSDOM } from 'jsdom';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = resolve(here, '..');
-const brushMath = readFileSync(resolve(webDir, 'brush-math.js'), 'utf8');
-const rcGuard = readFileSync(resolve(webDir, 'release-candidate.js'), 'utf8');
 
 let failed = 0;
 function check(condition, message) {
@@ -20,13 +21,8 @@ function check(condition, message) {
   }
 }
 
-function loadIndex(name) {
-  const re = new RegExp(`loadScript\\('${name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}'`);
-  const match = brushMath.match(re);
-  return match ? match.index : -1;
-}
-
-const requiredOrder = [
+const brushMath = readFileSync(resolve(webDir, 'brush-math.js'), 'utf8');
+const bootOrder = [
   'brush-engine.js',
   'vector-engine.js',
   'brush-dynamics.js',
@@ -38,27 +34,68 @@ const requiredOrder = [
   'ui-flat-controls.js',
   'release-candidate.js',
 ];
-
-for (const moduleName of requiredOrder) {
-  check(loadIndex(moduleName) >= 0, `${moduleName} is not loaded by brush-math.js`);
+let lastIndex = -1;
+for (const moduleName of bootOrder) {
+  const index = brushMath.indexOf(`loadScript('${moduleName}'`);
+  check(index > lastIndex, `${moduleName} missing or out of order`);
+  lastIndex = index;
 }
+check(!brushMath.includes("loadScript('circular-scrubber.js'"), 'circular scrubber must not load in release candidate');
 
-for (let i = 1; i < requiredOrder.length; i++) {
-  const prev = loadIndex(requiredOrder[i - 1]);
-  const cur = loadIndex(requiredOrder[i]);
-  check(prev >= 0 && cur > prev, `${requiredOrder[i]} should load after ${requiredOrder[i - 1]}`);
-}
+const dom = new JSDOM(`<!doctype html><html><head></head><body>
+  <div id="frameGlass"><canvas id="c"></canvas></div>
+  <div id="inkframe-timeline-scrubber-zone" style="pointer-events:auto"></div>
+</body></html>`, {
+  pretendToBeVisual: true,
+  url: 'https://inkframe.local/',
+});
 
-check(!/loadScript\('circular-scrubber\.js'/.test(brushMath), 'circular-scrubber.js must stay unloaded for RC stability');
-check(/canvas#c\{pointer-events:auto!important;touch-action:none!important\}/.test(rcGuard), 'RC guard must force canvas pointer path open');
-check(/#inkframe-timeline-scrubber-zone\{pointer-events:none!important\}/.test(rcGuard), 'RC guard must keep scrubber overlay non-blocking');
-check(/InkFrameReleaseCandidate/.test(rcGuard), 'RC guard API missing');
-check(/Release Candidate scrubber loaded/.test(rcGuard), 'RC report lines missing scrubber status');
-check(/Release Candidate brush dynamics/.test(rcGuard), 'RC report lines missing brush dynamics status');
+const { window } = dom;
+window.console = console;
+window.requestAnimationFrame = fn => window.setTimeout(fn, 0);
+window.InkFrameBrushEngine = { VERSION: 'test-brush' };
+window.InkFrameBrushDynamics = { VERSION: 'test-dynamics' };
+window.InkFrameVectorEngine = { VERSION: 'test-vector' };
+window.InkFrameUIFlatControls = { VERSION: 'test-flat' };
+window.InkFrameCircularCanvas = { reportLines: () => ['Circular Canvas: test'] };
+window.InkFrameCircularTransformSafe = {
+  apply() {
+    let button = window.document.getElementById('inkframe-circle-toggle');
+    if (!button) {
+      button = window.document.createElement('button');
+      button.id = 'inkframe-circle-toggle';
+      window.document.body.appendChild(button);
+    }
+    button.textContent = window.document.body.classList.contains('circular-canvas') ? 'SQUARE' : 'CIRCLE';
+  }
+};
+
+const context = vm.createContext(window);
+vm.runInContext(readFileSync(resolve(webDir, 'release-candidate.js'), 'utf8'), context, { filename: 'release-candidate.js' });
+window.InkFrameReleaseCandidate.apply();
+const metrics = window.InkFrameReleaseCandidate.metrics();
+
+check(metrics.active === true, 'release candidate guard not active');
+check(metrics.canvasPresent === true, 'canvas missing');
+check(metrics.framePresent === true, 'frame shell missing');
+check(metrics.canvasPointerEvents === 'auto', 'canvas pointer events not open');
+check(metrics.framePointerEvents === 'auto', 'frame pointer events not open');
+check(metrics.circleTogglePresent === true, 'circle toggle not repaired');
+check(metrics.circleToggleLabel === 'CIRCLE', 'circle toggle label should target circle in square mode');
+check(metrics.scrubberLoaded === false, 'scrubber should not be loaded');
+check(metrics.scrubberOverlayPointerEvents === 'none', 'scrubber overlay must be non-blocking');
+check(metrics.brushEngine === true, 'brush engine not detected');
+check(metrics.brushDynamics === true, 'brush dynamics not detected');
+check(metrics.vectorEngine === true, 'vector engine not detected');
+check(metrics.flatControls === true, 'flat controls not detected');
+
+const report = window.InkFrameCircularCanvas.reportLines();
+check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report not bridged');
+check(report.some(line => line.includes('Release Candidate scrubber loaded: no')), 'release report should confirm scrubber disabled');
 
 if (failed) {
   console.error(`\nRelease candidate smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
   process.exit(1);
 }
 
-console.log(`✅ Release candidate smoke passed. modules=${requiredOrder.length} scrubber=disabled guard=loaded-last`);
+console.log(`✅ Release candidate smoke passed. toggle=${metrics.circleToggleLabel} canvas=${metrics.canvasPointerEvents} scrubber=${metrics.scrubberOverlayPointerEvents}`);
