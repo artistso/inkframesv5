@@ -1,7 +1,8 @@
 // InkFrame -- brush-dynamics JS smoke test
 // -----------------------------------------------------------------------------
 // Loads brush-engine, vector-engine, and brush-dynamics in one VM context and
-// validates pressure curves, dynamic dab planning, jitter, and symmetry.
+// validates pressure curves, dynamic dab planning, jitter, symmetry, quality
+// metrics, and replay descriptors.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,12 +35,13 @@ function check(condition, message) {
 }
 
 check(dynamics && typeof dynamics.planDynamicStroke === 'function', 'planDynamicStroke export missing');
-check(dynamics.VERSION === 'v0.1.0-brush-dynamics-curves', 'version mismatch');
+check(dynamics.VERSION === 'v0.2.0-brush-dynamics-quality', 'version mismatch');
 check(context.InkFrameBrushEngine, 'BrushEngine not attached');
 check(context.InkFrameVectorEngine, 'VectorEngine not attached');
 check(dynamics.PRESETS['smooth-ink'], 'smooth-ink preset missing');
 check(dynamics.PRESETS['pencil-texture'], 'pencil-texture preset missing');
 check(dynamics.PRESETS['vector-clean'], 'vector-clean preset missing');
+check(dynamics.PRESETS['marker-flow'], 'marker-flow preset missing');
 
 const curve = dynamics.curve([{ input: 0, output: 0 }, { input: 0.5, output: 0.25 }, { input: 1, output: 1 }]);
 check(curve.evaluate(-1) === 0, 'curve lower clamp failed');
@@ -61,6 +63,13 @@ check(single.baseStroke.stamps.length > 0, 'base stroke stamps missing');
 check(single.dabCount === single.baseStroke.stamps.length, 'single dab count mismatch');
 check(single.dabs.every(d => d.radius > 0 && d.feather > 0), 'invalid dab geometry');
 check(single.dabs.every(d => d.opacity >= 0 && d.opacity <= 1), 'dab opacity out of range');
+check(single.quality.rawPointCount === points.length, 'quality raw point count mismatch');
+check(single.quality.sampleCount === single.baseStroke.samples.length, 'quality sample count mismatch');
+check(single.quality.dabCount === single.dabCount, 'quality dab count mismatch');
+check(single.quality.averageRadius > 0, 'quality average radius invalid');
+check(single.quality.averageOpacity > 0, 'quality average opacity invalid');
+check(single.quality.smoothnessScore >= 0 && single.quality.smoothnessScore <= 1, 'quality smoothness invalid');
+check(single.quality.replayCost >= 0 && single.quality.replayCost <= 1, 'quality replay cost invalid');
 
 const quad = dynamics.planDynamicStroke(points, {
   dynamics: dynamics.PRESETS['smooth-ink'],
@@ -69,6 +78,7 @@ const quad = dynamics.planDynamicStroke(points, {
 });
 check(quad.dabCount === single.dabCount * 4, 'quad symmetry dab count mismatch');
 check(new Set(quad.dabs.map(d => d.symmetryIndex)).size === 4, 'quad symmetry indexes missing');
+check(quad.quality.symmetryCopies === 4, 'quality symmetry copy count mismatch');
 
 const pencilA = dynamics.planDynamicStroke(points, { dynamics: dynamics.PRESETS['pencil-texture'] });
 const pencilB = dynamics.planDynamicStroke(points, { dynamics: dynamics.PRESETS['pencil-texture'] });
@@ -76,9 +86,16 @@ check(pencilA.dabCount === pencilB.dabCount, 'deterministic jitter count mismatc
 check(pencilA.dabs.every((dab, i) => Math.abs(dab.x - pencilB.dabs[i].x) < 0.0001 && Math.abs(dab.y - pencilB.dabs[i].y) < 0.0001), 'jitter is not deterministic');
 check(pencilA.dabs.some((dab, i) => Math.abs(dab.x - pencilA.baseStroke.samples[i].x) > 0.0001 || Math.abs(dab.y - pencilA.baseStroke.samples[i].y) > 0.0001), 'pencil jitter did not move any dabs');
 
+const marker = dynamics.planDynamicStroke(points, { dynamics: dynamics.PRESETS['marker-flow'] });
+const descriptor = dynamics.replayDescriptor(marker);
+check(descriptor.version === dynamics.VERSION, 'replay version mismatch');
+check(descriptor.preset === 'marker-flow', 'replay preset mismatch');
+check(Object.prototype.hasOwnProperty.call(descriptor, 'smoothness'), 'replay smoothness missing');
+check(Object.prototype.hasOwnProperty.call(descriptor, 'replayCost'), 'replay cost missing');
+
 if (failed) {
   console.error(`\nBrush dynamics smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
   process.exit(1);
 }
 
-console.log(`✅ Brush dynamics smoke passed. dabs=${single.dabCount} quad=${quad.dabCount}`);
+console.log(`✅ Brush dynamics smoke passed. dabs=${single.dabCount} quad=${quad.dabCount} smoothness=${single.quality.smoothnessScore.toFixed(3)}`);
