@@ -7,8 +7,16 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import vm from 'node:vm';
-import { JSDOM } from 'jsdom';
+
+const require = createRequire(import.meta.url);
+let JSDOM;
+try {
+  ({ JSDOM } = require('jsdom'));
+} catch {
+  ({ JSDOM } = require(process.env.JSDOM_PATH || '/tmp/jsdom/node_modules/jsdom'));
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = resolve(here, '..');
