@@ -92,4 +92,5 @@ function catmullRom(t, p0, p1, p2, p3) {
   loadScript('ui-icon-polish.js', 'ui-icon-polish');
   loadScript('ui-glass.js', 'ui-glass');
   loadScript('ui-flat-controls.js', 'ui-flat-controls');
+  loadScript('release-candidate.js', 'release-candidate');
 })();
