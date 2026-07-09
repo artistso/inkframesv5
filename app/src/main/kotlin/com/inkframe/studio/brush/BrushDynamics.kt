@@ -2,8 +2,11 @@ package com.inkframe.studio.brush
 
 import com.inkframe.studio.vector.VectorEngine
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 
@@ -16,7 +19,7 @@ import kotlin.math.sin
  * agnostic; it emits planned dabs that a WebView or native renderer can consume.
  */
 object BrushDynamics {
-    const val VERSION: String = "v0.1.0-brush-dynamics-curves"
+    const val VERSION: String = "v0.2.0-brush-dynamics-quality"
 
     data class CurvePoint(val input: Float, val output: Float)
 
@@ -106,14 +109,32 @@ object BrushDynamics {
         val symmetryIndex: Int = 0,
     )
 
+    data class DynamicsQuality(
+        val rawPointCount: Int,
+        val sampleCount: Int,
+        val dabCount: Int,
+        val symmetryCopies: Int,
+        val distance: Float,
+        val averageRadius: Float,
+        val averageOpacity: Float,
+        val averagePressure: Float,
+        val pressureRange: Float,
+        val averageVelocity: Float,
+        val jitterScore: Float,
+        val smoothnessScore: Float,
+        val replayCost: Float,
+    )
+
     data class DynamicStrokePlan(
         val baseStroke: BrushEngine.StrokePlan,
         val dabs: List<DynamicDab>,
         val symmetryMode: VectorEngine.SymmetryMode,
         val symmetryCenter: VectorEngine.Vec2,
         val preset: DynamicsPreset,
+        val quality: DynamicsQuality,
     ) {
         val dabCount: Int get() = dabs.size
+        val symmetryCopies: Int get() = dabs.map { it.symmetryIndex }.distinct().size.coerceAtLeast(if (dabs.isEmpty()) 0 else 1)
     }
 
     val SmoothInk = DynamicsPreset(
@@ -155,7 +176,21 @@ object BrushDynamics {
         jitterAmount = 0f,
     )
 
-    val presets: Map<String, DynamicsPreset> = listOf(SmoothInk, PencilTexture, VectorClean).associateBy { it.id }
+    val MarkerFlow = DynamicsPreset(
+        id = "marker-flow",
+        name = "Marker Flow",
+        pressureSize = ResponseCurve(listOf(CurvePoint(0f, 0.68f), CurvePoint(0.45f, 0.92f), CurvePoint(1f, 1.08f))),
+        pressureOpacity = ResponseCurve(listOf(CurvePoint(0f, 0.44f), CurvePoint(0.35f, 0.76f), CurvePoint(1f, 1.08f))),
+        velocitySize = ResponseCurve.ReverseGentle,
+        velocityOpacity = ResponseCurve(listOf(CurvePoint(0f, 1.08f), CurvePoint(1f, 0.72f))),
+        pressureDeadZone = 0.025f,
+        pressureGain = 1.05f,
+        velocityScale = 24f,
+        jitterAmount = 0.025f,
+        jitterSeed = 18,
+    )
+
+    val presets: Map<String, DynamicsPreset> = listOf(SmoothInk, PencilTexture, VectorClean, MarkerFlow).associateBy { it.id }
 
     fun normalizePressure(rawPressure: Float, preset: DynamicsPreset): Float {
         val p = preset.sanitized()
@@ -225,8 +260,57 @@ object BrushDynamics {
                 dabs += dynamicDabFromSample(sample, stamp, safe, sampleIndex, symmetryIndex, pos)
             }
         }
-        return DynamicStrokePlan(base, dabs, symmetryMode, symmetryCenter, safe.dynamics)
+        val quality = analyzeDynamicStroke(rawPointCount = rawPoints.size, baseStroke = base, dabs = dabs)
+        return DynamicStrokePlan(base, dabs, symmetryMode, symmetryCenter, safe.dynamics, quality)
     }
+
+    fun analyzeDynamicStroke(
+        rawPointCount: Int,
+        baseStroke: BrushEngine.StrokePlan,
+        dabs: List<DynamicDab>,
+    ): DynamicsQuality {
+        val pressures = dabs.map { it.pressure }
+        val velocities = dabs.map { it.velocity }
+        val pressureMin = pressures.minOrNull() ?: 0f
+        val pressureMax = pressures.maxOrNull() ?: 0f
+        val avgRadius = dabs.map { it.radius }.averageFloat()
+        val avgOpacity = dabs.map { it.opacity }.averageFloat()
+        val avgPressure = pressures.averageFloat()
+        val avgVelocity = velocities.averageFloat()
+        val jitter = jitterScore(baseStroke.samples)
+        val copies = dabs.map { it.symmetryIndex }.distinct().size.coerceAtLeast(if (dabs.isEmpty()) 0 else 1)
+        val replayCost = ((dabs.size / 4096f) + jitter * 0.35f + copies * 0.05f).coerceIn(0f, 1f)
+        return DynamicsQuality(
+            rawPointCount = rawPointCount,
+            sampleCount = baseStroke.sampleCount,
+            dabCount = dabs.size,
+            symmetryCopies = copies,
+            distance = baseStroke.distance,
+            averageRadius = avgRadius,
+            averageOpacity = avgOpacity,
+            averagePressure = avgPressure,
+            pressureRange = pressureMax - pressureMin,
+            averageVelocity = avgVelocity,
+            jitterScore = jitter,
+            smoothnessScore = (1f - jitter).coerceIn(0f, 1f),
+            replayCost = replayCost,
+        )
+    }
+
+    fun replayDescriptor(plan: DynamicStrokePlan): Map<String, String> = mapOf(
+        "version" to VERSION,
+        "preset" to plan.preset.id,
+        "symmetry" to plan.symmetryMode.name,
+        "symmetryCopies" to plan.quality.symmetryCopies.toString(),
+        "rawPoints" to plan.quality.rawPointCount.toString(),
+        "samples" to plan.quality.sampleCount.toString(),
+        "dabs" to plan.quality.dabCount.toString(),
+        "distance" to plan.quality.distance.toString(),
+        "avgRadius" to plan.quality.averageRadius.toString(),
+        "avgOpacity" to plan.quality.averageOpacity.toString(),
+        "smoothness" to plan.quality.smoothnessScore.toString(),
+        "replayCost" to plan.quality.replayCost.toString(),
+    )
 
     fun preset(id: String): DynamicsPreset = presets[id]?.sanitized() ?: SmoothInk
 
@@ -247,6 +331,27 @@ object BrushDynamics {
         x = x xor (x shl 5)
         return ((x ushr 1) % 10_000) / 10_000f
     }
+
+    private fun jitterScore(samples: List<BrushEngine.StrokeSample>): Float {
+        if (samples.size < 3) return 0f
+        var total = 0f
+        var count = 0
+        for (i in 2 until samples.size) {
+            val ax = samples[i - 1].x - samples[i - 2].x
+            val ay = samples[i - 1].y - samples[i - 2].y
+            val bx = samples[i].x - samples[i - 1].x
+            val by = samples[i].y - samples[i - 1].y
+            val al = hypot(ax, ay)
+            val bl = hypot(bx, by)
+            if (al < 0.0001f || bl < 0.0001f) continue
+            val dot = ((ax * bx + ay * by) / (al * bl)).coerceIn(-1f, 1f)
+            total += abs(1f - dot)
+            count++
+        }
+        return if (count == 0) 0f else (total / count).coerceIn(0f, 1f)
+    }
+
+    private fun List<Float>.averageFloat(): Float = if (isEmpty()) 0f else sum() / size
 
     private fun smoothStep(t: Float): Float {
         val x = t.coerceIn(0f, 1f)
