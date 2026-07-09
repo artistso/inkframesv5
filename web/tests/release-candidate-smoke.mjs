@@ -102,7 +102,10 @@ check(report.some(line => line.includes('Release Candidate scrubber loaded: no')
 
 if (failed) {
   console.error(`\nRelease candidate smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
+  window.close();
   process.exit(1);
 }
 
 console.log(`✅ Release candidate smoke passed. toggle=${metrics.circleToggleLabel} canvas=${metrics.canvasPointerEvents} scrubber=${metrics.scrubberOverlayPointerEvents}`);
+window.close();
+process.exit(0);
