@@ -47,6 +47,7 @@ jobs:
           node web/tests/version-smoke.mjs
           node web/tests/runtime-module-syntax.mjs
           node web/tests/brush-engine-smoke.mjs
+          node web/tests/brush-dynamics-smoke.mjs
           node web/tests/vector-engine-smoke.mjs
           node web/tests/boot-smoke.mjs
 
