@@ -1,17 +1,18 @@
 // InkFrame — Brush Dynamics Response Curves
 // -----------------------------------------------------------------------------
 // Portable brush dynamics layer on top of brush-engine.js. Adds pressure curves,
-// velocity damping, taper response, deterministic jitter, and vector-backed
-// symmetry planning without taking over the active painter.
+// velocity damping, taper response, deterministic jitter, vector-backed symmetry,
+// quality metrics, and replay descriptors without taking over the active painter.
 'use strict';
 
 (function installInkFrameBrushDynamics(root){
-  const VERSION = 'v0.1.0-brush-dynamics-curves';
+  const VERSION = 'v0.2.0-brush-dynamics-quality';
   const TAU = Math.PI * 2;
   const clamp = (min, value, max) => Math.max(min, Math.min(max, Number(value) || 0));
   const lerp = (a, b, t) => a + (b - a) * clamp(0, t, 1);
   const smoothStep = t => { const x = clamp(0, t, 1); return x * x * (3 - 2 * x); };
   const vec = (x, y) => Object.freeze({ x:Number(x) || 0, y:Number(y) || 0 });
+  const avg = values => values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
 
   function curve(points){
     const sorted = (points && points.length ? points : [{input:0, output:0}, {input:1, output:1}])
@@ -80,6 +81,11 @@
       id:'vector-clean', name:'Vector Clean', pressureSize:curve([{input:0, output:0.84}, {input:1, output:1}]), pressureOpacity:curve([{input:0, output:0.82}, {input:1, output:1}]),
       velocitySize:curve([{input:0, output:1}, {input:1, output:0.90}]), velocityOpacity:curve([{input:0, output:1}, {input:1, output:0.92}]),
       pressureDeadZone:0, pressureGain:0.92, velocityScale:16, jitterAmount:0
+    }),
+    'marker-flow': preset({
+      id:'marker-flow', name:'Marker Flow', pressureSize:curve([{input:0, output:0.68}, {input:0.45, output:0.92}, {input:1, output:1.08}]),
+      pressureOpacity:curve([{input:0, output:0.44}, {input:0.35, output:0.76}, {input:1, output:1.08}]), velocitySize:Curves.reverseGentle,
+      velocityOpacity:curve([{input:0, output:1.08}, {input:1, output:0.72}]), pressureDeadZone:0.025, pressureGain:1.05, velocityScale:24, jitterAmount:0.025, jitterSeed:18
     })
   });
 
@@ -146,6 +152,48 @@
     });
   }
 
+  function jitterScore(samples){
+    if (!samples || samples.length < 3) return 0;
+    let total = 0, count = 0;
+    for (let i = 2; i < samples.length; i++) {
+      const ax = samples[i - 1].x - samples[i - 2].x;
+      const ay = samples[i - 1].y - samples[i - 2].y;
+      const bx = samples[i].x - samples[i - 1].x;
+      const by = samples[i].y - samples[i - 1].y;
+      const al = Math.hypot(ax, ay), bl = Math.hypot(bx, by);
+      if (al < 0.0001 || bl < 0.0001) continue;
+      const dot = clamp(-1, (ax * bx + ay * by) / (al * bl), 1);
+      total += Math.abs(1 - dot);
+      count++;
+    }
+    return count ? clamp(0, total / count, 1) : 0;
+  }
+
+  function analyzeDynamicStroke(rawPointCount, baseStroke, dabs){
+    const pressures = dabs.map(d => d.pressure);
+    const velocities = dabs.map(d => d.velocity);
+    const pressureMin = pressures.length ? Math.min(...pressures) : 0;
+    const pressureMax = pressures.length ? Math.max(...pressures) : 0;
+    const copies = new Set(dabs.map(d => d.symmetryIndex)).size || (dabs.length ? 1 : 0);
+    const jitter = jitterScore(baseStroke.samples || []);
+    const replayCost = clamp(0, (dabs.length / 4096) + jitter * 0.35 + copies * 0.05, 1);
+    return Object.freeze({
+      rawPointCount,
+      sampleCount: baseStroke.sampleCount || (baseStroke.samples || []).length,
+      dabCount: dabs.length,
+      symmetryCopies: copies,
+      distance: baseStroke.distance || 0,
+      averageRadius: avg(dabs.map(d => d.radius)),
+      averageOpacity: avg(dabs.map(d => d.opacity)),
+      averagePressure: avg(pressures),
+      pressureRange: pressureMax - pressureMin,
+      averageVelocity: avg(velocities),
+      jitterScore: jitter,
+      smoothnessScore: clamp(0, 1 - jitter, 1),
+      replayCost,
+    });
+  }
+
   function planDynamicStroke(rawPoints, options){
     const engine = root && root.InkFrameBrushEngine;
     const vector = root && root.InkFrameVectorEngine;
@@ -163,7 +211,26 @@
         dabs.push(dynamicDabFromSample(sample, base.stamps[sampleIndex], brush, sampleIndex, symmetryIndex, points[sampleIndex]));
       });
     });
-    return Object.freeze({ baseStroke:base, dabs, dabCount:dabs.length, symmetryMode:mode, symmetryCenter:center, preset:brush.dynamics });
+    const quality = analyzeDynamicStroke((rawPoints || []).length, base, dabs);
+    return Object.freeze({ baseStroke:base, dabs, dabCount:dabs.length, symmetryMode:mode, symmetryCenter:center, preset:brush.dynamics, quality });
+  }
+
+  function replayDescriptor(plan){
+    const q = plan.quality || analyzeDynamicStroke(0, plan.baseStroke || {}, plan.dabs || []);
+    return Object.freeze({
+      version: VERSION,
+      preset: plan.preset && plan.preset.id || 'smooth-ink',
+      symmetry: plan.symmetryMode || 'none',
+      symmetryCopies: String(q.symmetryCopies),
+      rawPoints: String(q.rawPointCount),
+      samples: String(q.sampleCount),
+      dabs: String(q.dabCount),
+      distance: String(q.distance),
+      avgRadius: String(q.averageRadius),
+      avgOpacity: String(q.averageOpacity),
+      smoothness: String(q.smoothnessScore),
+      replayCost: String(q.replayCost),
+    });
   }
 
   const api = Object.freeze({
@@ -176,7 +243,10 @@
     velocityUnit,
     deterministicJitter,
     dynamicDabFromSample,
+    jitterScore,
+    analyzeDynamicStroke,
     planDynamicStroke,
+    replayDescriptor,
   });
 
   if (root && typeof root === 'object') root.InkFrameBrushDynamics = api;
