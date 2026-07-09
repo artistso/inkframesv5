@@ -33,7 +33,7 @@ class BrushDynamicsTest {
     }
 
     @Test
-    fun dynamicStrokeProducesOneDabPerBaseStamp() {
+    fun dynamicStrokeProducesOneDabPerBaseStampAndQualityMetrics() {
         val points = listOf(
             BrushEngine.RawStylusPoint(0f, 0f, timeMs = 0f, pressure = 0.2f),
             BrushEngine.RawStylusPoint(20f, 4f, timeMs = 16f, pressure = 0.7f),
@@ -49,10 +49,18 @@ class BrushDynamicsTest {
         assertEquals(plan.baseStroke.stampCount, plan.dabCount)
         assertTrue(plan.dabs.all { it.radius > 0f && it.feather > 0f })
         assertTrue(plan.dabs.all { it.opacity in 0f..1f })
+        assertEquals(points.size, plan.quality.rawPointCount)
+        assertEquals(plan.baseStroke.sampleCount, plan.quality.sampleCount)
+        assertEquals(plan.dabCount, plan.quality.dabCount)
+        assertTrue(plan.quality.averageRadius > 0f)
+        assertTrue(plan.quality.averageOpacity > 0f)
+        assertTrue(plan.quality.pressureRange >= 0f)
+        assertTrue(plan.quality.smoothnessScore in 0f..1f)
+        assertTrue(plan.quality.replayCost in 0f..1f)
     }
 
     @Test
-    fun symmetryPlanningDuplicatesDabs() {
+    fun symmetryPlanningDuplicatesDabsAndQualityCopies() {
         val points = listOf(
             BrushEngine.RawStylusPoint(2f, 3f, timeMs = 0f, pressure = 0.6f),
             BrushEngine.RawStylusPoint(8f, 9f, timeMs = 16f, pressure = 0.8f),
@@ -67,6 +75,7 @@ class BrushDynamicsTest {
 
         assertEquals(single.dabCount * 4, quad.dabCount)
         assertEquals(setOf(0, 1, 2, 3), quad.dabs.map { it.symmetryIndex }.toSet())
+        assertEquals(4, quad.quality.symmetryCopies)
     }
 
     @Test
@@ -103,5 +112,25 @@ class BrushDynamicsTest {
             assertEquals(sample.x, dab.x, 0.0001f)
             assertEquals(sample.y, dab.y, 0.0001f)
         }
+    }
+
+    @Test
+    fun markerFlowPresetAndReplayDescriptorExposeDebugFields() {
+        val points = listOf(
+            BrushEngine.RawStylusPoint(0f, 0f, timeMs = 0f, pressure = 0.3f),
+            BrushEngine.RawStylusPoint(12f, 6f, timeMs = 16f, pressure = 0.9f),
+        )
+        val plan = BrushDynamics.planDynamicStroke(
+            rawPoints = points,
+            brush = BrushDynamics.DynamicBrush(BrushEngine.LovelyInk, BrushDynamics.MarkerFlow),
+        )
+        val descriptor = BrushDynamics.replayDescriptor(plan)
+
+        assertEquals(BrushDynamics.VERSION, descriptor["version"])
+        assertEquals("marker-flow", descriptor["preset"])
+        assertTrue(descriptor.containsKey("samples"))
+        assertTrue(descriptor.containsKey("dabs"))
+        assertTrue(descriptor.containsKey("smoothness"))
+        assertTrue(descriptor.containsKey("replayCost"))
     }
 }
