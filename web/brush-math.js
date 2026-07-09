@@ -82,6 +82,7 @@ function catmullRom(t, p0, p1, p2, p3) {
   }
 
   loadScript('brush-engine.js', 'brush-engine');
+  loadScript('vector-engine.js', 'vector-engine');
   loadScript('circular-canvas.js', 'circular-canvas');
   loadScript('circular-transform-safe.js', 'circular-transform-safe');
   // circular-scrubber.js is intentionally not loaded in this recovery build.
