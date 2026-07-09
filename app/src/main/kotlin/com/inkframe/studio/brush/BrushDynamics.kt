@@ -4,7 +4,6 @@ import com.inkframe.studio.vector.VectorEngine
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 
@@ -49,6 +48,7 @@ object BrushDynamics {
             val FirmMiddle = ResponseCurve(listOf(CurvePoint(0f, 0f), CurvePoint(0.28f, 0.36f), CurvePoint(0.72f, 0.86f), CurvePoint(1f, 1f)))
             val InkSnap = ResponseCurve(listOf(CurvePoint(0f, 0.04f), CurvePoint(0.18f, 0.18f), CurvePoint(0.58f, 0.84f), CurvePoint(1f, 1f)))
             val ReverseVelocity = ResponseCurve(listOf(CurvePoint(0f, 1f), CurvePoint(1f, 0.62f)))
+            val ReverseGentle = ResponseCurve(listOf(CurvePoint(0f, 1f), CurvePoint(1f, 0.78f)))
             fun gamma(gamma: Float): ResponseCurve {
                 val g = gamma.coerceIn(0.15f, 4f)
                 return ResponseCurve((0..8).map { i ->
@@ -122,7 +122,7 @@ object BrushDynamics {
         pressureSize = ResponseCurve.FirmMiddle,
         pressureOpacity = ResponseCurve.InkSnap,
         velocitySize = ResponseCurve.ReverseVelocity,
-        velocityOpacity = ResponseCurve.ResponseCurveCompatibility.reverseGentle,
+        velocityOpacity = ResponseCurve.ReverseGentle,
         pressureDeadZone = 0.015f,
         pressureGain = 1.08f,
         velocityScale = 20f,
@@ -254,8 +254,4 @@ object BrushDynamics {
     }
 
     private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t.coerceIn(0f, 1f)
-
-    private object ResponseCurveCompatibility {
-        val reverseGentle = ResponseCurve(listOf(CurvePoint(0f, 1f), CurvePoint(1f, 0.78f)))
-    }
 }
