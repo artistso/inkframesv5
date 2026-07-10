@@ -19,10 +19,14 @@
   if (root) root.InkFrameCanvasNavigation = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis, function buildCanvasNavigation(root){
-  const VERSION = 'v1-anchored-pan-zoom';
+  const VERSION = 'v2-persistent-deadzone';
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 5;
   const SAFE_MARGIN = 54;
+  const PAN_DEADZONE = 4;
+  const PINCH_DEADZONE = 0.025;
+  const STORAGE_KEY = 'inkframe.canvas.navigation.v2';
+  const SAVE_DELAY_MS = 120;
 
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -36,6 +40,9 @@
   let fitButton = null;
   let zoomButton = null;
   let transformRule = null;
+  let dimensionObserver = null;
+  let saveTimer = 0;
+  let stateRestored = false;
 
   let panX = 0;
   let panY = 0;
@@ -65,8 +72,13 @@
     handPans: 0,
     handPinches: 0,
     touchPanFrames: 0,
+    deadzoneBlocks: 0,
     fitCount: 0,
     resetCount: 0,
+    persistence: false,
+    restored: false,
+    saveCount: 0,
+    dimensionWatch: false,
   };
 
   function midpoint(points){
@@ -83,6 +95,16 @@
     return Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
   }
 
+  function gestureExceeded(startCenter, currentCenter, startDistance, currentDistance){
+    const move = Math.hypot(
+      finite(currentCenter && currentCenter.x, 0) - finite(startCenter && startCenter.x, 0),
+      finite(currentCenter && currentCenter.y, 0) - finite(startCenter && startCenter.y, 0)
+    );
+    const base = Math.max(1, finite(startDistance, 0));
+    const pinch = Math.abs(finite(currentDistance, base) / base - 1);
+    return move >= PAN_DEADZONE || pinch >= PINCH_DEADZONE;
+  }
+
   function anchorCoordinates(rect, point){
     const width = Math.max(0.0001, finite(rect && rect.width, 1));
     const height = Math.max(0.0001, finite(rect && rect.height, 1));
@@ -97,6 +119,56 @@
       x: finite(desiredPoint && desiredPoint.x, 0) - (finite(rect && rect.left, 0) + finite(anchor && anchor.u, 0.5) * Math.max(0.0001, finite(rect && rect.width, 1))),
       y: finite(desiredPoint && desiredPoint.y, 0) - (finite(rect && rect.top, 0) + finite(anchor && anchor.v, 0.5) * Math.max(0.0001, finite(rect && rect.height, 1))),
     };
+  }
+
+  function savedState(){
+    return { panX, panY, zoom, navMode, savedAt: Date.now() };
+  }
+
+  function persistNow(){
+    try {
+      root.localStorage.setItem(STORAGE_KEY, JSON.stringify(savedState()));
+      metrics.persistence = true;
+      metrics.saveCount++;
+      root.__inkframeCanvasNavigationMetrics = { ...metrics };
+      return true;
+    } catch (_) {
+      metrics.persistence = false;
+      return false;
+    }
+  }
+
+  function schedulePersist(){
+    if (!installed || typeof root.setTimeout !== 'function') return;
+    if (saveTimer) root.clearTimeout(saveTimer);
+    saveTimer = root.setTimeout(() => {
+      saveTimer = 0;
+      persistNow();
+    }, SAVE_DELAY_MS);
+  }
+
+  function restoreState(){
+    if (stateRestored) return false;
+    stateRestored = true;
+    try {
+      const raw = root.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const value = JSON.parse(raw);
+      panX = finite(value.panX, 0);
+      panY = finite(value.panY, 0);
+      zoom = clamp(finite(value.zoom, 1), MIN_ZOOM, MAX_ZOOM);
+      navMode = !!value.navMode;
+      metrics.persistence = true;
+      metrics.restored = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function clearSavedState(){
+    try { root.localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    metrics.restored = false;
   }
 
   function ensureTransformRule(){
@@ -149,11 +221,12 @@
     metrics.zoom = zoom;
     metrics.panX = panX;
     metrics.panY = panY;
+    metrics.dimensionWatch = !!dimensionObserver;
     root.__inkframeCanvasNavigationMetrics = { ...metrics };
     return { ...metrics };
   }
 
-  function writeTransform(){
+  function writeTransform(options){
     ensureTransformRule();
     const value = `translate3d(${panX.toFixed(2)}px,${panY.toFixed(2)}px,0) scale(${zoom.toFixed(5)})`;
     if (transformRule && transformRule.style) transformRule.style.transform = value;
@@ -163,6 +236,7 @@
       zoomButton.title = 'Viewport zoom. Tap to reset navigation to 100%.';
     }
     updateMetrics();
+    if (!options || options.persist !== false) schedulePersist();
   }
 
   function setView(next){
@@ -199,7 +273,7 @@
     const before = canvasRect();
     const anchor = anchorCoordinates(before, { x: clientX, y: clientY });
     zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
-    writeTransform();
+    writeTransform({ persist:false });
     const after = canvasRect();
     const correction = anchorCorrection(after, anchor, { x: clientX, y: clientY });
     panX += correction.x;
@@ -217,7 +291,7 @@
   function fitView(){
     if (!canvas || !stage) return;
     panX = 0; panY = 0; zoom = 1;
-    writeTransform();
+    writeTransform({ persist:false });
     const rect = canvasRect();
     const stageRect = stage.getBoundingClientRect ? stage.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
     const availW = Math.max(120, finite(stageRect.width, window.innerWidth) - 96);
@@ -242,6 +316,7 @@
     }
     handPointers.clear(); handGesture = null;
     updateMetrics();
+    schedulePersist();
   }
 
   function ensureControls(){
@@ -280,33 +355,49 @@
       dock.appendChild(zoomButton);
     }
     setNavMode(navMode);
-    writeTransform();
+    writeTransform({ persist:false });
   }
 
   function insideViewport(target){
     return !!(viewport && target && (target === viewport || viewport.contains(target)));
   }
 
-  function beginHandGesture(event){
-    handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
-    const center = midpoint(handPointers);
-    handGesture = {
+  function newGestureState(points){
+    const center = midpoint(points);
+    const dist = distance(points);
+    const rect = canvasRect();
+    return {
       startPanX: panX,
       startPanY: panY,
       startZoom: zoom,
       startCenter: center,
-      startDistance: distance(handPointers),
-      startRect: canvasRect(),
-      anchor: anchorCoordinates(canvasRect(), center),
+      startDistance: dist,
+      startRect: rect,
+      anchor: anchorCoordinates(rect, center),
+      activated: false,
     };
+  }
+
+  function beginHandGesture(event){
+    handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
+    handGesture = newGestureState(handPointers);
     try { viewport.setPointerCapture && viewport.setPointerCapture(event.pointerId); } catch (_) {}
-    document.body.classList.add('inkframe-canvas-panning');
   }
 
   function moveHandGesture(event){
     if (!handPointers.has(event.pointerId) || !handGesture) return;
     handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
     const center = midpoint(handPointers);
+    const dist = distance(handPointers);
+    if (!handGesture.activated && !gestureExceeded(handGesture.startCenter, center, handGesture.startDistance, dist)) {
+      metrics.deadzoneBlocks++;
+      updateMetrics();
+      return;
+    }
+    if (!handGesture.activated) {
+      handGesture.activated = true;
+      document.body.classList.add('inkframe-canvas-panning');
+    }
     if (handPointers.size < 2) {
       panX = handGesture.startPanX + (center.x - handGesture.startCenter.x);
       panY = handGesture.startPanY + (center.y - handGesture.startCenter.y);
@@ -315,12 +406,12 @@
       return;
     }
 
-    const dist = Math.max(1, distance(handPointers));
-    const base = Math.max(1, handGesture.startDistance || dist);
-    zoom = clamp(handGesture.startZoom * (dist / base), MIN_ZOOM, MAX_ZOOM);
+    const safeDist = Math.max(1, dist);
+    const base = Math.max(1, handGesture.startDistance || safeDist);
+    zoom = clamp(handGesture.startZoom * (safeDist / base), MIN_ZOOM, MAX_ZOOM);
     panX = handGesture.startPanX;
     panY = handGesture.startPanY;
-    writeTransform();
+    writeTransform({ persist:false });
     const correction = anchorCorrection(canvasRect(), handGesture.anchor, center);
     panX += correction.x;
     panY += correction.y;
@@ -329,17 +420,8 @@
   }
 
   function rebaseHandGesture(){
-    if (!handPointers.size) { handGesture = null; document.body.classList.remove('inkframe-canvas-panning'); return; }
-    const center = midpoint(handPointers);
-    handGesture = {
-      startPanX: panX,
-      startPanY: panY,
-      startZoom: zoom,
-      startCenter: center,
-      startDistance: distance(handPointers),
-      startRect: canvasRect(),
-      anchor: anchorCoordinates(canvasRect(), center),
-    };
+    if (!handPointers.size) { handGesture = null; document.body.classList.remove('inkframe-canvas-panning'); persistNow(); return; }
+    handGesture = newGestureState(handPointers);
   }
 
   function scheduleNormalGesture(){
@@ -348,17 +430,24 @@
       normalGestureRAF = 0;
       if (touches.size < 2 || activePens.size) { normalGesture = null; return; }
       const center = midpoint(touches);
+      const dist = distance(touches);
       if (!normalGesture) {
-        normalGesture = { center, rect: canvasRect() };
+        normalGesture = { center, distance:dist, rect:canvasRect(), activated:false };
         return;
       }
+      if (!normalGesture.activated && !gestureExceeded(normalGesture.center, center, normalGesture.distance, dist)) {
+        metrics.deadzoneBlocks++;
+        updateMetrics();
+        return;
+      }
+      normalGesture.activated = true;
       const anchor = anchorCoordinates(normalGesture.rect, normalGesture.center);
       const correction = anchorCorrection(canvasRect(), anchor, center);
       panX += correction.x;
       panY += correction.y;
       metrics.touchPanFrames++;
       writeTransform(); clampView();
-      normalGesture = { center, rect: canvasRect() };
+      normalGesture = { center, distance:dist, rect:canvasRect(), activated:true };
     });
   }
 
@@ -369,7 +458,7 @@
 
     const handRequested = navMode || spaceHeld || event.button === 1;
     if (!handRequested) {
-      if (touches.size >= 2 && !activePens.size) normalGesture = { center: midpoint(touches), rect: canvasRect() };
+      if (touches.size >= 2 && !activePens.size) normalGesture = { center:midpoint(touches), distance:distance(touches), rect:canvasRect(), activated:false };
       return;
     }
 
@@ -408,6 +497,18 @@
     zoomAt(event.clientX, event.clientY, zoom * factor);
   }
 
+  function installDimensionWatch(){
+    if (dimensionObserver || typeof MutationObserver === 'undefined' || !canvas) return;
+    dimensionObserver = new MutationObserver(() => {
+      requestAnimationFrame(() => {
+        clampView();
+        schedulePersist();
+      });
+    });
+    dimensionObserver.observe(canvas, { attributes:true, attributeFilter:['width','height','style'] });
+    metrics.dimensionWatch = true;
+  }
+
   function install(){
     if (installed || typeof document === 'undefined') return updateMetrics();
     stage = document.getElementById('stage');
@@ -415,6 +516,7 @@
     canvas = document.getElementById('c');
     if (!stage || !frame || !canvas) return updateMetrics();
 
+    restoreState();
     ensureViewport();
     ensureControls();
     installed = true;
@@ -434,10 +536,15 @@
     window.addEventListener('blur', () => {
       spaceHeld = false; handPointers.clear(); touches.clear(); activePens.clear(); handGesture = null; normalGesture = null;
       document.body.classList.remove('inkframe-canvas-panning');
+      persistNow();
     });
     window.addEventListener('resize', () => requestAnimationFrame(clampView));
+    window.addEventListener('pagehide', persistNow);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
 
-    writeTransform();
+    installDimensionWatch();
+    writeTransform({ persist:false });
+    setNavMode(navMode);
     return updateMetrics();
   }
 
@@ -453,6 +560,10 @@
       'Canvas Navigation hand mode: ' + (m.navMode ? 'yes' : 'no'),
       'Canvas Navigation zoom: ' + Math.round(m.zoom * 100) + '%',
       'Canvas Navigation pan: ' + Math.round(m.panX) + ',' + Math.round(m.panY),
+      'Canvas Navigation persistence: ' + (m.persistence ? 'yes' : 'no'),
+      'Canvas Navigation restored: ' + (m.restored ? 'yes' : 'no'),
+      'Canvas Navigation dimension watch: ' + (m.dimensionWatch ? 'yes' : 'no'),
+      'Canvas Navigation deadzone blocks: ' + m.deadzoneBlocks,
       'Canvas Navigation wheel zooms: ' + m.wheelZooms,
       'Canvas Navigation hand pans: ' + m.handPans,
       'Canvas Navigation hand pinches: ' + m.handPinches,
@@ -464,8 +575,12 @@
     VERSION,
     MIN_ZOOM,
     MAX_ZOOM,
+    PAN_DEADZONE,
+    PINCH_DEADZONE,
+    STORAGE_KEY,
     midpoint,
     distance,
+    gestureExceeded,
     anchorCoordinates,
     anchorCorrection,
     install,
@@ -475,6 +590,9 @@
     fitView,
     resetView,
     clampView,
+    persistNow,
+    restoreState,
+    clearSavedState,
     metrics: updateMetrics,
     reportLines,
   };
