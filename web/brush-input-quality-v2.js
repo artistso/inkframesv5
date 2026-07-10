@@ -1,4 +1,4 @@
-// InkFrame — Active Brush Input Quality v3
+// InkFrame — Active Brush Input Quality v4
 // -----------------------------------------------------------------------------
 // Conservative coalesced-sample cleanup in front of the existing painter.
 // Position is never altered. Native PointerEvent fields are copied explicitly
@@ -11,17 +11,20 @@
   if (root) root.InkFrameBrushInputQuality = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis, function buildBrushInputQuality(root){
-  const VERSION = 'v3-orientation-responsive';
+  const VERSION = 'v4-deliberate-pressure-response';
   const DEFAULTS = Object.freeze({
-    maxBatch: 48,
-    dedupeDistance: 0.12,
-    pressureEpsilon: 0.004,
-    minPressureAlpha: 0.16,
-    maxPressureAlpha: 0.72,
-    endpointPressureAlpha: 0.55,
-    fastSpeed: 1.25,
-    tiltEpsilon: 0.5,
-    angleEpsilon: 0.005,
+    maxBatch:48,
+    dedupeDistance:0.12,
+    pressureEpsilon:0.004,
+    minPressureAlpha:0.16,
+    maxPressureAlpha:0.72,
+    endpointPressureAlpha:0.68,
+    stationaryPressureAlpha:0.38,
+    pressureDeltaThreshold:0.025,
+    pressureDeltaBoost:0.72,
+    fastSpeed:1.25,
+    tiltEpsilon:0.5,
+    angleEpsilon:0.005,
   });
 
   const states = new Map();
@@ -30,8 +33,9 @@
   let metrics = {
     active:false, version:VERSION, patchedBatches:0, rawSamples:0,
     outputSamples:0, duplicatesDropped:0, samplesCapped:0,
-    pressureAdjusted:0, nativeFieldsPreserved:0, reorderedSamples:0,
-    nativeChangesKept:0, hoverSkipped:0, streamResets:0, activePointers:0,
+    pressureAdjusted:0, pressureBoosted:0, nativeFieldsPreserved:0,
+    reorderedSamples:0, nativeChangesKept:0, hoverSkipped:0,
+    streamResets:0, activePointers:0,
   };
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -42,26 +46,25 @@
   function clearState(state){ state.last=null; state.pressure=null; state.lastTime=0; return state; }
 
   function copyNativeSample(sample, pressure, x, y, timeStamp){
-    const copied = {
-      clientX: finite(x, finite(sample && sample.clientX, 0)),
-      clientY: finite(y, finite(sample && sample.clientY, 0)),
-      pressure: clamp(finite(pressure, 0.5), 0, 1),
-      tiltX: finite(sample && sample.tiltX, 0),
-      tiltY: finite(sample && sample.tiltY, 0),
-      altitudeAngle: optional(sample && sample.altitudeAngle),
-      azimuthAngle: optional(sample && sample.azimuthAngle),
-      pointerType: (sample && sample.pointerType) || 'mouse',
-      pointerId: finite(sample && sample.pointerId, 0),
-      timeStamp: finite(timeStamp, finite(sample && sample.timeStamp, 0)),
-      width: finite(sample && sample.width, 1),
-      height: finite(sample && sample.height, 1),
-      buttons: finite(sample && sample.buttons, 0),
-      button: finite(sample && sample.button, -1),
-      tangentialPressure: finite(sample && sample.tangentialPressure, 0),
-      twist: finite(sample && sample.twist, 0),
-      isPrimary: sample && sample.isPrimary !== false,
+    return {
+      clientX:finite(x, finite(sample && sample.clientX, 0)),
+      clientY:finite(y, finite(sample && sample.clientY, 0)),
+      pressure:clamp(finite(pressure, 0.5), 0, 1),
+      tiltX:finite(sample && sample.tiltX, 0),
+      tiltY:finite(sample && sample.tiltY, 0),
+      altitudeAngle:optional(sample && sample.altitudeAngle),
+      azimuthAngle:optional(sample && sample.azimuthAngle),
+      pointerType:(sample && sample.pointerType) || 'mouse',
+      pointerId:finite(sample && sample.pointerId, 0),
+      timeStamp:finite(timeStamp, finite(sample && sample.timeStamp, 0)),
+      width:finite(sample && sample.width, 1),
+      height:finite(sample && sample.height, 1),
+      buttons:finite(sample && sample.buttons, 0),
+      button:finite(sample && sample.button, -1),
+      tangentialPressure:finite(sample && sample.tangentialPressure, 0),
+      twist:finite(sample && sample.twist, 0),
+      isPrimary:sample && sample.isPrimary !== false,
     };
-    return copied;
   }
 
   function orderedBatch(samples){
@@ -77,12 +80,12 @@
 
   function selectBatch(samples, maxBatch){
     if (samples.length <= maxBatch) return samples.slice();
-    const out = [], last = samples.length - 1;
-    for (let i=0; i<maxBatch; i++) {
-      const index = Math.round((i / Math.max(1, maxBatch - 1)) * last);
-      if (out[out.length - 1] !== samples[index]) out.push(samples[index]);
+    const out = [], last = samples.length-1;
+    for (let i=0;i<maxBatch;i++) {
+      const index = Math.round((i/Math.max(1,maxBatch-1))*last);
+      if (out[out.length-1] !== samples[index]) out.push(samples[index]);
     }
-    if (out[out.length - 1] !== samples[last]) out[out.length - 1] = samples[last];
+    if (out[out.length-1] !== samples[last]) out[out.length-1] = samples[last];
     return out;
   }
 
@@ -103,61 +106,89 @@
       (azimuth!=null && prevAzimuth!=null && Math.abs(azimuth-prevAzimuth)>=opts.angleEpsilon);
   }
 
+  function pressureAlpha(speed, pressureDelta, isLast, options){
+    const opts = { ...DEFAULTS, ...(options || {}) };
+    const speedUnit = clamp(finite(speed,0)/Math.max(0.01,opts.fastSpeed),0,1);
+    let alpha = clamp(
+      opts.minPressureAlpha + (opts.maxPressureAlpha-opts.minPressureAlpha)*speedUnit,
+      0.01, 1
+    );
+
+    const delta = Math.max(0, finite(pressureDelta,0));
+    if(delta >= opts.pressureDeltaThreshold){
+      const deltaUnit = clamp(
+        (delta-opts.pressureDeltaThreshold)/Math.max(0.001,1-opts.pressureDeltaThreshold),
+        0, 1
+      );
+      alpha = Math.max(alpha, opts.stationaryPressureAlpha);
+      alpha += deltaUnit*opts.pressureDeltaBoost;
+    }
+    if(isLast) alpha = Math.max(alpha, opts.endpointPressureAlpha);
+    return clamp(alpha,0.01,1);
+  }
+
   function qualityBatch(rawSamples, state, options){
     const opts = { ...DEFAULTS, ...(options || {}) };
     const st = state || createState();
     const input = Array.isArray(rawSamples) ? rawSamples.filter(Boolean) : [];
-    if (!input.length) return { samples:[], state:st, stats:{raw:0,output:0,dropped:0,capped:0,pressureAdjusted:0,nativeFieldsPreserved:0,reordered:0,nativeChangesKept:0,streamResets:0} };
+    if (!input.length) return {
+      samples:[], state:st,
+      stats:{raw:0,output:0,dropped:0,capped:0,pressureAdjusted:0,pressureBoosted:0,nativeFieldsPreserved:0,reordered:0,nativeChangesKept:0,streamResets:0}
+    };
 
     const ordered = orderedBatch(input);
-    const maxBatch = Math.max(2, Math.round(finite(opts.maxBatch, DEFAULTS.maxBatch)));
-    const selected = selectBatch(ordered.samples, maxBatch);
+    const maxBatch = Math.max(2,Math.round(finite(opts.maxBatch,DEFAULTS.maxBatch)));
+    const selected = selectBatch(ordered.samples,maxBatch);
     const output = [];
-    let dropped = 0, pressureAdjusted = 0, nativeFieldsPreserved = 0, nativeChangesKept=0, streamResets=0;
+    let dropped=0, pressureAdjusted=0, pressureBoosted=0;
+    let nativeFieldsPreserved=0, nativeChangesKept=0, streamResets=0;
 
     const firstTime=finite(selected[0] && selected[0].timeStamp,0);
-    if(st.last && firstTime + 1 < st.lastTime){ clearState(st); streamResets++; }
+    if(st.last && firstTime+1 < st.lastTime){ clearState(st); streamResets++; }
 
-    for (let i=0; i<selected.length; i++) {
-      const sample = selected[i];
-      const x = finite(sample.clientX, st.last ? st.last.clientX : 0);
-      const y = finite(sample.clientY, st.last ? st.last.clientY : 0);
-      const time = finite(sample.timeStamp, st.lastTime || i);
-      const rawPressure = clamp(finite(sample.pressure, st.pressure == null ? 0.5 : st.pressure), 0, 1);
-      const previous = st.last;
-      const dist = previous ? Math.hypot(x-previous.clientX, y-previous.clientY) : Infinity;
-      const dt = previous ? Math.max(1, time-st.lastTime) : 1;
-      const pressureDelta = st.pressure == null ? Infinity : Math.abs(rawPressure-st.pressure);
-      const isLast = i === selected.length-1;
-      const changedNative = nativeChanged(sample,previous,opts);
+    for(let i=0;i<selected.length;i++){
+      const sample=selected[i];
+      const x=finite(sample.clientX,st.last ? st.last.clientX : 0);
+      const y=finite(sample.clientY,st.last ? st.last.clientY : 0);
+      const time=finite(sample.timeStamp,st.lastTime || i);
+      const rawPressure=clamp(finite(sample.pressure,st.pressure==null ? 0.5 : st.pressure),0,1);
+      const previous=st.last;
+      const dist=previous ? Math.hypot(x-previous.clientX,y-previous.clientY) : Infinity;
+      const dt=previous ? Math.max(1,time-st.lastTime) : 1;
+      const pressureDelta=st.pressure==null ? Infinity : Math.abs(rawPressure-st.pressure);
+      const isLast=i===selected.length-1;
+      const changedNative=nativeChanged(sample,previous,opts);
 
-      if (!isLast && previous && dist < opts.dedupeDistance && pressureDelta < opts.pressureEpsilon && !changedNative) {
+      if(!isLast && previous && dist<opts.dedupeDistance && pressureDelta<opts.pressureEpsilon && !changedNative){
         dropped++;
         continue;
       }
-      if(previous && dist < opts.dedupeDistance && changedNative) nativeChangesKept++;
+      if(previous && dist<opts.dedupeDistance && changedNative) nativeChangesKept++;
 
-      const speed = previous ? dist/dt : opts.fastSpeed;
-      const speedUnit = clamp(speed/Math.max(0.01, opts.fastSpeed), 0, 1);
-      let alpha = clamp(opts.minPressureAlpha + (opts.maxPressureAlpha-opts.minPressureAlpha)*speedUnit, 0.01, 1);
-      if(isLast) alpha=Math.max(alpha,clamp(opts.endpointPressureAlpha,0.01,1));
-      const nextPressure = st.pressure == null ? rawPressure : st.pressure + (rawPressure-st.pressure)*alpha;
-      if (Math.abs(nextPressure-rawPressure) > 0.0005) pressureAdjusted++;
+      const speed=previous ? dist/dt : opts.fastSpeed;
+      const baselineAlpha=clamp(
+        opts.minPressureAlpha + (opts.maxPressureAlpha-opts.minPressureAlpha)*clamp(speed/Math.max(0.01,opts.fastSpeed),0,1),
+        0.01,1
+      );
+      const alpha=pressureAlpha(speed,pressureDelta,isLast,opts);
+      if(alpha > baselineAlpha+0.0005) pressureBoosted++;
+      const nextPressure=st.pressure==null ? rawPressure : st.pressure+(rawPressure-st.pressure)*alpha;
+      if(Math.abs(nextPressure-rawPressure)>0.0005) pressureAdjusted++;
 
-      const copied = copyNativeSample(sample, nextPressure, x, y, time);
-      if (copied.pointerType==='pen' && (copied.tiltX || copied.tiltY || copied.altitudeAngle!=null || copied.azimuthAngle!=null || copied.buttons>1)) nativeFieldsPreserved++;
+      const copied=copyNativeSample(sample,nextPressure,x,y,time);
+      if(copied.pointerType==='pen' && (copied.tiltX || copied.tiltY || copied.altitudeAngle!=null || copied.azimuthAngle!=null || copied.buttons>1)) nativeFieldsPreserved++;
       output.push(copied);
-      st.last = copied;
-      st.pressure = nextPressure;
-      st.lastTime = time;
+      st.last=copied;
+      st.pressure=nextPressure;
+      st.lastTime=time;
     }
 
-    if (!output.length) {
-      const last = ordered.samples[ordered.samples.length-1];
-      const p = clamp(finite(last.pressure, st.pressure == null ? 0.5 : st.pressure), 0, 1);
-      const copied = copyNativeSample(last, p);
+    if(!output.length){
+      const last=ordered.samples[ordered.samples.length-1];
+      const p=clamp(finite(last.pressure,st.pressure==null ? 0.5 : st.pressure),0,1);
+      const copied=copyNativeSample(last,p);
       output.push(copied);
-      st.last = copied; st.pressure = p; st.lastTime = copied.timeStamp;
+      st.last=copied; st.pressure=p; st.lastTime=copied.timeStamp;
     }
 
     return {
@@ -169,6 +200,7 @@
         dropped,
         capped:Math.max(0,input.length-selected.length),
         pressureAdjusted,
+        pressureBoosted,
         nativeFieldsPreserved,
         reordered:ordered.reordered,
         nativeChangesKept,
@@ -178,9 +210,9 @@
   }
 
   function stateFor(pointerId){
-    const id = finite(pointerId,0);
-    let state = states.get(id);
-    if (!state) { state=createState(); states.set(id,state); }
+    const id=finite(pointerId,0);
+    let state=states.get(id);
+    if(!state){ state=createState(); states.set(id,state); }
     return state;
   }
   function resetPointer(pointerId){ states.delete(finite(pointerId,0)); }
@@ -192,6 +224,7 @@
     metrics.duplicatesDropped += stats.dropped;
     metrics.samplesCapped += stats.capped;
     metrics.pressureAdjusted += stats.pressureAdjusted;
+    metrics.pressureBoosted += stats.pressureBoosted || 0;
     metrics.nativeFieldsPreserved += stats.nativeFieldsPreserved;
     metrics.reorderedSamples += stats.reordered || 0;
     metrics.nativeChangesKept += stats.nativeChangesKept || 0;
@@ -201,44 +234,44 @@
   }
 
   function patchMoveEvent(event){
-    if (!event || !event.target || event.target.id!=='c') return;
-    if (event.pointerType==='touch' && activeTouches.size>=2) return;
-    if (event.pointerType==='mouse' && !(event.buttons&1)) return;
-    if (event.pointerType==='pen' && !(event.buttons&1) && finite(event.pressure,0)===0) {
+    if(!event || !event.target || event.target.id!=='c') return;
+    if(event.pointerType==='touch' && activeTouches.size>=2) return;
+    if(event.pointerType==='mouse' && !(event.buttons&1)) return;
+    if(event.pointerType==='pen' && !(event.buttons&1) && finite(event.pressure,0)===0){
       metrics.hoverSkipped++;
       root.__inkframeBrushInputQualityMetrics={...metrics};
       return;
     }
 
     let raw=[event];
-    try {
+    try{
       const getter=event.getCoalescedEvents;
-      if (typeof getter==='function') {
+      if(typeof getter==='function'){
         const got=getter.call(event);
-        if (Array.isArray(got) && got.length) raw=got;
+        if(Array.isArray(got) && got.length) raw=got;
       }
-    } catch (_) {}
+    }catch(_){}
 
     const result=qualityBatch(raw,stateFor(event.pointerId));
-    try {
+    try{
       Object.defineProperty(event,'getCoalescedEvents',{configurable:true,value:()=>result.samples});
       updateMetrics(result.stats);
-    } catch (_) {}
+    }catch(_){}
   }
 
   function install(){
-    if (installed || typeof document==='undefined') return { ...metrics };
+    if(installed || typeof document==='undefined') return { ...metrics };
     const stage=document.getElementById('stage'), canvas=document.getElementById('c');
-    if (!stage || !canvas) return { ...metrics };
+    if(!stage || !canvas) return { ...metrics };
     installed=true; metrics.active=true;
 
     stage.addEventListener('pointerdown',event=>{
-      if (event.pointerType==='touch') activeTouches.add(event.pointerId);
-      if (event.target===canvas) resetPointer(event.pointerId);
+      if(event.pointerType==='touch') activeTouches.add(event.pointerId);
+      if(event.target===canvas) resetPointer(event.pointerId);
     },true);
     stage.addEventListener('pointermove',patchMoveEvent,true);
     const end=event=>{
-      if (event.pointerType==='touch') activeTouches.delete(event.pointerId);
+      if(event.pointerType==='touch') activeTouches.delete(event.pointerId);
       resetPointer(event.pointerId);
       metrics.activePointers=states.size;
       root.__inkframeBrushInputQualityMetrics={...metrics};
@@ -260,6 +293,7 @@
       'Brush Input duplicates dropped: '+m.duplicatesDropped,
       'Brush Input samples capped: '+m.samplesCapped,
       'Brush Input pressure adjusted: '+m.pressureAdjusted,
+      'Brush Input pressure boosted: '+m.pressureBoosted,
       'Brush Input native fields preserved: '+m.nativeFieldsPreserved,
       'Brush Input reordered samples: '+m.reorderedSamples,
       'Brush Input native changes kept: '+m.nativeChangesKept,
@@ -268,10 +302,14 @@
     ];
   }
 
-  const api={VERSION,DEFAULTS,createState,copyNativeSample,orderedBatch,nativeChanged,qualityBatch,install,resetPointer,metrics(){return {...metrics};},reportLines};
-  if (typeof document!=='undefined') {
+  const api={
+    VERSION,DEFAULTS,createState,copyNativeSample,orderedBatch,nativeChanged,
+    pressureAlpha,qualityBatch,install,resetPointer,
+    metrics(){return {...metrics};},reportLines
+  };
+  if(typeof document!=='undefined'){
     const boot=()=>install();
-    if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
+    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
     else boot();
   }
   return api;
