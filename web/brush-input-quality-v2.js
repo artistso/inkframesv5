@@ -1,4 +1,4 @@
-// InkFrame — Active Brush Input Quality v2
+// InkFrame — Active Brush Input Quality v3
 // -----------------------------------------------------------------------------
 // Conservative coalesced-sample cleanup in front of the existing painter.
 // Position is never altered. Native PointerEvent fields are copied explicitly
@@ -11,14 +11,17 @@
   if (root) root.InkFrameBrushInputQuality = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis, function buildBrushInputQuality(root){
-  const VERSION = 'v2-native-pointer-preservation';
+  const VERSION = 'v3-orientation-responsive';
   const DEFAULTS = Object.freeze({
     maxBatch: 48,
     dedupeDistance: 0.12,
     pressureEpsilon: 0.004,
     minPressureAlpha: 0.16,
     maxPressureAlpha: 0.72,
+    endpointPressureAlpha: 0.55,
     fastSpeed: 1.25,
+    tiltEpsilon: 0.5,
+    angleEpsilon: 0.005,
   });
 
   const states = new Map();
@@ -27,7 +30,8 @@
   let metrics = {
     active:false, version:VERSION, patchedBatches:0, rawSamples:0,
     outputSamples:0, duplicatesDropped:0, samplesCapped:0,
-    pressureAdjusted:0, nativeFieldsPreserved:0, activePointers:0,
+    pressureAdjusted:0, nativeFieldsPreserved:0, reorderedSamples:0,
+    nativeChangesKept:0, hoverSkipped:0, streamResets:0, activePointers:0,
   };
 
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -35,6 +39,7 @@
   const optional = v => v == null ? null : finite(v, null);
 
   function createState(){ return { last:null, pressure:null, lastTime:0 }; }
+  function clearState(state){ state.last=null; state.pressure=null; state.lastTime=0; return state; }
 
   function copyNativeSample(sample, pressure, x, y, timeStamp){
     const copied = {
@@ -59,6 +64,17 @@
     return copied;
   }
 
+  function orderedBatch(samples){
+    const tagged = samples.map((sample,index)=>({ sample, index, time:finite(sample && sample.timeStamp,index) }));
+    let ordered = true;
+    for(let i=1;i<tagged.length;i++) if(tagged[i].time < tagged[i-1].time){ ordered=false; break; }
+    if(ordered) return { samples:samples.slice(), reordered:0 };
+    tagged.sort((a,b)=>a.time-b.time || a.index-b.index);
+    let reordered=0;
+    tagged.forEach((entry,index)=>{ if(entry.index!==index) reordered++; });
+    return { samples:tagged.map(entry=>entry.sample), reordered };
+  }
+
   function selectBatch(samples, maxBatch){
     if (samples.length <= maxBatch) return samples.slice();
     const out = [], last = samples.length - 1;
@@ -70,16 +86,37 @@
     return out;
   }
 
+  function nativeChanged(sample, previous, options){
+    if(!previous) return false;
+    const opts=options || DEFAULTS;
+    const changed =
+      finite(sample && sample.buttons,0) !== finite(previous.buttons,0) ||
+      finite(sample && sample.button,-1) !== finite(previous.button,-1) ||
+      Math.abs(finite(sample && sample.tiltX,0)-finite(previous.tiltX,0)) >= opts.tiltEpsilon ||
+      Math.abs(finite(sample && sample.tiltY,0)-finite(previous.tiltY,0)) >= opts.tiltEpsilon ||
+      Math.abs(finite(sample && sample.twist,0)-finite(previous.twist,0)) >= opts.tiltEpsilon ||
+      Math.abs(finite(sample && sample.tangentialPressure,0)-finite(previous.tangentialPressure,0)) >= opts.pressureEpsilon;
+    if(changed) return true;
+    const altitude=optional(sample && sample.altitudeAngle), prevAltitude=optional(previous.altitudeAngle);
+    const azimuth=optional(sample && sample.azimuthAngle), prevAzimuth=optional(previous.azimuthAngle);
+    return (altitude!=null && prevAltitude!=null && Math.abs(altitude-prevAltitude)>=opts.angleEpsilon) ||
+      (azimuth!=null && prevAzimuth!=null && Math.abs(azimuth-prevAzimuth)>=opts.angleEpsilon);
+  }
+
   function qualityBatch(rawSamples, state, options){
     const opts = { ...DEFAULTS, ...(options || {}) };
     const st = state || createState();
     const input = Array.isArray(rawSamples) ? rawSamples.filter(Boolean) : [];
-    if (!input.length) return { samples:[], state:st, stats:{raw:0,output:0,dropped:0,capped:0,pressureAdjusted:0,nativeFieldsPreserved:0} };
+    if (!input.length) return { samples:[], state:st, stats:{raw:0,output:0,dropped:0,capped:0,pressureAdjusted:0,nativeFieldsPreserved:0,reordered:0,nativeChangesKept:0,streamResets:0} };
 
+    const ordered = orderedBatch(input);
     const maxBatch = Math.max(2, Math.round(finite(opts.maxBatch, DEFAULTS.maxBatch)));
-    const selected = selectBatch(input, maxBatch);
+    const selected = selectBatch(ordered.samples, maxBatch);
     const output = [];
-    let dropped = 0, pressureAdjusted = 0, nativeFieldsPreserved = 0;
+    let dropped = 0, pressureAdjusted = 0, nativeFieldsPreserved = 0, nativeChangesKept=0, streamResets=0;
+
+    const firstTime=finite(selected[0] && selected[0].timeStamp,0);
+    if(st.last && firstTime + 1 < st.lastTime){ clearState(st); streamResets++; }
 
     for (let i=0; i<selected.length; i++) {
       const sample = selected[i];
@@ -92,15 +129,18 @@
       const dt = previous ? Math.max(1, time-st.lastTime) : 1;
       const pressureDelta = st.pressure == null ? Infinity : Math.abs(rawPressure-st.pressure);
       const isLast = i === selected.length-1;
+      const changedNative = nativeChanged(sample,previous,opts);
 
-      if (!isLast && previous && dist < opts.dedupeDistance && pressureDelta < opts.pressureEpsilon) {
+      if (!isLast && previous && dist < opts.dedupeDistance && pressureDelta < opts.pressureEpsilon && !changedNative) {
         dropped++;
         continue;
       }
+      if(previous && dist < opts.dedupeDistance && changedNative) nativeChangesKept++;
 
       const speed = previous ? dist/dt : opts.fastSpeed;
       const speedUnit = clamp(speed/Math.max(0.01, opts.fastSpeed), 0, 1);
-      const alpha = clamp(opts.minPressureAlpha + (opts.maxPressureAlpha-opts.minPressureAlpha)*speedUnit, 0.01, 1);
+      let alpha = clamp(opts.minPressureAlpha + (opts.maxPressureAlpha-opts.minPressureAlpha)*speedUnit, 0.01, 1);
+      if(isLast) alpha=Math.max(alpha,clamp(opts.endpointPressureAlpha,0.01,1));
       const nextPressure = st.pressure == null ? rawPressure : st.pressure + (rawPressure-st.pressure)*alpha;
       if (Math.abs(nextPressure-rawPressure) > 0.0005) pressureAdjusted++;
 
@@ -113,7 +153,7 @@
     }
 
     if (!output.length) {
-      const last = input[input.length-1];
+      const last = ordered.samples[ordered.samples.length-1];
       const p = clamp(finite(last.pressure, st.pressure == null ? 0.5 : st.pressure), 0, 1);
       const copied = copyNativeSample(last, p);
       output.push(copied);
@@ -130,6 +170,9 @@
         capped:Math.max(0,input.length-selected.length),
         pressureAdjusted,
         nativeFieldsPreserved,
+        reordered:ordered.reordered,
+        nativeChangesKept,
+        streamResets,
       },
     };
   }
@@ -150,6 +193,9 @@
     metrics.samplesCapped += stats.capped;
     metrics.pressureAdjusted += stats.pressureAdjusted;
     metrics.nativeFieldsPreserved += stats.nativeFieldsPreserved;
+    metrics.reorderedSamples += stats.reordered || 0;
+    metrics.nativeChangesKept += stats.nativeChangesKept || 0;
+    metrics.streamResets += stats.streamResets || 0;
     metrics.activePointers = states.size;
     root.__inkframeBrushInputQualityMetrics = { ...metrics };
   }
@@ -158,6 +204,11 @@
     if (!event || !event.target || event.target.id!=='c') return;
     if (event.pointerType==='touch' && activeTouches.size>=2) return;
     if (event.pointerType==='mouse' && !(event.buttons&1)) return;
+    if (event.pointerType==='pen' && !(event.buttons&1) && finite(event.pressure,0)===0) {
+      metrics.hoverSkipped++;
+      root.__inkframeBrushInputQualityMetrics={...metrics};
+      return;
+    }
 
     let raw=[event];
     try {
@@ -210,10 +261,14 @@
       'Brush Input samples capped: '+m.samplesCapped,
       'Brush Input pressure adjusted: '+m.pressureAdjusted,
       'Brush Input native fields preserved: '+m.nativeFieldsPreserved,
+      'Brush Input reordered samples: '+m.reorderedSamples,
+      'Brush Input native changes kept: '+m.nativeChangesKept,
+      'Brush Input hover skipped: '+m.hoverSkipped,
+      'Brush Input stream resets: '+m.streamResets,
     ];
   }
 
-  const api={VERSION,DEFAULTS,createState,copyNativeSample,qualityBatch,install,resetPointer,metrics(){return {...metrics};},reportLines};
+  const api={VERSION,DEFAULTS,createState,copyNativeSample,orderedBatch,nativeChanged,qualityBatch,install,resetPointer,metrics(){return {...metrics};},reportLines};
   if (typeof document!=='undefined') {
     const boot=()=>install();
     if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
