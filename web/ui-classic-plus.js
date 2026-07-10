@@ -2,8 +2,9 @@
 // -----------------------------------------------------------------------------
 // A tiny release-stable layer on top of the original draggable orb UI. It keeps
 // original movement and expansion behavior, but adds practical tablet controls:
-// UI lock, safer two-tap UI reset, drag-safe styling, and diagnostics. It does
-// not own drawing, canvas geometry, tool state, or child-button layout.
+// UI lock, safer two-tap UI reset, collapsible dock, drag-safe styling, and
+// diagnostics. It does not own drawing, canvas geometry, tool state, or
+// child-button layout.
 'use strict';
 
 (function installInkFrameUIClassicPlus(root){
@@ -11,8 +12,9 @@
   if (root.__inkframeUIClassicPlusInstalled) return;
   root.__inkframeUIClassicPlusInstalled = true;
 
-  const VERSION = 'v2-lock-reset-safety';
+  const VERSION = 'v3-collapsible-dock';
   const LOCK_KEY = 'inkframe.ui.locked.v1';
+  const DOCK_COLLAPSED_KEY = 'inkframe.ui.dockCollapsed.v1';
   const RESET_CONFIRM_MS = 2400;
   const CLASSIC_RESET_KEYS = [
     'inkframe.ui.rootPositions.v1',
@@ -22,10 +24,12 @@
     'inkframe.ui.root.drag.v1',
   ];
   let metrics = null;
+  let dockButton = null;
   let lockButton = null;
   let resetButton = null;
   let statusEl = null;
-  let locked = readLocked();
+  let locked = readFlag(LOCK_KEY, false);
+  let dockCollapsed = readFlag(DOCK_COLLAPSED_KEY, false);
   let lockGateInstalled = false;
   let lockedPointerId = null;
   let lockedNodeSnapshot = null;
@@ -37,13 +41,18 @@
     ? document.addEventListener('DOMContentLoaded', fn, { once: true })
     : fn();
 
-  function readLocked(){
-    try { return localStorage.getItem(LOCK_KEY) === '1'; } catch (_) { return false; }
+  function readFlag(key, fallback){
+    try {
+      const value = localStorage.getItem(key);
+      if (value === null) return !!fallback;
+      return value === '1';
+    } catch (_) {
+      return !!fallback;
+    }
   }
 
-  function writeLocked(value){
-    locked = !!value;
-    try { localStorage.setItem(LOCK_KEY, locked ? '1' : '0'); } catch (_) {}
+  function writeFlag(key, value){
+    try { localStorage.setItem(key, value ? '1' : '0'); } catch (_) {}
   }
 
   function ensureStyle(){
@@ -61,13 +70,17 @@
       'body.inkframe-ui-locked .node:not(.open)>.orb{box-shadow:var(--shadow),0 0 0 1px rgba(255,240,243,.22),inset 0 1px 0 var(--rim)!important}',
       'body.inkframe-ui-locked .node.dragging>.orb{transform:none!important}',
       'body.inkframe-ui-locked .node.ui-lock-held>.orb{filter:saturate(1.08)!important;box-shadow:var(--shadow),0 0 0 2px rgba(255,240,243,.38),inset 0 1px 0 var(--rim)!important}',
-      '#inkframe-ui-classic-plus-dock{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom));z-index:64;display:flex;gap:8px;align-items:center;pointer-events:auto;max-width:calc(100vw - 24px)}',
+      '#inkframe-ui-classic-plus-dock{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom));z-index:64;display:flex;gap:8px;align-items:center;pointer-events:auto;max-width:calc(100vw - 24px);transition:opacity .18s ease,transform .18s ease}',
       '#inkframe-ui-classic-plus-dock button{min-height:32px;padding:7px 10px;border-radius:999px;border:1px solid rgba(247,202,201,.34);background:rgba(20,0,14,.56);color:#fff0f3;font:800 10px/1 system-ui,sans-serif;letter-spacing:.11em;text-transform:uppercase;box-shadow:0 5px 14px rgba(10,0,10,.25),inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(10px) saturate(125%);-webkit-backdrop-filter:blur(10px) saturate(125%)}',
+      '#inkframe-ui-dock-toggle{min-width:36px!important;width:36px!important;padding-inline:0!important;font-size:11px!important}',
       '#inkframe-ui-lock-toggle[aria-pressed="true"]{background:rgba(187,0,55,.42);border-color:rgba(255,240,243,.58)}',
       '#inkframe-ui-reset{opacity:.84}',
       '#inkframe-ui-reset[data-confirm="1"]{opacity:1;background:rgba(187,0,55,.44);border-color:rgba(255,240,243,.64)}',
       '#inkframe-ui-plus-status{min-height:32px;display:flex;align-items:center;padding:0 9px;border-radius:999px;border:1px solid rgba(247,202,201,.20);background:rgba(10,0,10,.36);color:rgba(255,240,243,.78);font:800 9px/1 system-ui,sans-serif;letter-spacing:.10em;text-transform:uppercase;box-shadow:0 4px 12px rgba(10,0,10,.20);pointer-events:none;white-space:nowrap}',
-      '#inkframe-ui-reset:active,#inkframe-ui-lock-toggle:active{transform:translateY(1px)}',
+      'body.inkframe-ui-dock-collapsed #inkframe-ui-classic-plus-dock{gap:0;opacity:.82}',
+      'body.inkframe-ui-dock-collapsed #inkframe-ui-lock-toggle,body.inkframe-ui-dock-collapsed #inkframe-ui-reset,body.inkframe-ui-dock-collapsed #inkframe-ui-plus-status{display:none!important}',
+      'body.inkframe-ui-dock-collapsed #inkframe-ui-dock-toggle{background:rgba(20,0,14,.66);border-color:rgba(255,240,243,.42)}',
+      '#inkframe-ui-reset:active,#inkframe-ui-lock-toggle:active,#inkframe-ui-dock-toggle:active{transform:translateY(1px)}',
       '@media (max-width:520px){#inkframe-ui-plus-status{display:none}#inkframe-ui-classic-plus-dock button{padding-inline:9px}}'
     ].join('\n');
     document.head.appendChild(style);
@@ -80,6 +93,17 @@
       dock.id = 'inkframe-ui-classic-plus-dock';
       dock.setAttribute('aria-label', 'Classic UI controls');
       document.body.appendChild(dock);
+    }
+    if (!dockButton) {
+      dockButton = document.createElement('button');
+      dockButton.id = 'inkframe-ui-dock-toggle';
+      dockButton.type = 'button';
+      dockButton.addEventListener('click', ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setDockCollapsed(!dockCollapsed);
+      });
+      dock.appendChild(dockButton);
     }
     if (!lockButton) {
       lockButton = document.createElement('button');
@@ -117,6 +141,15 @@
   function syncControls(){
     document.body.classList.add('inkframe-classic-plus');
     document.body.classList.toggle('inkframe-ui-locked', locked);
+    document.body.classList.toggle('inkframe-ui-dock-collapsed', dockCollapsed);
+    const dock = document.getElementById('inkframe-ui-classic-plus-dock');
+    if (dock) dock.dataset.collapsed = dockCollapsed ? '1' : '0';
+    if (dockButton) {
+      dockButton.textContent = dockCollapsed ? 'UI' : '−';
+      dockButton.title = dockCollapsed ? 'Show UI lock and reset controls.' : 'Collapse UI dock.';
+      dockButton.setAttribute('aria-expanded', String(!dockCollapsed));
+      dockButton.setAttribute('aria-label', dockCollapsed ? 'Expand UI controls' : 'Collapse UI controls');
+    }
     if (lockButton) {
       lockButton.textContent = locked ? 'UI LOCKED' : 'MOVE UI';
       lockButton.title = locked ? 'UI is locked. Tap to allow moving buttons.' : 'UI can move. Tap to lock button positions.';
@@ -126,17 +159,30 @@
       resetButton.textContent = 'RESET UI';
       resetButton.removeAttribute('data-confirm');
     }
-    if (statusEl) statusEl.textContent = locked ? 'Draw safe' : 'Move buttons';
+    if (statusEl) {
+      if (dockCollapsed) statusEl.textContent = 'Dock hidden';
+      else statusEl.textContent = locked ? 'Draw safe' : 'Move buttons';
+    }
   }
 
   function setLocked(value){
-    writeLocked(value);
+    locked = !!value;
+    writeFlag(LOCK_KEY, locked);
+    resetConfirmUntil = 0;
+    syncControls();
+    collectMetrics();
+  }
+
+  function setDockCollapsed(value){
+    dockCollapsed = !!value;
+    writeFlag(DOCK_COLLAPSED_KEY, dockCollapsed);
     resetConfirmUntil = 0;
     syncControls();
     collectMetrics();
   }
 
   function requestResetUI(){
+    if (dockCollapsed) setDockCollapsed(false);
     const now = Date.now();
     if (now < resetConfirmUntil) {
       resetConfirmUntil = 0;
@@ -157,8 +203,10 @@
     try {
       CLASSIC_RESET_KEYS.forEach(key => localStorage.removeItem(key));
       localStorage.setItem(LOCK_KEY, '0');
+      localStorage.setItem(DOCK_COLLAPSED_KEY, '0');
     } catch (_) {}
     locked = false;
+    dockCollapsed = false;
     lastResetAt = Date.now();
     document.querySelectorAll('.node').forEach(node => {
       node.classList.remove('open', 'dragging', 'ui-active', 'ui-lock-held');
@@ -241,7 +289,9 @@
       active: true,
       version: VERSION,
       locked,
+      dockCollapsed,
       dockPresent: !!document.getElementById('inkframe-ui-classic-plus-dock'),
+      dockTogglePresent: !!document.getElementById('inkframe-ui-dock-toggle'),
       lockTogglePresent: !!document.getElementById('inkframe-ui-lock-toggle'),
       resetPresent: !!document.getElementById('inkframe-ui-reset'),
       statusPresent: !!document.getElementById('inkframe-ui-plus-status'),
@@ -254,6 +304,7 @@
       classicClass: document.body.classList.contains('inkframe-classic-ui'),
       plusClass: document.body.classList.contains('inkframe-classic-plus'),
       lockedClass: document.body.classList.contains('inkframe-ui-locked'),
+      collapsedClass: document.body.classList.contains('inkframe-ui-dock-collapsed'),
     };
     root.__inkframeUIClassicPlusMetrics = metrics;
     return metrics;
@@ -274,6 +325,8 @@
       'UI Classic Plus version: ' + m.version,
       'UI Classic Plus locked: ' + (m.locked ? 'yes' : 'no'),
       'UI Classic Plus dock: ' + (m.dockPresent ? 'yes' : 'no'),
+      'UI Classic Plus dock toggle: ' + (m.dockTogglePresent ? 'yes' : 'no'),
+      'UI Classic Plus dock collapsed: ' + (m.dockCollapsed ? 'yes' : 'no'),
       'UI Classic Plus lock toggle: ' + (m.lockTogglePresent ? 'yes' : 'no'),
       'UI Classic Plus reset: ' + (m.resetPresent ? 'yes' : 'no'),
       'UI Classic Plus status: ' + (m.statusPresent ? 'yes' : 'no'),
@@ -285,7 +338,15 @@
     ];
   }
 
-  root.InkFrameUIClassicPlus = { apply, setLocked, resetUI, requestResetUI, metrics(){ return metrics || root.__inkframeUIClassicPlusMetrics || null; }, reportLines };
+  root.InkFrameUIClassicPlus = {
+    apply,
+    setLocked,
+    setDockCollapsed,
+    resetUI,
+    requestResetUI,
+    metrics(){ return metrics || root.__inkframeUIClassicPlusMetrics || null; },
+    reportLines
+  };
   ready(() => {
     apply();
     setTimeout(apply, 120);
