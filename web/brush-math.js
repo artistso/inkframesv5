@@ -91,5 +91,6 @@ function catmullRom(t, p0, p1, p2, p3) {
   loadScript('ui-classic-restore.js', 'ui-classic-restore');
   loadScript('ui-classic-plus.js', 'ui-classic-plus');
   loadScript('ui-classic-dock-corners.js', 'ui-classic-dock-corners');
+  loadScript('ui-classic-size.js', 'ui-classic-size');
   loadScript('release-candidate.js', 'release-candidate');
 })();
