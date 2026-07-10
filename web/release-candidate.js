@@ -1,9 +1,9 @@
 // InkFrame — Release Candidate Stability Guard
 // -----------------------------------------------------------------------------
 // Last-loaded safety layer for APK release candidates. It does not add features
-// or take ownership of drawing. It keeps the canvas input path open, confirms the
-// square/circle toggle is visible, keeps retired scrubber overlays non-blocking,
-// and contributes a compact stability section to REPORT.
+// or take ownership of drawing. The stable publish path is square-canvas only:
+// circular canvas modules remain in the repository for later backend/future work,
+// but this guard keeps the current APK focused on reliable square-canvas input.
 'use strict';
 
 (function installInkFrameReleaseCandidate(root){
@@ -11,7 +11,7 @@
   if (window.__inkframeReleaseCandidateInstalled) return;
   window.__inkframeReleaseCandidateInstalled = true;
 
-  const VERSION = 'v1-stable-apk-guard';
+  const VERSION = 'v2-square-canvas-stable-guard';
   let metrics = null;
 
   const $ = id => document.getElementById(id);
@@ -24,30 +24,36 @@
     const style = document.createElement('style');
     style.id = 'inkframe-rc-stability-style';
     style.textContent = [
-      'canvas#c{pointer-events:auto!important;touch-action:none!important}',
-      '#frameGlass{pointer-events:auto!important}',
-      '#inkframe-timeline-scrubber-zone{pointer-events:none!important}',
+      'body.inkframe-rc-stable{--inkframe-canvas-mode:square}',
+      'body.inkframe-rc-stable.circular-canvas{--inkframe-canvas-mode:square}',
+      'canvas#c{pointer-events:auto!important;touch-action:none!important;border-radius:0!important;clip-path:none!important}',
+      '#frameGlass{pointer-events:auto!important;border-radius:18px!important;clip-path:none!important;transform:none!important}',
+      '#inkframe-timeline-scrubber-zone{pointer-events:none!important;display:none!important}',
       'body:not(.scrubbing-timeline) #inkframe-scrub-hud{pointer-events:none!important}',
-      '#inkframe-circle-toggle{display:flex!important;visibility:visible!important;pointer-events:auto!important}',
-      'body.inkframe-rc-stable #inkframe-circle-toggle{outline:0!important}',
-      'body.inkframe-rc-stable #frameGlass{will-change:border-radius,clip-path,transform}',
-      'body.inkframe-rc-stable canvas#c{will-change:transform}'
+      '#inkframe-circle-toggle{display:none!important;visibility:hidden!important;pointer-events:none!important}',
+      'body.inkframe-rc-stable #frameGlass{will-change:auto}',
+      'body.inkframe-rc-stable canvas#c{will-change:auto}'
     ].join('\n');
     document.head.appendChild(style);
   }
 
-  function ensureToggle(){
-    const safe = root.InkFrameCircularTransformSafe;
-    if (safe && typeof safe.apply === 'function') {
-      try { safe.apply(); } catch (_) {}
+  function enforceSquareMode(){
+    document.body.classList.remove('circular-canvas', 'scrubbing-timeline', 'inkframe-transforming-circle');
+    try { localStorage.setItem('inkframe.circularCanvas.v1', '0'); } catch (_) {}
+    const toggle = $('inkframe-circle-toggle');
+    if (toggle) {
+      toggle.setAttribute('aria-hidden', 'true');
+      toggle.tabIndex = -1;
     }
-    return !!$('inkframe-circle-toggle');
+    const badge = $('inkframe-shape-badge');
+    if (badge) badge.setAttribute('aria-hidden', 'true');
   }
 
   function killBlockingScrubberOverlay(){
     const zone = $('inkframe-timeline-scrubber-zone');
     if (zone) {
       zone.style.pointerEvents = 'none';
+      zone.style.display = 'none';
       zone.setAttribute('aria-hidden', 'true');
     }
     return !!zone;
@@ -59,25 +65,34 @@
     if (canvas) {
       canvas.style.pointerEvents = 'auto';
       canvas.style.touchAction = 'none';
+      canvas.style.borderRadius = '0';
+      canvas.style.clipPath = 'none';
+      canvas.style.transform = '';
     }
-    if (frame) frame.style.pointerEvents = 'auto';
+    if (frame) {
+      frame.style.pointerEvents = 'auto';
+      frame.style.clipPath = 'none';
+      frame.style.transform = '';
+    }
     return !!canvas && !!frame;
   }
 
   function collectMetrics(){
-    const toggle = $('inkframe-circle-toggle');
     const canvas = $('c');
     const frame = $('frameGlass');
     const scrubberOverlay = $('inkframe-timeline-scrubber-zone');
+    const toggle = $('inkframe-circle-toggle');
     metrics = {
       active: true,
       version: VERSION,
+      canvasMode: 'square',
       canvasPresent: !!canvas,
       framePresent: !!frame,
       canvasPointerEvents: canvas ? getComputedStyle(canvas).pointerEvents : 'missing',
       framePointerEvents: frame ? getComputedStyle(frame).pointerEvents : 'missing',
+      circleFrontendLoaded: !!root.InkFrameCircularCanvas || !!root.InkFrameCircularTransformSafe,
       circleTogglePresent: !!toggle,
-      circleToggleLabel: toggle ? String(toggle.textContent || '').trim() : 'missing',
+      circleToggleVisible: toggle ? getComputedStyle(toggle).display !== 'none' && getComputedStyle(toggle).visibility !== 'hidden' : false,
       circularMode: document.body.classList.contains('circular-canvas'),
       scrubberLoaded: !!root.InkFrameCircularScrubber,
       scrubberOverlayPresent: !!scrubberOverlay,
@@ -94,8 +109,8 @@
   function apply(){
     ensureStyle();
     document.body.classList.add('inkframe-rc-stable');
+    enforceSquareMode();
     canvasInputOpen();
-    ensureToggle();
     killBlockingScrubberOverlay();
     collectMetrics();
   }
@@ -105,10 +120,12 @@
     return [
       'Release Candidate: stable guard active',
       'Release Candidate version: ' + m.version,
+      'Release Candidate canvas mode: ' + m.canvasMode,
       'Release Candidate canvas: ' + (m.canvasPresent ? 'present' : 'missing'),
       'Release Candidate frame shell: ' + (m.framePresent ? 'present' : 'missing'),
       'Release Candidate canvas pointer: ' + m.canvasPointerEvents,
-      'Release Candidate circle toggle: ' + (m.circleTogglePresent ? m.circleToggleLabel : 'missing'),
+      'Release Candidate circular frontend loaded: ' + (m.circleFrontendLoaded ? 'yes' : 'no'),
+      'Release Candidate circle toggle visible: ' + (m.circleToggleVisible ? 'yes' : 'no'),
       'Release Candidate circular mode: ' + (m.circularMode ? 'circle' : 'square'),
       'Release Candidate scrubber loaded: ' + (m.scrubberLoaded ? 'yes' : 'no'),
       'Release Candidate scrubber overlay pointer: ' + m.scrubberOverlayPointerEvents,
@@ -149,8 +166,8 @@
     }
     window.addEventListener('resize', () => setTimeout(apply, 60));
     window.addEventListener('orientationchange', () => setTimeout(apply, 240));
-    for (let i = 1; i <= 12; i++) setTimeout(apply, i * 240);
-    for (let i = 1; i <= 10; i++) setTimeout(bridgeIntoTesterReport, i * 260);
+    for (let i = 1; i <= 8; i++) setTimeout(apply, i * 240);
+    for (let i = 1; i <= 4; i++) setTimeout(bridgeIntoTesterReport, i * 260);
     bridgeIntoTesterReport();
   }
 
