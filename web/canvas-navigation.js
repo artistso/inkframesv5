@@ -1,17 +1,18 @@
 // InkFrame — Stylus-Safe Canvas Navigation
 // -----------------------------------------------------------------------------
-// Adds viewport navigation around the existing square canvas without taking
-// ownership of document pixels or the painter's internal display scale.
+// Viewport-only pan and zoom around the existing square canvas. This module never
+// edits document pixels or the painter's internal display scale.
 //
-// Normal drawing mode:
-//   • one pen/finger continues to draw through the existing painter
-//   • two fingers keep the existing pinch-scale and add anchored panning
-//   • mouse wheel / trackpad zooms around the cursor
+// Drawing mode:
+//   • one pen/finger keeps the existing painter behaviour
+//   • an intentional two-finger gesture pans and pinch-zooms the viewport
+//   • once two-finger navigation activates, those touches cannot resume painting
+//   • S Pen activity blocks touch navigation so palm contacts stay harmless
 //
 // Hand mode:
-//   • one pointer pans
-//   • two pointers pan + zoom
-//   • drawing events are intercepted before they reach the canvas
+//   • one pointer pans after a small dead zone
+//   • two pointers pan + anchored pinch zoom
+//   • Space-drag and middle mouse use the same gesture path
 'use strict';
 
 (function installInkFrameCanvasNavigation(root, factory){
@@ -19,7 +20,7 @@
   if (root) root.InkFrameCanvasNavigation = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis, function buildCanvasNavigation(root){
-  const VERSION = 'v2-persistent-deadzone';
+  const VERSION = 'v3-fluid-touch-navigation';
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 5;
   const SAFE_MARGIN = 54;
@@ -43,6 +44,7 @@
   let dimensionObserver = null;
   let saveTimer = 0;
   let stateRestored = false;
+  let canvasSizeKey = '';
 
   let panX = 0;
   let panY = 0;
@@ -53,46 +55,62 @@
   const touches = new Map();
   const activePens = new Set();
   const handPointers = new Map();
+  const suppressedTouches = new Set();
   let normalGesture = null;
   let normalGestureRAF = 0;
   let handGesture = null;
 
   let metrics = {
-    active: false,
-    version: VERSION,
-    wrapperPresent: false,
-    navTogglePresent: false,
-    fitPresent: false,
-    zoomDisplayPresent: false,
-    navMode: false,
-    zoom: 1,
-    panX: 0,
-    panY: 0,
-    wheelZooms: 0,
-    handPans: 0,
-    handPinches: 0,
-    touchPanFrames: 0,
-    deadzoneBlocks: 0,
-    fitCount: 0,
-    resetCount: 0,
-    persistence: false,
-    restored: false,
-    saveCount: 0,
-    dimensionWatch: false,
+    active:false,
+    version:VERSION,
+    wrapperPresent:false,
+    navTogglePresent:false,
+    fitPresent:false,
+    zoomDisplayPresent:false,
+    navMode:false,
+    zoom:1,
+    panX:0,
+    panY:0,
+    wheelZooms:0,
+    handPans:0,
+    handPinches:0,
+    touchPanFrames:0,
+    touchPinchFrames:0,
+    touchGestureActivations:0,
+    suppressedTouchMoves:0,
+    gestureRebases:0,
+    deadzoneBlocks:0,
+    fitCount:0,
+    projectFitCount:0,
+    resetCount:0,
+    persistence:false,
+    restored:false,
+    saveCount:0,
+    dimensionWatch:false,
   };
 
   function midpoint(points){
     const list = Array.from(points.values ? points.values() : points);
-    if (!list.length) return { x: 0, y: 0 };
+    if (!list.length) return { x:0, y:0 };
     let x = 0, y = 0;
-    for (const point of list) { x += point.x; y += point.y; }
-    return { x: x / list.length, y: y / list.length };
+    for (const point of list) { x += finite(point && point.x, 0); y += finite(point && point.y, 0); }
+    return { x:x/list.length, y:y/list.length };
   }
 
   function distance(points){
     const list = Array.from(points.values ? points.values() : points);
     if (list.length < 2) return 0;
-    return Math.hypot(list[0].x - list[1].x, list[0].y - list[1].y);
+    return Math.hypot(
+      finite(list[0] && list[0].x, 0) - finite(list[1] && list[1].x, 0),
+      finite(list[0] && list[0].y, 0) - finite(list[1] && list[1].y, 0)
+    );
+  }
+
+  function gestureScale(startDistance, currentDistance){
+    const start = finite(startDistance, 0);
+    const current = finite(currentDistance, 0);
+    if (start < 1 || current < 1) return 1;
+    return current / start;
   }
 
   function gestureExceeded(startCenter, currentCenter, startDistance, currentDistance){
@@ -100,8 +118,8 @@
       finite(currentCenter && currentCenter.x, 0) - finite(startCenter && startCenter.x, 0),
       finite(currentCenter && currentCenter.y, 0) - finite(startCenter && startCenter.y, 0)
     );
-    const base = Math.max(1, finite(startDistance, 0));
-    const pinch = Math.abs(finite(currentDistance, base) / base - 1);
+    const scale = gestureScale(startDistance, currentDistance);
+    const pinch = Math.abs(scale - 1);
     return move >= PAN_DEADZONE || pinch >= PINCH_DEADZONE;
   }
 
@@ -109,21 +127,23 @@
     const width = Math.max(0.0001, finite(rect && rect.width, 1));
     const height = Math.max(0.0001, finite(rect && rect.height, 1));
     return {
-      u: (finite(point && point.x, 0) - finite(rect && rect.left, 0)) / width,
-      v: (finite(point && point.y, 0) - finite(rect && rect.top, 0)) / height,
+      u:(finite(point && point.x, 0)-finite(rect && rect.left, 0))/width,
+      v:(finite(point && point.y, 0)-finite(rect && rect.top, 0))/height,
     };
   }
 
   function anchorCorrection(rect, anchor, desiredPoint){
     return {
-      x: finite(desiredPoint && desiredPoint.x, 0) - (finite(rect && rect.left, 0) + finite(anchor && anchor.u, 0.5) * Math.max(0.0001, finite(rect && rect.width, 1))),
-      y: finite(desiredPoint && desiredPoint.y, 0) - (finite(rect && rect.top, 0) + finite(anchor && anchor.v, 0.5) * Math.max(0.0001, finite(rect && rect.height, 1))),
+      x:finite(desiredPoint && desiredPoint.x, 0) - (
+        finite(rect && rect.left, 0) + finite(anchor && anchor.u, 0.5) * Math.max(0.0001, finite(rect && rect.width, 1))
+      ),
+      y:finite(desiredPoint && desiredPoint.y, 0) - (
+        finite(rect && rect.top, 0) + finite(anchor && anchor.v, 0.5) * Math.max(0.0001, finite(rect && rect.height, 1))
+      ),
     };
   }
 
-  function savedState(){
-    return { panX, panY, zoom, navMode, savedAt: Date.now() };
-  }
+  function savedState(){ return { panX, panY, zoom, navMode, savedAt:Date.now() }; }
 
   function persistNow(){
     try {
@@ -141,10 +161,7 @@
   function schedulePersist(){
     if (!installed || typeof root.setTimeout !== 'function') return;
     if (saveTimer) root.clearTimeout(saveTimer);
-    saveTimer = root.setTimeout(() => {
-      saveTimer = 0;
-      persistNow();
-    }, SAVE_DELAY_MS);
+    saveTimer = root.setTimeout(() => { saveTimer = 0; persistNow(); }, SAVE_DELAY_MS);
   }
 
   function restoreState(){
@@ -161,9 +178,7 @@
       metrics.persistence = true;
       metrics.restored = true;
       return true;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) { return false; }
   }
 
   function clearSavedState(){
@@ -232,7 +247,7 @@
     if (transformRule && transformRule.style) transformRule.style.transform = value;
     else if (viewport) viewport.style.transform = value;
     if (zoomButton) {
-      zoomButton.textContent = Math.round(zoom * 100) + '%';
+      zoomButton.textContent = Math.round(zoom*100) + '%';
       zoomButton.title = 'Viewport zoom. Tap to reset navigation to 100%.';
     }
     updateMetrics();
@@ -249,17 +264,19 @@
   }
 
   function canvasRect(){
-    return canvas && canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left:0, top:0, width:1, height:1, right:1, bottom:1 };
+    return canvas && canvas.getBoundingClientRect
+      ? canvas.getBoundingClientRect()
+      : { left:0, top:0, width:1, height:1, right:1, bottom:1 };
   }
 
   function clampView(){
-    if (!canvas || typeof window === 'undefined') return;
+    if (!canvas || typeof root.innerWidth === 'undefined') return;
     let rect = canvasRect();
     let dx = 0, dy = 0;
     if (rect.right < SAFE_MARGIN) dx = SAFE_MARGIN - rect.right;
-    else if (rect.left > window.innerWidth - SAFE_MARGIN) dx = window.innerWidth - SAFE_MARGIN - rect.left;
+    else if (rect.left > root.innerWidth - SAFE_MARGIN) dx = root.innerWidth - SAFE_MARGIN - rect.left;
     if (rect.bottom < SAFE_MARGIN) dy = SAFE_MARGIN - rect.bottom;
-    else if (rect.top > window.innerHeight - SAFE_MARGIN) dy = window.innerHeight - SAFE_MARGIN - rect.top;
+    else if (rect.top > root.innerHeight - SAFE_MARGIN) dy = root.innerHeight - SAFE_MARGIN - rect.top;
     if (dx || dy) {
       panX += dx; panY += dy;
       writeTransform();
@@ -271,11 +288,10 @@
   function zoomAt(clientX, clientY, nextZoom){
     if (!canvas) return;
     const before = canvasRect();
-    const anchor = anchorCoordinates(before, { x: clientX, y: clientY });
+    const anchor = anchorCoordinates(before, { x:clientX, y:clientY });
     zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
     writeTransform({ persist:false });
-    const after = canvasRect();
-    const correction = anchorCorrection(after, anchor, { x: clientX, y: clientY });
+    const correction = anchorCorrection(canvasRect(), anchor, { x:clientX, y:clientY });
     panX += correction.x;
     panY += correction.y;
     writeTransform();
@@ -288,17 +304,20 @@
     writeTransform();
   }
 
-  function fitView(){
+  function fitView(options){
     if (!canvas || !stage) return;
     panX = 0; panY = 0; zoom = 1;
     writeTransform({ persist:false });
     const rect = canvasRect();
-    const stageRect = stage.getBoundingClientRect ? stage.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
-    const availW = Math.max(120, finite(stageRect.width, window.innerWidth) - 96);
-    const availH = Math.max(120, finite(stageRect.height, window.innerHeight) - 132);
-    zoom = clamp(Math.min(availW / Math.max(1, rect.width), availH / Math.max(1, rect.height)), MIN_ZOOM, 2.5);
+    const stageRect = stage.getBoundingClientRect
+      ? stage.getBoundingClientRect()
+      : { width:root.innerWidth, height:root.innerHeight };
+    const availW = Math.max(120, finite(stageRect.width, root.innerWidth)-96);
+    const availH = Math.max(120, finite(stageRect.height, root.innerHeight)-132);
+    zoom = clamp(Math.min(availW/Math.max(1, rect.width), availH/Math.max(1, rect.height)), MIN_ZOOM, 2.5);
     panX = 0; panY = 0;
     metrics.fitCount++;
+    if (options && options.projectChange) metrics.projectFitCount++;
     writeTransform();
     clampView();
   }
@@ -312,9 +331,12 @@
     if (navButton) {
       navButton.textContent = navMode ? 'HAND ON' : 'HAND';
       navButton.setAttribute('aria-pressed', String(navMode));
-      navButton.title = navMode ? 'Hand mode active. Drag the canvas; tap to return to drawing.' : 'Hand mode. Pan without drawing.';
+      navButton.title = navMode
+        ? 'Hand mode active. Drag to pan; pinch to zoom.'
+        : 'Hand mode. Pan without drawing.';
     }
-    handPointers.clear(); handGesture = null;
+    handPointers.clear();
+    handGesture = null;
     updateMetrics();
     schedulePersist();
   }
@@ -367,87 +389,93 @@
     const dist = distance(points);
     const rect = canvasRect();
     return {
-      startPanX: panX,
-      startPanY: panY,
-      startZoom: zoom,
-      startCenter: center,
-      startDistance: dist,
-      startRect: rect,
-      anchor: anchorCoordinates(rect, center),
-      activated: false,
+      startPanX:panX,
+      startPanY:panY,
+      startZoom:zoom,
+      startCenter:center,
+      startDistance:dist,
+      startRect:rect,
+      anchor:anchorCoordinates(rect, center),
+      activated:false,
     };
+  }
+
+  function applyGesture(state, points, kind){
+    if (!state || !points.size) return false;
+    const center = midpoint(points);
+    const dist = distance(points);
+    if (!state.activated && !gestureExceeded(state.startCenter, center, state.startDistance, dist)) {
+      metrics.deadzoneBlocks++;
+      updateMetrics();
+      return false;
+    }
+    if (!state.activated) state.activated = true;
+
+    if (points.size < 2) {
+      panX = state.startPanX + (center.x-state.startCenter.x);
+      panY = state.startPanY + (center.y-state.startCenter.y);
+      if (kind === 'hand') metrics.handPans++;
+      else metrics.touchPanFrames++;
+      writeTransform();
+      clampView();
+      return true;
+    }
+
+    zoom = clamp(state.startZoom*gestureScale(state.startDistance, dist), MIN_ZOOM, MAX_ZOOM);
+    panX = state.startPanX;
+    panY = state.startPanY;
+    writeTransform({ persist:false });
+    const correction = anchorCorrection(canvasRect(), state.anchor, center);
+    panX += correction.x;
+    panY += correction.y;
+    if (kind === 'hand') metrics.handPinches++;
+    else {
+      metrics.touchPinchFrames++;
+      metrics.touchPanFrames++;
+    }
+    writeTransform();
+    clampView();
+    return true;
   }
 
   function beginHandGesture(event){
     handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
     handGesture = newGestureState(handPointers);
+    metrics.gestureRebases++;
     try { viewport.setPointerCapture && viewport.setPointerCapture(event.pointerId); } catch (_) {}
   }
 
   function moveHandGesture(event){
     if (!handPointers.has(event.pointerId) || !handGesture) return;
     handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
-    const center = midpoint(handPointers);
-    const dist = distance(handPointers);
-    if (!handGesture.activated && !gestureExceeded(handGesture.startCenter, center, handGesture.startDistance, dist)) {
-      metrics.deadzoneBlocks++;
-      updateMetrics();
-      return;
-    }
-    if (!handGesture.activated) {
-      handGesture.activated = true;
-      document.body.classList.add('inkframe-canvas-panning');
-    }
-    if (handPointers.size < 2) {
-      panX = handGesture.startPanX + (center.x - handGesture.startCenter.x);
-      panY = handGesture.startPanY + (center.y - handGesture.startCenter.y);
-      metrics.handPans++;
-      writeTransform(); clampView();
-      return;
-    }
-
-    const safeDist = Math.max(1, dist);
-    const base = Math.max(1, handGesture.startDistance || safeDist);
-    zoom = clamp(handGesture.startZoom * (safeDist / base), MIN_ZOOM, MAX_ZOOM);
-    panX = handGesture.startPanX;
-    panY = handGesture.startPanY;
-    writeTransform({ persist:false });
-    const correction = anchorCorrection(canvasRect(), handGesture.anchor, center);
-    panX += correction.x;
-    panY += correction.y;
-    metrics.handPinches++;
-    writeTransform(); clampView();
+    const active = applyGesture(handGesture, handPointers, 'hand');
+    document.body.classList.toggle('inkframe-canvas-panning', !!active);
   }
 
   function rebaseHandGesture(){
-    if (!handPointers.size) { handGesture = null; document.body.classList.remove('inkframe-canvas-panning'); persistNow(); return; }
+    if (!handPointers.size) {
+      handGesture = null;
+      document.body.classList.remove('inkframe-canvas-panning');
+      persistNow();
+      return;
+    }
     handGesture = newGestureState(handPointers);
+    metrics.gestureRebases++;
+  }
+
+  function activateNormalGesture(){
+    if (!normalGesture || normalGesture.activated) return;
+    normalGesture.activated = true;
+    for (const id of touches.keys()) suppressedTouches.add(id);
+    metrics.touchGestureActivations++;
   }
 
   function scheduleNormalGesture(){
     if (normalGestureRAF || touches.size < 2 || activePens.size) return;
-    normalGestureRAF = requestAnimationFrame(() => {
+    normalGestureRAF = root.requestAnimationFrame(() => {
       normalGestureRAF = 0;
-      if (touches.size < 2 || activePens.size) { normalGesture = null; return; }
-      const center = midpoint(touches);
-      const dist = distance(touches);
-      if (!normalGesture) {
-        normalGesture = { center, distance:dist, rect:canvasRect(), activated:false };
-        return;
-      }
-      if (!normalGesture.activated && !gestureExceeded(normalGesture.center, center, normalGesture.distance, dist)) {
-        metrics.deadzoneBlocks++;
-        updateMetrics();
-        return;
-      }
-      normalGesture.activated = true;
-      const anchor = anchorCoordinates(normalGesture.rect, normalGesture.center);
-      const correction = anchorCorrection(canvasRect(), anchor, center);
-      panX += correction.x;
-      panY += correction.y;
-      metrics.touchPanFrames++;
-      writeTransform(); clampView();
-      normalGesture = { center, distance:dist, rect:canvasRect(), activated:true };
+      if (touches.size < 2 || activePens.size || !normalGesture || !normalGesture.activated) return;
+      applyGesture(normalGesture, touches, 'touch');
     });
   }
 
@@ -458,7 +486,10 @@
 
     const handRequested = navMode || spaceHeld || event.button === 1;
     if (!handRequested) {
-      if (touches.size >= 2 && !activePens.size) normalGesture = { center:midpoint(touches), distance:distance(touches), rect:canvasRect(), activated:false };
+      if (touches.size >= 2 && !activePens.size) {
+        normalGesture = newGestureState(touches);
+        metrics.gestureRebases++;
+      }
       return;
     }
 
@@ -470,8 +501,33 @@
   function onPointerMove(event){
     if (event.pointerType === 'touch' && touches.has(event.pointerId)) {
       touches.set(event.pointerId, { x:event.clientX, y:event.clientY });
-      if (!navMode && touches.size >= 2) scheduleNormalGesture();
+      if (!navMode && touches.size >= 2 && !activePens.size) {
+        if (!normalGesture) {
+          normalGesture = newGestureState(touches);
+          metrics.gestureRebases++;
+        }
+        const center = midpoint(touches);
+        const dist = distance(touches);
+        if (!normalGesture.activated && gestureExceeded(normalGesture.startCenter, center, normalGesture.startDistance, dist)) {
+          activateNormalGesture();
+        }
+        if (normalGesture.activated) {
+          event.preventDefault();
+          event.stopPropagation();
+          metrics.suppressedTouchMoves++;
+          scheduleNormalGesture();
+          return;
+        }
+      }
+      if (suppressedTouches.has(event.pointerId)) {
+        event.preventDefault();
+        event.stopPropagation();
+        metrics.suppressedTouchMoves++;
+        updateMetrics();
+        return;
+      }
     }
+
     if (!handPointers.has(event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -480,8 +536,18 @@
 
   function onPointerEnd(event){
     if (event.pointerType === 'pen') activePens.delete(event.pointerId);
-    if (event.pointerType === 'touch') touches.delete(event.pointerId);
-    if (touches.size < 2) normalGesture = null;
+    if (event.pointerType === 'touch') {
+      touches.delete(event.pointerId);
+      suppressedTouches.delete(event.pointerId);
+      if (touches.size < 2) {
+        if (normalGesture && normalGesture.activated) persistNow();
+        normalGesture = null;
+      } else if (normalGesture) {
+        normalGesture = newGestureState(touches);
+        normalGesture.activated = true;
+        metrics.gestureRebases++;
+      }
+    }
     if (!handPointers.has(event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -492,21 +558,43 @@
   function onWheel(event){
     if (!insideViewport(event.target)) return;
     event.preventDefault();
-    const factor = Math.exp(-finite(event.deltaY, 0) * 0.0015);
+    const factor = Math.exp(-finite(event.deltaY, 0)*0.0015);
     metrics.wheelZooms++;
-    zoomAt(event.clientX, event.clientY, zoom * factor);
+    zoomAt(event.clientX, event.clientY, zoom*factor);
+  }
+
+  function currentCanvasSizeKey(){
+    return canvas ? `${finite(canvas.width,0)}x${finite(canvas.height,0)}` : '';
   }
 
   function installDimensionWatch(){
     if (dimensionObserver || typeof MutationObserver === 'undefined' || !canvas) return;
+    canvasSizeKey = currentCanvasSizeKey();
     dimensionObserver = new MutationObserver(() => {
-      requestAnimationFrame(() => {
-        clampView();
-        schedulePersist();
+      root.requestAnimationFrame(() => {
+        const next = currentCanvasSizeKey();
+        if (next && next !== canvasSizeKey) {
+          canvasSizeKey = next;
+          fitView({ projectChange:true });
+        } else {
+          clampView();
+          schedulePersist();
+        }
       });
     });
-    dimensionObserver.observe(canvas, { attributes:true, attributeFilter:['width','height','style'] });
+    dimensionObserver.observe(canvas, { attributes:true, attributeFilter:['width','height'] });
     metrics.dimensionWatch = true;
+  }
+
+  function clearInteractions(){
+    spaceHeld = false;
+    handPointers.clear();
+    touches.clear();
+    activePens.clear();
+    suppressedTouches.clear();
+    handGesture = null;
+    normalGesture = null;
+    document.body.classList.remove('inkframe-canvas-panning');
   }
 
   function install(){
@@ -518,9 +606,9 @@
 
     restoreState();
     ensureViewport();
-    ensureControls();
     installed = true;
     metrics.active = true;
+    ensureControls();
 
     stage.addEventListener('pointerdown', onPointerDown, true);
     stage.addEventListener('pointermove', onPointerMove, true);
@@ -528,18 +616,14 @@
     stage.addEventListener('pointercancel', onPointerEnd, true);
     stage.addEventListener('wheel', onWheel, { capture:true, passive:false });
 
-    window.addEventListener('keydown', event => {
+    root.addEventListener('keydown', event => {
       if (event.code !== 'Space' || (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName || ''))) return;
       spaceHeld = true;
     }, true);
-    window.addEventListener('keyup', event => { if (event.code === 'Space') spaceHeld = false; }, true);
-    window.addEventListener('blur', () => {
-      spaceHeld = false; handPointers.clear(); touches.clear(); activePens.clear(); handGesture = null; normalGesture = null;
-      document.body.classList.remove('inkframe-canvas-panning');
-      persistNow();
-    });
-    window.addEventListener('resize', () => requestAnimationFrame(clampView));
-    window.addEventListener('pagehide', persistNow);
+    root.addEventListener('keyup', event => { if (event.code === 'Space') spaceHeld = false; }, true);
+    root.addEventListener('blur', () => { clearInteractions(); persistNow(); });
+    root.addEventListener('resize', () => root.requestAnimationFrame(clampView));
+    root.addEventListener('pagehide', persistNow);
     document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
 
     installDimensionWatch();
@@ -558,16 +642,21 @@
       'Canvas Navigation fit: ' + (m.fitPresent ? 'yes' : 'no'),
       'Canvas Navigation zoom display: ' + (m.zoomDisplayPresent ? 'yes' : 'no'),
       'Canvas Navigation hand mode: ' + (m.navMode ? 'yes' : 'no'),
-      'Canvas Navigation zoom: ' + Math.round(m.zoom * 100) + '%',
+      'Canvas Navigation zoom: ' + Math.round(m.zoom*100) + '%',
       'Canvas Navigation pan: ' + Math.round(m.panX) + ',' + Math.round(m.panY),
       'Canvas Navigation persistence: ' + (m.persistence ? 'yes' : 'no'),
       'Canvas Navigation restored: ' + (m.restored ? 'yes' : 'no'),
       'Canvas Navigation dimension watch: ' + (m.dimensionWatch ? 'yes' : 'no'),
       'Canvas Navigation deadzone blocks: ' + m.deadzoneBlocks,
+      'Canvas Navigation touch activations: ' + m.touchGestureActivations,
+      'Canvas Navigation suppressed touch moves: ' + m.suppressedTouchMoves,
+      'Canvas Navigation gesture rebases: ' + m.gestureRebases,
       'Canvas Navigation wheel zooms: ' + m.wheelZooms,
       'Canvas Navigation hand pans: ' + m.handPans,
       'Canvas Navigation hand pinches: ' + m.handPinches,
       'Canvas Navigation touch pan frames: ' + m.touchPanFrames,
+      'Canvas Navigation touch pinch frames: ' + m.touchPinchFrames,
+      'Canvas Navigation project fits: ' + m.projectFitCount,
     ];
   }
 
@@ -580,6 +669,7 @@
     STORAGE_KEY,
     midpoint,
     distance,
+    gestureScale,
     gestureExceeded,
     anchorCoordinates,
     anchorCorrection,
@@ -593,15 +683,15 @@
     persistNow,
     restoreState,
     clearSavedState,
-    metrics: updateMetrics,
+    metrics:updateMetrics,
     reportLines,
   };
 
   if (typeof document !== 'undefined') {
     const boot = () => {
       install();
-      setTimeout(() => { ensureControls(); updateMetrics(); }, 160);
-      setTimeout(() => { ensureControls(); updateMetrics(); }, 520);
+      root.setTimeout(() => { ensureControls(); updateMetrics(); }, 160);
+      root.setTimeout(() => { ensureControls(); updateMetrics(); }, 520);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
     else boot();
