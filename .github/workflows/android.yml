@@ -1,14 +1,15 @@
 name: Android CI
 
-# Builds the debug APK and runs the JVM unit tests on every push / PR.
-# The APK is uploaded as a downloadable artifact, so you can install InkFrame
-# without a local Android SDK — grab it from the run's "Artifacts" section.
+# Runs the complete release gate and builds named, installable APK artifacts.
+# The stable release variant falls back to Android's debug signing key when a
+# private release keystore is not configured; it is suitable for sideloading,
+# while Play Store publishing still requires the owner's persistent signing key.
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
-  workflow_dispatch:   # lets you trigger a build manually from the Actions tab
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
@@ -22,10 +23,6 @@ jobs:
   web-smoke:
     # Boots web/index.html in jsdom with the sibling modules inlined and
     # asserts no uncaught JS errors + the core DOM structure is in place.
-    # Catches the class of bug where a syntax-clean IIFE throws at runtime
-    # (e.g. const reassignment under "use strict") and bricks the whole UI
-    # into a blank pink screen -- which was invisible to `node --check`.
-    # Runs before the APK build so a broken web bundle never ships as an APK.
     name: Web boot smoke (jsdom)
     runs-on: ubuntu-latest
     steps:
@@ -89,7 +86,7 @@ jobs:
           retention-days: 14
 
   build-apk:
-    name: Build debug APK
+    name: Build stable APK release
     runs-on: ubuntu-latest
     needs: [web-smoke, test]
     steps:
@@ -113,13 +110,48 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Read release version
+        run: |
+          VERSION="$(node -p "require('./web/metadata.json').version")"
+          test -n "$VERSION"
+          echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building InkFrame Studio $VERSION"
 
-      - name: Upload debug APK
+      - name: Assemble stable and fallback APKs
+        run: ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace
+
+      - name: Verify APK signatures and manifest
+        run: |
+          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
+          DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$RELEASE_APK"
+          test -s "$DEBUG_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$RELEASE_APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$DEBUG_APK"
+          RELEASE_BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$RELEASE_APK" | head -n 1)"
+          echo "$RELEASE_BADGING"
+          echo "$RELEASE_BADGING" | grep "package: name='com.inkframe.studio'"
+          echo "$RELEASE_BADGING" | grep "versionName='${INKFRAME_VERSION}'"
+
+      - name: Collect stable release package
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk \
+             "release/InkFrame-Studio-v${INKFRAME_VERSION}-stable.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "release/InkFrame-Studio-v${INKFRAME_VERSION}-debug-fallback.apk"
+          cp RELEASE_NOTES.md "release/InkFrame-Studio-v${INKFRAME_VERSION}-RELEASE-NOTES.md"
+          (
+            cd release
+            sha256sum *.apk > SHA256SUMS.txt
+            ls -lh
+            cat SHA256SUMS.txt
+          )
+
+      - name: Upload stable APK release
         uses: actions/upload-artifact@v4
         with:
-          name: inkframe-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: inkframe-stable-v${{ env.INKFRAME_VERSION }}
+          path: release/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
