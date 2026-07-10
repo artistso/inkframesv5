@@ -84,10 +84,8 @@ function catmullRom(t, p0, p1, p2, p3) {
   loadScript('brush-engine.js', 'brush-engine');
   loadScript('vector-engine.js', 'vector-engine');
   loadScript('brush-dynamics.js', 'brush-dynamics');
-  loadScript('circular-canvas.js', 'circular-canvas');
-  loadScript('circular-transform-safe.js', 'circular-transform-safe');
-  // circular-scrubber.js is intentionally not loaded in this recovery build.
-  // It will return later after drawing responsiveness is verified on-device.
+  // Circular canvas modules remain in the repo as backend/future work, but are
+  // not loaded in the stable square-canvas APK path.
   loadScript('ui-layout.js', 'ui-layout');
   loadScript('ui-icon-polish.js', 'ui-icon-polish');
   loadScript('ui-glass.js', 'ui-glass');
