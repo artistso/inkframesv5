@@ -12,7 +12,7 @@
   if (window.__inkframeReleaseCandidateInstalled) return;
   window.__inkframeReleaseCandidateInstalled = true;
 
-  const VERSION = 'v3-square-classic-ui-guard';
+  const VERSION = 'v4-square-classic-plus-guard';
   let metrics = null;
 
   const $ = id => document.getElementById(id);
@@ -64,6 +64,10 @@
       'inkframe-ui-dragging'
     );
     document.body.classList.add('inkframe-classic-ui');
+    const classicPlus = root.InkFrameUIClassicPlus;
+    if (classicPlus && typeof classicPlus.apply === 'function') {
+      try { classicPlus.apply(); } catch (_) {}
+    }
     ['inkframe-ui-map', 'inkframe-ui-context', 'inkframe-scrub-hud'].forEach(id => {
       const el = $(id);
       if (el) {
@@ -125,6 +129,10 @@
       brushDynamics: !!root.InkFrameBrushDynamics,
       vectorEngine: !!root.InkFrameVectorEngine,
       classicUI: !!root.InkFrameUIClassicRestore || document.body.classList.contains('inkframe-classic-ui'),
+      classicPlus: !!root.InkFrameUIClassicPlus || document.body.classList.contains('inkframe-classic-plus'),
+      uiLockToggle: !!$('inkframe-ui-lock-toggle'),
+      uiReset: !!$('inkframe-ui-reset'),
+      uiLocked: document.body.classList.contains('inkframe-ui-locked'),
       flatControls: !!root.InkFrameUIFlatControls || document.body.classList.contains('inkframe-flat-controls'),
       glassControls: !!root.InkFrameUIGlass || document.body.classList.contains('inkframe-glass-ui'),
       layoutOverride: !!root.InkFrameUILayout || document.body.classList.contains('inkframe-ui-layout'),
@@ -162,6 +170,10 @@
       'Release Candidate brush dynamics: ' + (m.brushDynamics ? 'yes' : 'no'),
       'Release Candidate vector engine: ' + (m.vectorEngine ? 'yes' : 'no'),
       'Release Candidate classic UI: ' + (m.classicUI ? 'yes' : 'no'),
+      'Release Candidate classic plus: ' + (m.classicPlus ? 'yes' : 'no'),
+      'Release Candidate UI lock toggle: ' + (m.uiLockToggle ? 'yes' : 'no'),
+      'Release Candidate UI reset: ' + (m.uiReset ? 'yes' : 'no'),
+      'Release Candidate UI locked: ' + (m.uiLocked ? 'yes' : 'no'),
       'Release Candidate flat controls: ' + (m.flatControls ? 'yes' : 'no'),
       'Release Candidate glass controls: ' + (m.glassControls ? 'yes' : 'no'),
       'Release Candidate layout override: ' + (m.layoutOverride ? 'yes' : 'no'),
