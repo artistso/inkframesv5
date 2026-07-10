@@ -35,10 +35,12 @@ const sample = (x, y, pressure, timeStamp, extra = {}) => ({
   ...extra,
 });
 
-check(api.VERSION === 'v2-native-pointer-preservation', 'version mismatch');
+check(api.VERSION === 'v3-orientation-responsive', 'version mismatch');
 check(typeof api.qualityBatch === 'function', 'qualityBatch export missing');
 check(typeof api.createState === 'function', 'createState export missing');
 check(typeof api.copyNativeSample === 'function', 'copyNativeSample export missing');
+check(typeof api.orderedBatch === 'function', 'orderedBatch export missing');
+check(typeof api.nativeChanged === 'function', 'nativeChanged export missing');
 
 const state = api.createState();
 const noisy = [
@@ -51,9 +53,41 @@ const cleaned = api.qualityBatch(noisy, state);
 check(cleaned.samples.length < noisy.length, 'duplicate micro-samples should be removed');
 check(cleaned.stats.dropped >= 1, 'dropped sample count missing');
 check(cleaned.samples.at(-1).clientX === 13, 'physical endpoint must be preserved');
-check(cleaned.samples.at(-1).pressure < 0.80, 'pressure spike should be smoothed');
-check(cleaned.samples.at(-1).pressure > 0.20, 'pressure smoothing should still follow the pen');
+check(cleaned.samples.at(-1).pressure < 0.80, 'pressure spike should still be smoothed');
+check(cleaned.samples.at(-1).pressure > 0.45, 'endpoint pressure should catch up responsively');
 check(cleaned.samples.at(-1).tiltX === 12, 'tilt data should survive filtering');
+
+// A stationary pen may rotate or change barrel state. Those samples must survive
+// dedupe because nib angle and side-button behavior can change without travel.
+const orientationState = api.createState();
+const orientation = api.qualityBatch([
+  sample(30, 30, 0.5, 1, { tiltX:2, tiltY:3, azimuthAngle:0.4, buttons:1 }),
+  sample(30.01, 30.01, 0.501, 2, { tiltX:18, tiltY:3, azimuthAngle:0.7, buttons:3 }),
+  sample(31, 30, 0.52, 3, { tiltX:18, tiltY:3, azimuthAngle:0.7, buttons:3 }),
+], orientationState);
+check(orientation.samples.length === 3, 'stationary orientation/barrel change must not be deduped');
+check(orientation.stats.nativeChangesKept >= 1, 'native-change retention metric missing');
+check(orientation.samples[1].buttons === 3 && orientation.samples[1].tiltX === 18, 'orientation/barrel sample should be preserved');
+
+// Coalesced events should be chronological even if a browser returns a scrambled
+// batch. Coordinates are not interpolated or altered; only ordering is repaired.
+const scrambled = [
+  sample(9, 0, 0.5, 9),
+  sample(3, 0, 0.3, 3),
+  sample(6, 0, 0.4, 6),
+];
+const ordered = api.qualityBatch(scrambled, api.createState());
+check(ordered.samples[0].timeStamp === 3, 'out-of-order batch should be sorted by timestamp');
+check(ordered.samples.at(-1).timeStamp === 9, 'newest timestamp should remain the endpoint');
+check(ordered.stats.reordered >= 2, 'reordered sample metric missing');
+
+// A timestamp restart means a new native stream reused the same pointer id. The
+// smoother must drop stale pressure state instead of blending across streams.
+const reused = api.createState();
+api.qualityBatch([sample(1,1,0.9,100)], reused);
+const restarted = api.qualityBatch([sample(2,2,0.2,5)], reused);
+check(restarted.stats.streamResets === 1, 'timestamp rollback should reset stream state');
+check(Math.abs(restarted.samples[0].pressure - 0.2) < 1e-9, 'new stream pressure should start exact');
 
 // Browser PointerEvent fields live on the prototype and are not enumerable.
 // This native-like object catches regressions caused by object spread/copying.
@@ -96,4 +130,4 @@ if (failed) {
   console.error(`\nBrush input quality smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
   process.exit(1);
 }
-console.log(`✅ Brush input quality smoke passed. noisy=${noisy.length}->${cleaned.samples.length} capped=${huge.length}->${capped.samples.length} native=preserved`);
+console.log(`✅ Brush input quality smoke passed. noisy=${noisy.length}->${cleaned.samples.length} orientation=${orientation.samples.length} reordered=${ordered.stats.reordered} native=preserved`);
