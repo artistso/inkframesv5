@@ -1,4 +1,4 @@
-# InkFrame Studio 0.2.0 Release Notes
+# InkFrame Studio 0.2.1-rc.1 Release Notes
 
 _Date: 2026-07-10_
 
@@ -17,18 +17,22 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 
 ## What's changed
 
-## Stable square-canvas release
-- **Froze the publishable runtime on the proven square-canvas path.** Circular canvas, circular scrubber, and experimental layout/glass/flat override modules remain in the repository for future work but are no longer loaded by the stable APK.
-- **Restored the original movable orb button system.** Classic root buttons and child controls retain their smoother movement and expansion behavior without the later layout takeover layers.
-- **Added Classic Plus tablet controls.** The UI now includes persistent lock/unlock, two-tap UI reset, collapsible dock, four-corner dock placement, and compact/normal/large button sizing.
-- **Added release guardrails.** Startup explicitly opens the square canvas input path, disables retired blocking overlays, restores classic UI state, and exposes release diagnostics.
-- **Expanded automated release testing.** CI now syntax-checks runtime modules and verifies brush, dynamics, vector, Classic UI, square-canvas, dock, corner, size, reset, lock, and boot behavior before APK assembly.
+## Brush input quality
+- Added an active coalesced-sample quality layer in front of the existing painter without replacing its rendering, undo, taper, or stabilization logic.
+- Removes duplicate micro-samples and caps pathological pointer batches while always preserving the newest physical endpoint.
+- Adds velocity-aware pressure cleanup that follows fast pressure changes while damping slow hand jitter.
+- Explicitly preserves native S Pen pressure, tilt, altitude, azimuth, barrel-button state, twist, and contact geometry, including inherited `PointerEvent` fields.
 
-## Brush and vector engine foundation
-- Added renderer-independent Kotlin and JavaScript brush-engine cores with pressure, velocity, tilt, smoothing, taper, spacing, stamp planning, and shared presets.
-- Added advanced brush dynamics with response curves, deterministic texture jitter, symmetry-assisted dabs, quality metrics, smoothness scoring, replay cost, and replay descriptors.
-- Added renderer-independent vector path planning with point simplification, Catmull-Rom to cubic Bézier conversion, snapping, symmetry, stroke-outline planning, sampling, bounds, anchors, and SVG path export.
-- Added matching JVM and JavaScript smoke tests to keep Kotlin/WebView behavior aligned during the native migration.
+## Canvas panning and zooming
+- Added a stylus-safe viewport wrapper around the square canvas. Canvas document pixels and the existing painter remain unchanged.
+- Two-finger gestures now combine the existing pinch scaling with midpoint-anchored panning, keeping the artwork under the fingers instead of drifting away.
+- Added **Hand** mode for deliberate one-finger or pen panning without drawing, plus two-pointer pan/zoom while Hand mode is active.
+- Added cursor-anchored mouse-wheel/trackpad zoom, **Fit**, a live zoom percentage, tap-to-reset navigation, Space-drag, and middle-mouse panning.
+- View movement is clamped so the canvas cannot be completely lost offscreen.
+
+## Interaction regression protection
+- Added deterministic smoke tests for coalesced pressure filtering, native stylus-field preservation, viewport wrapping, anchor correction, Hand mode, Fit, zoom display, and reset behavior.
+- APK assembly is blocked unless the new brush-input and canvas-navigation tests pass with the existing square-canvas, Classic Plus, vector, dynamics, JVM, and boot checks.
 
 ## Minimum smoke test
 
