@@ -12,7 +12,7 @@
   if (window.__inkframeReleaseCandidateInstalled) return;
   window.__inkframeReleaseCandidateInstalled = true;
 
-  const VERSION = 'v2-square-canvas-stable-guard';
+  const VERSION = 'v3-square-classic-ui-guard';
   let metrics = null;
 
   const $ = id => document.getElementById(id);
@@ -51,6 +51,10 @@
   }
 
   function restoreOriginalButtonUI(){
+    const classic = root.InkFrameUIClassicRestore;
+    if (classic && typeof classic.apply === 'function') {
+      try { classic.apply(); } catch (_) {}
+    }
     document.body.classList.remove(
       'inkframe-flat-controls',
       'inkframe-glass-ui',
@@ -59,6 +63,7 @@
       'inkframe-layout-focus',
       'inkframe-ui-dragging'
     );
+    document.body.classList.add('inkframe-classic-ui');
     ['inkframe-ui-map', 'inkframe-ui-context', 'inkframe-scrub-hud'].forEach(id => {
       const el = $(id);
       if (el) {
@@ -119,6 +124,7 @@
       brushEngine: !!root.InkFrameBrushEngine,
       brushDynamics: !!root.InkFrameBrushDynamics,
       vectorEngine: !!root.InkFrameVectorEngine,
+      classicUI: !!root.InkFrameUIClassicRestore || document.body.classList.contains('inkframe-classic-ui'),
       flatControls: !!root.InkFrameUIFlatControls || document.body.classList.contains('inkframe-flat-controls'),
       glassControls: !!root.InkFrameUIGlass || document.body.classList.contains('inkframe-glass-ui'),
       layoutOverride: !!root.InkFrameUILayout || document.body.classList.contains('inkframe-ui-layout'),
@@ -155,6 +161,7 @@
       'Release Candidate brush engine: ' + (m.brushEngine ? 'yes' : 'no'),
       'Release Candidate brush dynamics: ' + (m.brushDynamics ? 'yes' : 'no'),
       'Release Candidate vector engine: ' + (m.vectorEngine ? 'yes' : 'no'),
+      'Release Candidate classic UI: ' + (m.classicUI ? 'yes' : 'no'),
       'Release Candidate flat controls: ' + (m.flatControls ? 'yes' : 'no'),
       'Release Candidate glass controls: ' + (m.glassControls ? 'yes' : 'no'),
       'Release Candidate layout override: ' + (m.layoutOverride ? 'yes' : 'no'),
@@ -192,8 +199,8 @@
     }
     window.addEventListener('resize', () => setTimeout(apply, 60));
     window.addEventListener('orientationchange', () => setTimeout(apply, 240));
-    for (let i = 1; i <= 8; i++) setTimeout(apply, i * 240);
-    for (let i = 1; i <= 4; i++) setTimeout(bridgeIntoTesterReport, i * 260);
+    for (let i = 1; i <= 12; i++) setTimeout(apply, i * 240);
+    for (let i = 1; i <= 10; i++) setTimeout(bridgeIntoTesterReport, i * 260);
     bridgeIntoTesterReport();
   }
 
