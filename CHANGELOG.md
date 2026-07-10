@@ -6,6 +6,25 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Brush input quality
+- Added an active coalesced-sample quality layer in front of the existing painter without replacing its rendering, undo, taper, or stabilization logic.
+- Removes duplicate micro-samples and caps pathological pointer batches while always preserving the newest physical endpoint.
+- Adds velocity-aware pressure cleanup that follows fast pressure changes while damping slow hand jitter.
+- Explicitly preserves native S Pen pressure, tilt, altitude, azimuth, barrel-button state, twist, and contact geometry, including inherited `PointerEvent` fields.
+
+### Canvas panning and zooming
+- Added a stylus-safe viewport wrapper around the square canvas. Canvas document pixels and the existing painter remain unchanged.
+- Two-finger gestures now combine the existing pinch scaling with midpoint-anchored panning, keeping the artwork under the fingers instead of drifting away.
+- Added **Hand** mode for deliberate one-finger or pen panning without drawing, plus two-pointer pan/zoom while Hand mode is active.
+- Added cursor-anchored mouse-wheel/trackpad zoom, **Fit**, a live zoom percentage, tap-to-reset navigation, Space-drag, and middle-mouse panning.
+- View movement is clamped so the canvas cannot be completely lost offscreen.
+
+### Interaction regression protection
+- Added deterministic smoke tests for coalesced pressure filtering, native stylus-field preservation, viewport wrapping, anchor correction, Hand mode, Fit, zoom display, and reset behavior.
+- APK assembly is blocked unless the new brush-input and canvas-navigation tests pass with the existing square-canvas, Classic Plus, vector, dynamics, JVM, and boot checks.
+
+## [0.2.0] - 2026-07-10
+
 ### Stable square-canvas release
 - **Froze the publishable runtime on the proven square-canvas path.** Circular canvas, circular scrubber, and experimental layout/glass/flat override modules remain in the repository for future work but are no longer loaded by the stable APK.
 - **Restored the original movable orb button system.** Classic root buttons and child controls retain their smoother movement and expansion behavior without the later layout takeover layers.
