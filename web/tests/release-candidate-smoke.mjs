@@ -4,7 +4,7 @@
 // canvas accepts input, circular frontend modules are not loaded, experimental UI
 // override modules are not loaded, retired scrubber overlays stay non-blocking,
 // polished classic draggable UI is restored, Classic Plus dock/lock/reset/corner
-// controls work, and passive engine modules are available.
+// and size controls work, and passive engine modules are available.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +38,7 @@ const bootOrder = [
   'ui-classic-restore.js',
   'ui-classic-plus.js',
   'ui-classic-dock-corners.js',
+  'ui-classic-size.js',
   'release-candidate.js',
 ];
 let lastIndex = -1;
@@ -80,15 +81,18 @@ window.eval(readFileSync(resolve(webDir, 'ui-classic-plus.js'), 'utf8'));
 window.InkFrameUIClassicPlus.apply();
 window.eval(readFileSync(resolve(webDir, 'ui-classic-dock-corners.js'), 'utf8'));
 window.InkFrameUIClassicDockCorners.apply();
+window.eval(readFileSync(resolve(webDir, 'ui-classic-size.js'), 'utf8'));
+window.InkFrameUIClassicSize.apply();
 window.eval(readFileSync(resolve(webDir, 'release-candidate.js'), 'utf8'));
 window.InkFrameReleaseCandidate.apply();
 let metrics = window.InkFrameReleaseCandidate.metrics();
 const classic = window.InkFrameUIClassicRestore.metrics();
 let plus = window.InkFrameUIClassicPlus.metrics();
 let corners = window.InkFrameUIClassicDockCorners.metrics();
+let size = window.InkFrameUIClassicSize.metrics();
 
 check(metrics.active === true, 'release candidate guard not active');
-check(metrics.version === 'v6-square-classic-dock-corners-guard', 'release candidate guard version mismatch');
+check(metrics.version === 'v7-square-classic-size-guard', 'release candidate guard version mismatch');
 check(metrics.canvasMode === 'square', 'release path must be square canvas');
 check(metrics.canvasPresent === true, 'canvas missing');
 check(metrics.framePresent === true, 'frame shell missing');
@@ -108,6 +112,9 @@ check(metrics.uiDockToggle === true, 'Classic Plus dock toggle missing');
 check(metrics.uiDockCornerModule === true, 'Classic Plus dock corner module missing');
 check(metrics.uiDockCornerButton === true, 'Classic Plus dock corner button missing');
 check(metrics.uiDockCorner === 'bottom-left', 'Classic Plus dock should start bottom-left');
+check(metrics.uiSizeModule === true, 'Classic UI size module missing');
+check(metrics.uiSizeButton === true, 'Classic UI size button missing');
+check(metrics.uiSize === 'normal', 'Classic UI size should start normal');
 check(metrics.uiLockToggle === true, 'Classic Plus UI lock toggle missing');
 check(metrics.uiReset === true, 'Classic Plus UI reset missing');
 check(metrics.uiStatus === true, 'Classic Plus status pill missing');
@@ -134,6 +141,11 @@ check(corners.version === 'v1-corner-dock', 'dock corner version mismatch');
 check(corners.dockPresent === true, 'dock corner module should see dock');
 check(corners.cornerButtonPresent === true, 'dock corner button missing');
 check(corners.corner === 'bottom-left', 'dock corner should default bottom-left');
+check(size && size.active === true, 'UI size metrics missing');
+check(size.version === 'v1-classic-ui-size-cycle', 'UI size version mismatch');
+check(size.buttonPresent === true, 'UI size button missing');
+check(size.size === 'normal', 'UI size should default normal');
+check(size.normalClass === true, 'UI size normal class missing');
 check(metrics.flatControls === false, 'flat controls override should not be loaded in restored original UI path');
 check(metrics.glassControls === false, 'glass UI override should not be loaded in restored original UI path');
 check(metrics.layoutOverride === false, 'layout override should not be loaded in restored original UI path');
@@ -141,10 +153,23 @@ check(metrics.iconPolish === false, 'icon polish override should not be loaded i
 check(window.document.body.classList.contains('inkframe-classic-ui'), 'classic UI body class should be present');
 check(window.document.body.classList.contains('inkframe-classic-plus'), 'Classic Plus body class should be present');
 check(window.document.body.classList.contains('inkframe-dock-corners'), 'dock corner body class should be present');
+check(window.document.body.classList.contains('inkframe-ui-size-normal'), 'UI size normal class should be present');
 check(!window.document.body.classList.contains('inkframe-flat-controls'), 'flat controls body class should be cleared');
 check(!window.document.body.classList.contains('inkframe-glass-ui'), 'glass UI body class should be cleared');
 check(!window.document.body.classList.contains('inkframe-icon-polish'), 'icon polish body class should be cleared');
 check(!window.document.body.classList.contains('inkframe-ui-layout'), 'layout override body class should be cleared');
+
+window.InkFrameUIClassicSize.cycleSize();
+size = window.InkFrameUIClassicSize.metrics();
+check(size.size === 'large', 'UI size should cycle to large');
+check(window.document.body.classList.contains('inkframe-ui-size-large'), 'UI size large class should be present');
+window.InkFrameUIClassicSize.cycleSize();
+size = window.InkFrameUIClassicSize.metrics();
+check(size.size === 'compact', 'UI size should cycle to compact');
+check(window.document.body.classList.contains('inkframe-ui-size-compact'), 'UI size compact class should be present');
+window.InkFrameUIClassicSize.setSize('normal');
+size = window.InkFrameUIClassicSize.metrics();
+check(size.size === 'normal', 'UI size should reset to normal');
 
 window.InkFrameUIClassicPlus.setDockCollapsed(true);
 plus = window.InkFrameUIClassicPlus.metrics();
@@ -181,10 +206,12 @@ check(window.InkFrameUIClassicPlus.metrics().dockCollapsed === false, 'Classic P
 check(!window.document.body.classList.contains('inkframe-ui-locked'), 'UI locked body class should clear after reset');
 
 window.InkFrameReleaseCandidate.apply();
+metrics = window.InkFrameReleaseCandidate.metrics();
 const report = window.InkFrameReleaseCandidate.reportLines();
 const classicReport = window.InkFrameUIClassicRestore.reportLines();
 const plusReport = window.InkFrameUIClassicPlus.reportLines();
 const cornerReport = window.InkFrameUIClassicDockCorners.reportLines();
+const sizeReport = window.InkFrameUIClassicSize.reportLines();
 check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report lines missing stable guard');
 check(report.some(line => line.includes('Release Candidate canvas mode: square')), 'release report should confirm square canvas mode');
 check(report.some(line => line.includes('Release Candidate circular frontend loaded: no')), 'release report should confirm circular frontend disabled');
@@ -196,6 +223,9 @@ check(report.some(line => line.includes('Release Candidate UI dock collapsed: no
 check(report.some(line => line.includes('Release Candidate UI dock corners: yes')), 'release report should confirm dock corners');
 check(report.some(line => line.includes('Release Candidate UI dock corner button: yes')), 'release report should confirm dock corner button');
 check(report.some(line => line.includes('Release Candidate UI dock corner: bottom-left')), 'release report should confirm bottom-left dock corner after reset');
+check(report.some(line => line.includes('Release Candidate UI size module: yes')), 'release report should confirm UI size module');
+check(report.some(line => line.includes('Release Candidate UI size button: yes')), 'release report should confirm UI size button');
+check(report.some(line => line.includes('Release Candidate UI size: normal')), 'release report should confirm normal UI size');
 check(report.some(line => line.includes('Release Candidate UI lock toggle: yes')), 'release report should confirm UI lock toggle');
 check(report.some(line => line.includes('Release Candidate UI reset: yes')), 'release report should confirm UI reset');
 check(report.some(line => line.includes('Release Candidate UI status: yes')), 'release report should confirm UI status');
@@ -212,6 +242,9 @@ check(plusReport.some(line => line.includes('UI Classic Plus reset: yes')), 'Cla
 check(cornerReport.some(line => line.includes('UI Classic Dock Corners version: v1-corner-dock')), 'dock corner report should include version');
 check(cornerReport.some(line => line.includes('UI Classic Dock corner: bottom-left')), 'dock corner report should include reset corner');
 check(cornerReport.some(line => line.includes('UI Classic Dock button: yes')), 'dock corner report should confirm button');
+check(sizeReport.some(line => line.includes('UI Classic Size version: v1-classic-ui-size-cycle')), 'UI size report should include version');
+check(sizeReport.some(line => line.includes('UI Classic Size value: normal')), 'UI size report should include normal value');
+check(sizeReport.some(line => line.includes('UI Classic Size button: yes')), 'UI size report should confirm button');
 
 if (failed) {
   console.error(`\nRelease candidate smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
@@ -219,6 +252,6 @@ if (failed) {
   process.exit(1);
 }
 
-console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} dockCorner=${metrics.uiDockCorner} cornerButton=${metrics.uiDockCornerButton ? 'yes' : 'no'} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
+console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} uiSize=${metrics.uiSize} dockCorner=${metrics.uiDockCorner} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
 window.close();
 process.exit(0);
