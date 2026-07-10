@@ -1,7 +1,7 @@
 {
   "name": "InkFrame Studio",
   "description": "A 2D animation and drawing studio: brushes, layers, frame timeline with onion skinning, playback, and PNG/GIF/video export.",
-  "version": "0.2.0",
+  "version": "0.2.1-rc.1",
   "releaseDate": "2026-07-10",
   "packageName": "com.inkframe.studio",
   "targetSdk": 35,
