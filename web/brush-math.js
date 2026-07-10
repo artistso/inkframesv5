@@ -87,8 +87,9 @@ function catmullRom(t, p0, p1, p2, p3) {
   // Circular canvas and experimental UI override modules remain in the repo as
   // backend/future work, but are not loaded in the stable square-canvas APK path.
   // The original in-page buttons own movement and expansion; Classic Plus adds
-  // only UI lock/reset controls and diagnostics.
+  // only lightweight UI ergonomics and diagnostics.
   loadScript('ui-classic-restore.js', 'ui-classic-restore');
   loadScript('ui-classic-plus.js', 'ui-classic-plus');
+  loadScript('ui-classic-dock-corners.js', 'ui-classic-dock-corners');
   loadScript('release-candidate.js', 'release-candidate');
 })();
