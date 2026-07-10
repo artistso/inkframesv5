@@ -12,7 +12,7 @@
   if (window.__inkframeReleaseCandidateInstalled) return;
   window.__inkframeReleaseCandidateInstalled = true;
 
-  const VERSION = 'v6-square-classic-dock-corners-guard';
+  const VERSION = 'v7-square-classic-size-guard';
   let metrics = null;
 
   const $ = id => document.getElementById(id);
@@ -72,6 +72,10 @@
     if (dockCorners && typeof dockCorners.apply === 'function') {
       try { dockCorners.apply(); } catch (_) {}
     }
+    const uiSize = root.InkFrameUIClassicSize;
+    if (uiSize && typeof uiSize.apply === 'function') {
+      try { uiSize.apply(); } catch (_) {}
+    }
     ['inkframe-ui-map', 'inkframe-ui-context', 'inkframe-scrub-hud'].forEach(id => {
       const el = $(id);
       if (el) {
@@ -125,6 +129,14 @@
     return null;
   }
 
+  function uiSizeMetrics(){
+    try {
+      const size = root.InkFrameUIClassicSize;
+      if (size && typeof size.metrics === 'function') return size.metrics();
+    } catch (_) {}
+    return null;
+  }
+
   function collectMetrics(){
     const canvas = $('c');
     const frame = $('frameGlass');
@@ -132,6 +144,7 @@
     const toggle = $('inkframe-circle-toggle');
     const plus = plusMetrics();
     const dockCorners = dockCornerMetrics();
+    const uiSize = uiSizeMetrics();
     const dock = $('inkframe-ui-classic-plus-dock');
     metrics = {
       active: true,
@@ -158,6 +171,9 @@
       uiDockCornerModule: !!root.InkFrameUIClassicDockCorners || document.body.classList.contains('inkframe-dock-corners'),
       uiDockCornerButton: !!$('inkframe-ui-dock-corner'),
       uiDockCorner: dockCorners ? dockCorners.corner : ((dock && dock.dataset.corner) || 'missing'),
+      uiSizeModule: !!root.InkFrameUIClassicSize || document.body.dataset.inkframeUiSize,
+      uiSizeButton: !!$('inkframe-ui-size-toggle'),
+      uiSize: uiSize ? uiSize.size : (document.body.dataset.inkframeUiSize || 'missing'),
       uiLockToggle: !!$('inkframe-ui-lock-toggle'),
       uiReset: !!$('inkframe-ui-reset'),
       uiStatus: !!$('inkframe-ui-plus-status'),
@@ -208,6 +224,9 @@
       'Release Candidate UI dock corners: ' + (m.uiDockCornerModule ? 'yes' : 'no'),
       'Release Candidate UI dock corner button: ' + (m.uiDockCornerButton ? 'yes' : 'no'),
       'Release Candidate UI dock corner: ' + m.uiDockCorner,
+      'Release Candidate UI size module: ' + (m.uiSizeModule ? 'yes' : 'no'),
+      'Release Candidate UI size button: ' + (m.uiSizeButton ? 'yes' : 'no'),
+      'Release Candidate UI size: ' + m.uiSize,
       'Release Candidate UI lock toggle: ' + (m.uiLockToggle ? 'yes' : 'no'),
       'Release Candidate UI reset: ' + (m.uiReset ? 'yes' : 'no'),
       'Release Candidate UI status: ' + (m.uiStatus ? 'yes' : 'no'),
