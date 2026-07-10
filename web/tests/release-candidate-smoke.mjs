@@ -2,8 +2,9 @@
 // -----------------------------------------------------------------------------
 // Validates the final APK guardrails for the stable square-canvas path: drawing
 // canvas accepts input, circular frontend modules are not loaded, experimental UI
-// override modules are not loaded, Classic + Classic Plus draggable UI is active,
-// retired scrubber overlays stay non-blocking, and passive engine modules exist.
+// override modules are not loaded, retired scrubber overlays stay non-blocking,
+// polished classic draggable UI is restored, Classic Plus lock/reset controls are
+// present, and passive engine modules are available.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -83,7 +84,7 @@ const classic = window.InkFrameUIClassicRestore.metrics();
 const plus = window.InkFrameUIClassicPlus.metrics();
 
 check(metrics.active === true, 'release candidate guard not active');
-check(metrics.version === 'v4-square-classic-plus-guard', 'release candidate guard version mismatch');
+check(metrics.version === 'v5-classic-plus-safety-guard', 'release candidate guard version mismatch');
 check(metrics.canvasMode === 'square', 'release path must be square canvas');
 check(metrics.canvasPresent === true, 'canvas missing');
 check(metrics.framePresent === true, 'frame shell missing');
@@ -101,6 +102,9 @@ check(metrics.classicUI === true, 'classic draggable UI restore should be active
 check(metrics.classicPlus === true, 'Classic Plus should be active');
 check(metrics.uiLockToggle === true, 'Classic Plus UI lock toggle missing');
 check(metrics.uiReset === true, 'Classic Plus UI reset missing');
+check(metrics.uiStatus === true, 'Classic Plus status pill missing');
+check(metrics.uiLockGate === true, 'Classic Plus lock gate missing');
+check(metrics.uiResetConfirming === false, 'Classic Plus should not start in reset-confirming state');
 check(classic && classic.active === true, 'classic UI metrics missing');
 check(classic.version === 'v2-original-orb-ui-polish', 'classic UI version mismatch');
 check(classic.rootButtons === 1, 'classic UI should detect root orb');
@@ -108,10 +112,12 @@ check(classic.childButtons === 1, 'classic UI should detect child button');
 check(classic.classicMarkedRoots === 1, 'classic UI should mark root controls');
 check(classic.pointerWatch === true, 'classic UI pointer watch should be installed');
 check(plus && plus.active === true, 'Classic Plus metrics missing');
-check(plus.version === 'v1-ui-lock-reset', 'Classic Plus version mismatch');
+check(plus.version === 'v2-lock-reset-safety', 'Classic Plus version mismatch');
 check(plus.dockPresent === true, 'Classic Plus dock missing');
 check(plus.lockTogglePresent === true, 'Classic Plus lock toggle missing');
 check(plus.resetPresent === true, 'Classic Plus reset missing');
+check(plus.statusPresent === true, 'Classic Plus status pill missing');
+check(plus.lockGate === true, 'Classic Plus lock gate should be installed');
 check(plus.rootButtons === 1, 'Classic Plus should detect root orb');
 check(plus.childButtons === 1, 'Classic Plus should detect child button');
 check(metrics.flatControls === false, 'flat controls override should not be loaded in restored original UI path');
@@ -128,9 +134,16 @@ check(!window.document.body.classList.contains('inkframe-ui-layout'), 'layout ov
 window.InkFrameUIClassicPlus.setLocked(true);
 check(window.InkFrameUIClassicPlus.metrics().locked === true, 'Classic Plus lock should turn on');
 check(window.document.body.classList.contains('inkframe-ui-locked'), 'UI locked body class should be present');
+window.InkFrameUIClassicPlus.requestResetUI();
+check(window.InkFrameUIClassicPlus.metrics().resetConfirming === true, 'Classic Plus reset should require confirmation');
 window.InkFrameUIClassicPlus.resetUI();
 check(window.InkFrameUIClassicPlus.metrics().locked === false, 'Classic Plus reset should unlock UI');
 check(!window.document.body.classList.contains('inkframe-ui-locked'), 'UI locked body class should clear after reset');
+
+window.InkFrameReleaseCandidate.apply();
+const refreshed = window.InkFrameReleaseCandidate.metrics();
+check(refreshed.uiStatus === true, 'release metrics should keep UI status present');
+check(refreshed.uiLockGate === true, 'release metrics should keep lock gate active');
 
 const report = window.InkFrameReleaseCandidate.reportLines();
 const classicReport = window.InkFrameUIClassicRestore.reportLines();
@@ -143,14 +156,18 @@ check(report.some(line => line.includes('Release Candidate classic UI: yes')), '
 check(report.some(line => line.includes('Release Candidate classic plus: yes')), 'release report should confirm Classic Plus');
 check(report.some(line => line.includes('Release Candidate UI lock toggle: yes')), 'release report should confirm UI lock toggle');
 check(report.some(line => line.includes('Release Candidate UI reset: yes')), 'release report should confirm UI reset');
+check(report.some(line => line.includes('Release Candidate UI status: yes')), 'release report should confirm UI status pill');
+check(report.some(line => line.includes('Release Candidate UI lock gate: yes')), 'release report should confirm UI lock gate');
 check(report.some(line => line.includes('Release Candidate flat controls: no')), 'release report should confirm flat override disabled');
 check(report.some(line => line.includes('Release Candidate glass controls: no')), 'release report should confirm glass override disabled');
 check(report.some(line => line.includes('Release Candidate layout override: no')), 'release report should confirm layout override disabled');
 check(report.some(line => line.includes('Release Candidate icon polish: no')), 'release report should confirm icon polish disabled');
 check(classicReport.some(line => line.includes('UI Classic Restore version: v2-original-orb-ui-polish')), 'classic UI report should include polished version');
 check(classicReport.some(line => line.includes('UI Classic pointer watch: yes')), 'classic UI report should confirm pointer watch');
-check(plusReport.some(line => line.includes('UI Classic Plus version: v1-ui-lock-reset')), 'Classic Plus report should include version');
+check(plusReport.some(line => line.includes('UI Classic Plus version: v2-lock-reset-safety')), 'Classic Plus report should include version');
 check(plusReport.some(line => line.includes('UI Classic Plus reset: yes')), 'Classic Plus report should confirm reset control');
+check(plusReport.some(line => line.includes('UI Classic Plus status: yes')), 'Classic Plus report should confirm status control');
+check(plusReport.some(line => line.includes('UI Classic Plus lock gate: yes')), 'Classic Plus report should confirm lock gate');
 
 if (failed) {
   console.error(`\nRelease candidate smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
@@ -158,6 +175,6 @@ if (failed) {
   process.exit(1);
 }
 
-console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} classicPlus=${metrics.classicPlus ? 'yes' : 'no'} uiLock=${metrics.uiLockToggle ? 'yes' : 'no'} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
+console.log(`✅ Release candidate smoke passed. mode=${refreshed.canvasMode} classicPlus=${refreshed.classicPlus ? 'yes' : 'no'} lockGate=${refreshed.uiLockGate ? 'yes' : 'no'} circularFrontend=${refreshed.circleFrontendLoaded ? 'yes' : 'no'}`);
 window.close();
 process.exit(0);
