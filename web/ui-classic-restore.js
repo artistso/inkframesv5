@@ -8,7 +8,6 @@
 
 (function installInkFrameUIClassicRestore(root){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
   if (root.__inkframeUIClassicRestoreInstalled) return;
   root.__inkframeUIClassicRestoreInstalled = true;
 
