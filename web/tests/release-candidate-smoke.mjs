@@ -50,9 +50,11 @@ check(!brushMath.includes("loadScript('ui-icon-polish.js'"), 'experimental UI ic
 check(!brushMath.includes("loadScript('ui-glass.js'"), 'experimental glass UI must not load in restored original UI path');
 check(!brushMath.includes("loadScript('ui-flat-controls.js'"), 'experimental flat controls must not load in restored original UI path');
 
-const dom = new JSDOM(`<!doctype html><html><head></head><body class="circular-canvas scrubbing-timeline inkframe-flat-controls">
+const dom = new JSDOM(`<!doctype html><html><head></head><body class="circular-canvas scrubbing-timeline inkframe-flat-controls inkframe-glass-ui inkframe-icon-polish inkframe-ui-layout">
   <button id="inkframe-circle-toggle">SQUARE</button>
   <div id="frameGlass" style="pointer-events:none;clip-path:circle(50%);transform:scale(.9)"><canvas id="c" style="pointer-events:none;border-radius:50%;clip-path:circle(50%)"></canvas></div>
+  <div id="inkframe-ui-map" style="pointer-events:auto"></div>
+  <div id="inkframe-ui-context" style="pointer-events:auto"></div>
   <div id="inkframe-timeline-scrubber-zone" style="pointer-events:auto"></div>
 </body></html>`, {
   pretendToBeVisual: true,
@@ -87,6 +89,13 @@ check(metrics.brushEngine === true, 'brush engine not detected');
 check(metrics.brushDynamics === true, 'brush dynamics not detected');
 check(metrics.vectorEngine === true, 'vector engine not detected');
 check(metrics.flatControls === false, 'flat controls override should not be loaded in restored original UI path');
+check(metrics.glassControls === false, 'glass UI override should not be loaded in restored original UI path');
+check(metrics.layoutOverride === false, 'layout override should not be loaded in restored original UI path');
+check(metrics.iconPolish === false, 'icon polish override should not be loaded in restored original UI path');
+check(!window.document.body.classList.contains('inkframe-flat-controls'), 'flat controls body class should be cleared');
+check(!window.document.body.classList.contains('inkframe-glass-ui'), 'glass UI body class should be cleared');
+check(!window.document.body.classList.contains('inkframe-icon-polish'), 'icon polish body class should be cleared');
+check(!window.document.body.classList.contains('inkframe-ui-layout'), 'layout override body class should be cleared');
 
 const report = window.InkFrameReleaseCandidate.reportLines();
 check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report lines missing stable guard');
@@ -94,6 +103,9 @@ check(report.some(line => line.includes('Release Candidate canvas mode: square')
 check(report.some(line => line.includes('Release Candidate circular frontend loaded: no')), 'release report should confirm circular frontend disabled');
 check(report.some(line => line.includes('Release Candidate scrubber loaded: no')), 'release report should confirm scrubber disabled');
 check(report.some(line => line.includes('Release Candidate flat controls: no')), 'release report should confirm original UI controls restored');
+check(report.some(line => line.includes('Release Candidate glass controls: no')), 'release report should confirm glass override disabled');
+check(report.some(line => line.includes('Release Candidate layout override: no')), 'release report should confirm layout override disabled');
+check(report.some(line => line.includes('Release Candidate icon polish: no')), 'release report should confirm icon polish disabled');
 
 if (failed) {
   console.error(`\nRelease candidate smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
@@ -101,6 +113,6 @@ if (failed) {
   process.exit(1);
 }
 
-console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} originalUI=${metrics.flatControls ? 'no' : 'yes'} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
+console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} originalUI=${metrics.flatControls || metrics.glassControls || metrics.layoutOverride || metrics.iconPolish ? 'no' : 'yes'} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
 window.close();
 process.exit(0);
