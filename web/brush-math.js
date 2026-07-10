@@ -60,8 +60,8 @@ function catmullRom(t, p0, p1, p2, p3) {
   if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 }
 
-// Browser/WebView bootstrap for optional UI modules. Kept separate from the math
-// API above so Node tests still import only deterministic brush primitives.
+// Browser/WebView bootstrap for optional engine modules. Kept separate from the
+// math API above so Node tests still import only deterministic brush primitives.
 (function loadInkFrameBrowserModules(){
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '')) return;
@@ -84,11 +84,8 @@ function catmullRom(t, p0, p1, p2, p3) {
   loadScript('brush-engine.js', 'brush-engine');
   loadScript('vector-engine.js', 'vector-engine');
   loadScript('brush-dynamics.js', 'brush-dynamics');
-  // Circular canvas modules remain in the repo as backend/future work, but are
-  // not loaded in the stable square-canvas APK path.
-  loadScript('ui-layout.js', 'ui-layout');
-  loadScript('ui-icon-polish.js', 'ui-icon-polish');
-  loadScript('ui-glass.js', 'ui-glass');
-  loadScript('ui-flat-controls.js', 'ui-flat-controls');
+  // Circular canvas and experimental UI override modules remain in the repo as
+  // backend/future work, but are not loaded in the stable square-canvas APK path.
+  // The original in-page buttons now own movement, expansion, and appearance.
   loadScript('release-candidate.js', 'release-candidate');
 })();
