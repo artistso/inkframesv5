@@ -1,9 +1,10 @@
 // InkFrame — Release Candidate Stability Guard
 // -----------------------------------------------------------------------------
 // Last-loaded safety layer for APK release candidates. It does not add features
-// or take ownership of drawing. The stable publish path is square-canvas only:
-// circular canvas modules remain in the repository for later backend/future work,
-// but this guard keeps the current APK focused on reliable square-canvas input.
+// or take ownership of drawing. The stable publish path is square-canvas only and
+// uses the original in-page button UI: circular canvas modules and experimental
+// UI override modules remain in the repository for later backend/future work, but
+// this guard keeps the current APK focused on reliable square-canvas input.
 'use strict';
 
 (function installInkFrameReleaseCandidate(root){
@@ -47,6 +48,24 @@
     }
     const badge = $('inkframe-shape-badge');
     if (badge) badge.setAttribute('aria-hidden', 'true');
+  }
+
+  function restoreOriginalButtonUI(){
+    document.body.classList.remove(
+      'inkframe-flat-controls',
+      'inkframe-glass-ui',
+      'inkframe-icon-polish',
+      'inkframe-ui-layout',
+      'inkframe-layout-focus',
+      'inkframe-ui-dragging'
+    );
+    ['inkframe-ui-map', 'inkframe-ui-context', 'inkframe-scrub-hud'].forEach(id => {
+      const el = $(id);
+      if (el) {
+        el.style.pointerEvents = 'none';
+        el.setAttribute('aria-hidden', 'true');
+      }
+    });
   }
 
   function killBlockingScrubberOverlay(){
@@ -100,7 +119,10 @@
       brushEngine: !!root.InkFrameBrushEngine,
       brushDynamics: !!root.InkFrameBrushDynamics,
       vectorEngine: !!root.InkFrameVectorEngine,
-      flatControls: !!root.InkFrameUIFlatControls,
+      flatControls: !!root.InkFrameUIFlatControls || document.body.classList.contains('inkframe-flat-controls'),
+      glassControls: !!root.InkFrameUIGlass || document.body.classList.contains('inkframe-glass-ui'),
+      layoutOverride: !!root.InkFrameUILayout || document.body.classList.contains('inkframe-ui-layout'),
+      iconPolish: !!root.InkFrameUIIconPolish || document.body.classList.contains('inkframe-icon-polish'),
     };
     root.__inkframeReleaseCandidateMetrics = metrics;
     return metrics;
@@ -110,6 +132,7 @@
     ensureStyle();
     document.body.classList.add('inkframe-rc-stable');
     enforceSquareMode();
+    restoreOriginalButtonUI();
     canvasInputOpen();
     killBlockingScrubberOverlay();
     collectMetrics();
@@ -132,7 +155,10 @@
       'Release Candidate brush engine: ' + (m.brushEngine ? 'yes' : 'no'),
       'Release Candidate brush dynamics: ' + (m.brushDynamics ? 'yes' : 'no'),
       'Release Candidate vector engine: ' + (m.vectorEngine ? 'yes' : 'no'),
-      'Release Candidate flat controls: ' + (m.flatControls ? 'yes' : 'no')
+      'Release Candidate flat controls: ' + (m.flatControls ? 'yes' : 'no'),
+      'Release Candidate glass controls: ' + (m.glassControls ? 'yes' : 'no'),
+      'Release Candidate layout override: ' + (m.layoutOverride ? 'yes' : 'no'),
+      'Release Candidate icon polish: ' + (m.iconPolish ? 'yes' : 'no')
     ];
   }
 
