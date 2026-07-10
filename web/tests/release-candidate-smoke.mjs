@@ -3,7 +3,7 @@
 // Validates the final APK guardrails for the stable square-canvas path: drawing
 // canvas accepts input, circular frontend modules are not loaded, experimental UI
 // override modules are not loaded, retired scrubber overlays stay non-blocking,
-// classic draggable UI is restored, and passive engine modules are available.
+// polished classic draggable UI is restored, and passive engine modules are available.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -95,8 +95,11 @@ check(metrics.brushDynamics === true, 'brush dynamics not detected');
 check(metrics.vectorEngine === true, 'vector engine not detected');
 check(metrics.classicUI === true, 'classic draggable UI restore should be active');
 check(classic && classic.active === true, 'classic UI metrics missing');
+check(classic.version === 'v2-original-orb-ui-polish', 'classic UI version mismatch');
 check(classic.rootButtons === 1, 'classic UI should detect root orb');
 check(classic.childButtons === 1, 'classic UI should detect child button');
+check(classic.classicMarkedRoots === 1, 'classic UI should mark root controls');
+check(classic.pointerWatch === true, 'classic UI pointer watch should be installed');
 check(metrics.flatControls === false, 'flat controls override should not be loaded in restored original UI path');
 check(metrics.glassControls === false, 'glass UI override should not be loaded in restored original UI path');
 check(metrics.layoutOverride === false, 'layout override should not be loaded in restored original UI path');
@@ -108,6 +111,7 @@ check(!window.document.body.classList.contains('inkframe-icon-polish'), 'icon po
 check(!window.document.body.classList.contains('inkframe-ui-layout'), 'layout override body class should be cleared');
 
 const report = window.InkFrameReleaseCandidate.reportLines();
+const classicReport = window.InkFrameUIClassicRestore.reportLines();
 check(report.some(line => line.includes('Release Candidate: stable guard active')), 'release candidate report lines missing stable guard');
 check(report.some(line => line.includes('Release Candidate canvas mode: square')), 'release report should confirm square canvas mode');
 check(report.some(line => line.includes('Release Candidate circular frontend loaded: no')), 'release report should confirm circular frontend disabled');
@@ -117,6 +121,8 @@ check(report.some(line => line.includes('Release Candidate flat controls: no')),
 check(report.some(line => line.includes('Release Candidate glass controls: no')), 'release report should confirm glass override disabled');
 check(report.some(line => line.includes('Release Candidate layout override: no')), 'release report should confirm layout override disabled');
 check(report.some(line => line.includes('Release Candidate icon polish: no')), 'release report should confirm icon polish disabled');
+check(classicReport.some(line => line.includes('UI Classic Restore version: v2-original-orb-ui-polish')), 'classic UI report should include polished version');
+check(classicReport.some(line => line.includes('UI Classic pointer watch: yes')), 'classic UI report should confirm pointer watch');
 
 if (failed) {
   console.error(`\nRelease candidate smoke FAILED (${failed} check${failed > 1 ? 's' : ''}).`);
@@ -124,6 +130,6 @@ if (failed) {
   process.exit(1);
 }
 
-console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} classicUI=${metrics.classicUI ? 'yes' : 'no'} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
+console.log(`✅ Release candidate smoke passed. mode=${metrics.canvasMode} classicUI=${metrics.classicUI ? 'yes' : 'no'} pointerWatch=${classic.pointerWatch ? 'yes' : 'no'} circularFrontend=${metrics.circleFrontendLoaded ? 'yes' : 'no'}`);
 window.close();
 process.exit(0);
