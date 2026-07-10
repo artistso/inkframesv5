@@ -12,7 +12,7 @@
   if (window.__inkframeReleaseCandidateInstalled) return;
   window.__inkframeReleaseCandidateInstalled = true;
 
-  const VERSION = 'v5-classic-plus-safety-guard';
+  const VERSION = 'v5-square-classic-plus-dock-guard';
   let metrics = null;
 
   const $ = id => document.getElementById(id);
@@ -105,14 +105,20 @@
     return !!canvas && !!frame;
   }
 
+  function plusMetrics(){
+    try {
+      const plus = root.InkFrameUIClassicPlus;
+      if (plus && typeof plus.metrics === 'function') return plus.metrics();
+    } catch (_) {}
+    return null;
+  }
+
   function collectMetrics(){
     const canvas = $('c');
     const frame = $('frameGlass');
     const scrubberOverlay = $('inkframe-timeline-scrubber-zone');
     const toggle = $('inkframe-circle-toggle');
-    const plusMetrics = root.InkFrameUIClassicPlus && typeof root.InkFrameUIClassicPlus.metrics === 'function'
-      ? root.InkFrameUIClassicPlus.metrics()
-      : null;
+    const plus = plusMetrics();
     metrics = {
       active: true,
       version: VERSION,
@@ -133,13 +139,15 @@
       vectorEngine: !!root.InkFrameVectorEngine,
       classicUI: !!root.InkFrameUIClassicRestore || document.body.classList.contains('inkframe-classic-ui'),
       classicPlus: !!root.InkFrameUIClassicPlus || document.body.classList.contains('inkframe-classic-plus'),
+      uiDockToggle: !!$('inkframe-ui-dock-toggle'),
+      uiDockCollapsed: plus ? !!plus.dockCollapsed : document.body.classList.contains('inkframe-ui-dock-collapsed'),
       uiLockToggle: !!$('inkframe-ui-lock-toggle'),
       uiReset: !!$('inkframe-ui-reset'),
       uiStatus: !!$('inkframe-ui-plus-status'),
       uiLocked: document.body.classList.contains('inkframe-ui-locked'),
-      uiLockGate: !!(plusMetrics && plusMetrics.lockGate),
-      uiResetConfirming: !!(plusMetrics && plusMetrics.resetConfirming),
-      uiBlockedMoves: plusMetrics ? plusMetrics.blockedMoves : 0,
+      uiLockGate: plus ? !!plus.lockGate : false,
+      uiResetConfirming: plus ? !!plus.resetConfirming : false,
+      uiBlockedMoves: plus ? (plus.blockedMoves || 0) : 0,
       flatControls: !!root.InkFrameUIFlatControls || document.body.classList.contains('inkframe-flat-controls'),
       glassControls: !!root.InkFrameUIGlass || document.body.classList.contains('inkframe-glass-ui'),
       layoutOverride: !!root.InkFrameUILayout || document.body.classList.contains('inkframe-ui-layout'),
@@ -178,6 +186,8 @@
       'Release Candidate vector engine: ' + (m.vectorEngine ? 'yes' : 'no'),
       'Release Candidate classic UI: ' + (m.classicUI ? 'yes' : 'no'),
       'Release Candidate classic plus: ' + (m.classicPlus ? 'yes' : 'no'),
+      'Release Candidate UI dock toggle: ' + (m.uiDockToggle ? 'yes' : 'no'),
+      'Release Candidate UI dock collapsed: ' + (m.uiDockCollapsed ? 'yes' : 'no'),
       'Release Candidate UI lock toggle: ' + (m.uiLockToggle ? 'yes' : 'no'),
       'Release Candidate UI reset: ' + (m.uiReset ? 'yes' : 'no'),
       'Release Candidate UI status: ' + (m.uiStatus ? 'yes' : 'no'),
