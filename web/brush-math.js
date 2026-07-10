@@ -86,6 +86,7 @@ function catmullRom(t, p0, p1, p2, p3) {
   loadScript('brush-dynamics.js', 'brush-dynamics');
   // Circular canvas and experimental UI override modules remain in the repo as
   // backend/future work, but are not loaded in the stable square-canvas APK path.
-  // The original in-page buttons now own movement, expansion, and appearance.
+  // The original in-page buttons own movement and expansion.
+  loadScript('ui-classic-restore.js', 'ui-classic-restore');
   loadScript('release-candidate.js', 'release-candidate');
 })();
