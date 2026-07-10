@@ -12,7 +12,7 @@
   if (window.__inkframeReleaseCandidateInstalled) return;
   window.__inkframeReleaseCandidateInstalled = true;
 
-  const VERSION = 'v5-square-classic-plus-dock-guard';
+  const VERSION = 'v6-square-classic-dock-corners-guard';
   let metrics = null;
 
   const $ = id => document.getElementById(id);
@@ -68,6 +68,10 @@
     if (classicPlus && typeof classicPlus.apply === 'function') {
       try { classicPlus.apply(); } catch (_) {}
     }
+    const dockCorners = root.InkFrameUIClassicDockCorners;
+    if (dockCorners && typeof dockCorners.apply === 'function') {
+      try { dockCorners.apply(); } catch (_) {}
+    }
     ['inkframe-ui-map', 'inkframe-ui-context', 'inkframe-scrub-hud'].forEach(id => {
       const el = $(id);
       if (el) {
@@ -113,12 +117,22 @@
     return null;
   }
 
+  function dockCornerMetrics(){
+    try {
+      const corners = root.InkFrameUIClassicDockCorners;
+      if (corners && typeof corners.metrics === 'function') return corners.metrics();
+    } catch (_) {}
+    return null;
+  }
+
   function collectMetrics(){
     const canvas = $('c');
     const frame = $('frameGlass');
     const scrubberOverlay = $('inkframe-timeline-scrubber-zone');
     const toggle = $('inkframe-circle-toggle');
     const plus = plusMetrics();
+    const dockCorners = dockCornerMetrics();
+    const dock = $('inkframe-ui-classic-plus-dock');
     metrics = {
       active: true,
       version: VERSION,
@@ -141,6 +155,9 @@
       classicPlus: !!root.InkFrameUIClassicPlus || document.body.classList.contains('inkframe-classic-plus'),
       uiDockToggle: !!$('inkframe-ui-dock-toggle'),
       uiDockCollapsed: plus ? !!plus.dockCollapsed : document.body.classList.contains('inkframe-ui-dock-collapsed'),
+      uiDockCornerModule: !!root.InkFrameUIClassicDockCorners || document.body.classList.contains('inkframe-dock-corners'),
+      uiDockCornerButton: !!$('inkframe-ui-dock-corner'),
+      uiDockCorner: dockCorners ? dockCorners.corner : ((dock && dock.dataset.corner) || 'missing'),
       uiLockToggle: !!$('inkframe-ui-lock-toggle'),
       uiReset: !!$('inkframe-ui-reset'),
       uiStatus: !!$('inkframe-ui-plus-status'),
@@ -188,6 +205,9 @@
       'Release Candidate classic plus: ' + (m.classicPlus ? 'yes' : 'no'),
       'Release Candidate UI dock toggle: ' + (m.uiDockToggle ? 'yes' : 'no'),
       'Release Candidate UI dock collapsed: ' + (m.uiDockCollapsed ? 'yes' : 'no'),
+      'Release Candidate UI dock corners: ' + (m.uiDockCornerModule ? 'yes' : 'no'),
+      'Release Candidate UI dock corner button: ' + (m.uiDockCornerButton ? 'yes' : 'no'),
+      'Release Candidate UI dock corner: ' + m.uiDockCorner,
       'Release Candidate UI lock toggle: ' + (m.uiLockToggle ? 'yes' : 'no'),
       'Release Candidate UI reset: ' + (m.uiReset ? 'yes' : 'no'),
       'Release Candidate UI status: ' + (m.uiStatus ? 'yes' : 'no'),
