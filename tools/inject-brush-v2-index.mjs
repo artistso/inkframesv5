@@ -30,6 +30,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/rasterizer.js"></script>
 <script src="brush-engine-v2/trace.js"></script>
 <script src="brush-engine-v2/engine.js"></script>
+<script src="brush-engine-v2/tuning.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="flood-fill.js"></script>`;
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
@@ -82,6 +83,7 @@ const helper = `  // Android test-build bridge for Brush Engine V2. This is inje
       }
     };
   }
+  window.InkFrameBrushV2Environment=()=>makeBrushV2Env();
 
 ${helperNeedle}`;
 html = replaceOnce(html, helperNeedle, helper, 'V2 environment bridge');
@@ -113,6 +115,7 @@ html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 for (const marker of [
   'INKFRAME_BRUSH_V2_AB',
   'makeBrushV2Env()',
+  'InkFrameBrushV2Environment',
   'InkFrameBrushV2Adapter.begin',
   'InkFrameBrushV2Adapter.move',
   'InkFrameBrushV2Adapter.end',
