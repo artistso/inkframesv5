@@ -40,11 +40,13 @@ jobs:
           node --check tools/prepare-release.mjs
           node --check tools/bump-version.mjs
           node --check tools/inject-brush-v2-index.mjs
+          node --check web/brush-engine-v2/tuning.js
           node --check web/brush-engine-v2/adapter.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
           node web/tests/brush-engine-v2.test.mjs
           node web/tests/brush-engine-v2-ab.test.mjs
+          node web/tests/brush-engine-v2-tuning.test.mjs
           node web/tests/boot-smoke.mjs
           node web/tests/brush-engine-v2-ab-boot.test.mjs
 
