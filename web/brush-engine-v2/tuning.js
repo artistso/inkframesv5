@@ -51,7 +51,7 @@
   }
 
   function normalizeContactMode(value) {
-    return value === 'raw' ? 'raw' : 'strict';
+    return value === 'strict' ? 'strict' : 'raw';
   }
 
   function normalizeTuning(value) {
