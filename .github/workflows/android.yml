@@ -46,6 +46,7 @@ jobs:
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
           node web/tests/brush-math.test.mjs
+          node web/tests/brush-dynamics.test.mjs
           node web/tests/boot-smoke.mjs
 
   test:
