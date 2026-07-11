@@ -40,10 +40,13 @@ jobs:
           node --check tools/inject-brush-v2-index.mjs
           node --check web/brush-engine-v2/tuning.js
           node --check web/brush-engine-v2/adapter.js
+          node --check web/brush-engine-v2/coverage-ui.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
       - name: Brush V2 core geometry and replay
         run: node web/tests/brush-engine-v2.test.mjs
+      - name: Brush V2 continuous ribbon coverage
+        run: node web/tests/brush-engine-v2-coverage.test.mjs
       - name: Brush V2 generated-index structure
         run: node web/tests/brush-engine-v2-ab.test.mjs
       - name: Brush V2 tuning and replay
