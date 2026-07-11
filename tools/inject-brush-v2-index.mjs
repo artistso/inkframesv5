@@ -23,6 +23,7 @@ const scriptsNeedle = '<script src="brush-math.js"></script>\n<script src="flood
 const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_AB: generated into APK assets only -->
 <script src="brush-engine-v2/sample.js"></script>
+<script src="brush-engine-v2/batch.js"></script>
 <script src="brush-engine-v2/validator.js"></script>
 <script src="brush-engine-v2/contact.js"></script>
 <script src="brush-engine-v2/filters.js"></script>
@@ -35,6 +36,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/tuning.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="brush-engine-v2/session.js"></script>
+<script src="brush-engine-v2/input.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="flood-fill.js"></script>`;
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
@@ -43,6 +45,15 @@ const helperNeedle = '  // Pressure + position stabilization: the drawn point tr
 const helper = `  // Android test-build bridge for Brush Engine V2. This is injected into the
   // staged APK index only; the checked-in browser source remains the v0.1.1 engine.
   function makeBrushV2Env(){
+    const inputRect=canvas.getBoundingClientRect();
+    const inputTransform=Object.freeze({
+      left:Number(inputRect.left)||0,
+      top:Number(inputRect.top)||0,
+      scaleX:W/(Number(inputRect.width)||1),
+      scaleY:H/(Number(inputRect.height)||1),
+      width:W,
+      height:H
+    });
     return {
       canvas,
       layerCtx:fctx,
@@ -51,6 +62,7 @@ const helper = `  // Android test-build bridge for Brush Engine V2. This is inje
       height:H,
       brushId:brush.id,
       color,
+      coordinateTransform:inputTransform,
       profile:{
         size,
         minSize:_bpMin,
@@ -61,8 +73,11 @@ const helper = `  // Android test-build bridge for Brush Engine V2. This is inje
       },
       toSample(ev){
         const c=toC(ev);
+        const clientX=Number(ev.clientX), clientY=Number(ev.clientY);
         return {
-          x:c.x, y:c.y, pressure:c.p,
+          x:Number.isFinite(clientX)?(clientX-inputTransform.left)*inputTransform.scaleX:c.x,
+          y:Number.isFinite(clientY)?(clientY-inputTransform.top)*inputTransform.scaleY:c.y,
+          pressure:c.p,
           tiltX:ev.tiltX||0, tiltY:ev.tiltY||0,
           twist:ev.twist||0,
           altitudeAngle:Number.isFinite(ev.altitudeAngle)?ev.altitudeAngle:Math.PI/2,
@@ -94,24 +109,38 @@ html = replaceOnce(html, helperNeedle, helper, 'V2 environment bridge');
 
 const downNeedle = '    e.preventDefault();drawing=true;drawPid=e.pointerId;drawPidType=e.pointerType;pend=snap();';
 const downHook = `    if(window.InkFrameBrushV2Adapter && window.InkFrameBrushV2Adapter.shouldHandle(brush.id,e)){
-      if(window.InkFrameBrushV2Adapter.begin(e,makeBrushV2Env())) return;
+      const v2env=makeBrushV2Env();
+      const handled=window.InkFrameBrushV2InputBridge
+        ? window.InkFrameBrushV2InputBridge.begin(e,v2env)
+        : window.InkFrameBrushV2Adapter.begin(e,v2env);
+      if(handled) return;
     }
 ${downNeedle}`;
 html = replaceOnce(html, downNeedle, downHook, 'pointerdown handoff');
 
 const moveNeedle = '    if(!drawing||e.pointerId!==drawPid)return;    // only the owning pointer extends the stroke';
-const moveHook = `    if(window.InkFrameBrushV2Adapter && window.InkFrameBrushV2Adapter.move(e)){
-      updateLens(e);
-      return;
+const moveHook = `    if(window.InkFrameBrushV2Adapter){
+      const handled=window.InkFrameBrushV2InputBridge
+        ? window.InkFrameBrushV2InputBridge.move(e)
+        : window.InkFrameBrushV2Adapter.move(e);
+      if(handled){
+        updateLens(e);
+        return;
+      }
     }
 ${moveNeedle}`;
 html = replaceOnce(html, moveNeedle, moveHook, 'pointermove handoff');
 
 const upNeedle = '  const up=e=>{\n    // Compare-drag release: just clear the drag lock so future taps work.';
 const upHook = `  const up=e=>{
-    if(window.InkFrameBrushV2Adapter && window.InkFrameBrushV2Adapter.end(e)){
-      endBarrelEraser();
-      return;
+    if(window.InkFrameBrushV2Adapter){
+      const handled=window.InkFrameBrushV2InputBridge
+        ? window.InkFrameBrushV2InputBridge.end(e)
+        : window.InkFrameBrushV2Adapter.end(e);
+      if(handled){
+        endBarrelEraser();
+        return;
+      }
     }
     // Compare-drag release: just clear the drag lock so future taps work.`;
 html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
@@ -119,13 +148,19 @@ html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 for (const marker of [
   'INKFRAME_BRUSH_V2_AB',
   'makeBrushV2Env()',
+  'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
   'InkFrameBrushV2Adapter.begin',
   'InkFrameBrushV2Adapter.move',
   'InkFrameBrushV2Adapter.end',
+  'InkFrameBrushV2InputBridge.begin',
+  'InkFrameBrushV2InputBridge.move',
+  'InkFrameBrushV2InputBridge.end',
+  'brush-engine-v2/batch.js',
   'brush-engine-v2/contact.js',
   'brush-engine-v2/radius.js',
   'brush-engine-v2/session.js',
+  'brush-engine-v2/input.js',
   'brush-engine-v2/coverage-ui.js',
 ]) {
   if (!html.includes(marker)) throw new Error(`Generated index failed verification: ${marker}`);
