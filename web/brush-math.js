@@ -1,10 +1,9 @@
 // InkFrame — brush-engine math helpers
 // -----------------------------------------------------------------------------
-// Pure math used by the paint engine. No DOM, no canvas, no globals -- safe to
-// unit-test in Node and safe to move to WASM later without dragging the app
-// state along. The heavier dab()/seg*() live in index.html because they touch
-// module-level paint state (brush, color, opacity, size, ...); this file is
-// just the underlying primitives they compose.
+// Pure math used by the paint engine. No DOM or canvas dependencies are required
+// for the exported helpers, so they remain unit-testable in Node. In a browser,
+// this module also installs a narrow S Pen input guard before the paint engine
+// starts listening for pointer events.
 'use strict';
 
 // ============================================================================
@@ -99,31 +98,14 @@ function hexWithAlpha(hex, a) {
 
 const KNOT_EPSILON = 1e-4;
 
-/**
- * Return a centripetal knot interval. The fourth root is intentional:
- * distance is sqrt(dx²+dy²), then alpha=0.5 applies another square root.
- * A small floor keeps repeated/coalesced pointer samples numerically stable.
- *
- * @param {[number,number]} a
- * @param {[number,number]} b
- * @returns {number}
- */
+/** Return a centripetal knot interval. */
 function knotInterval(a, b) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   return Math.max(KNOT_EPSILON, Math.pow(dx * dx + dy * dy, 0.25));
 }
 
-/**
- * Linear interpolation evaluated on an arbitrary knot interval.
- *
- * @param {[number,number]} a
- * @param {[number,number]} b
- * @param {number} ta
- * @param {number} tb
- * @param {number} u
- * @returns {[number,number]}
- */
+/** Linear interpolation evaluated on an arbitrary knot interval. */
 function interpolateAt(a, b, ta, tb, u) {
   const span = tb - ta;
   if (Math.abs(span) < KNOT_EPSILON) return [a[0], a[1]];
@@ -137,16 +119,6 @@ function interpolateAt(a, b, ta, tb, u) {
  * parameterization. Unlike the old uniform polynomial basis, this respects
  * the physical distance between stylus samples, preventing loops, hooks, and
  * corner overshoot when Android delivers events at uneven spacing.
- *
- * The signature remains unchanged so the paint engine and fallback path keep
- * working without profile migrations or UI changes.
- *
- * @param {number} t   0..1 within the (p1, p2) segment
- * @param {[number,number]} p0
- * @param {[number,number]} p1
- * @param {[number,number]} p2
- * @param {[number,number]} p3
- * @returns {[number, number]}
  */
 function catmullRom(t, p0, p1, p2, p3) {
   const clampedT = Math.max(0, Math.min(1, t));
@@ -165,11 +137,228 @@ function catmullRom(t, p0, p1, p2, p3) {
   return interpolateAt(b1, b2, t1, t2, u);
 }
 
-// ---- UMD-lite export ------------------------------------------------------
-// Block-scoped so multiple modules inlined into one <script> (e.g. the CI
-// boot smoke test) don't collide on top-level `const _api`.
+// ============================================================================
+// S Pen sample guard
+// ============================================================================
+// Some Android WebView / S Pen combinations occasionally emit one coordinate
+// hundreds of pixels away and then immediately return to the real stroke. The
+// paint engine correctly interpolates what it receives, so that single corrupt
+// point becomes the long triangular spike seen in tablet field tests.
+//
+// The guard operates before smoothing and spline interpolation:
+//   * hard teleports in top-level pointermove events are swallowed;
+//   * coalesced samples use one-sample quarantine, so a large jump is accepted
+//     when the following sample confirms continued motion, but discarded when
+//     the next sample returns to the previous path;
+//   * the pointerdown sample is prepended to the first batch, resetting the
+//     engine's raw-direction history between strokes without changing index.html.
+//
+// It is deliberately pen+canvas only. Mouse, touch, UI controls, and selection
+// gestures retain their native event stream.
 {
-  const _api = { GRAIN_SIZE, buildGrain, sampleGrain, easeAngle, hexWithAlpha, catmullRom };
-  if (typeof window !== 'undefined') window.InkFrameBrushMath = _api;
+  const GUARD_MIN_JUMP = 72;
+  const GUARD_RETURN_RATIO = 0.30;
+  const GUARD_ARM_RATIO = 3.0;
+  const GUARD_HARD_JUMP = 180;
+  const GUARD_STEP_MULTIPLIER = 9;
+  const GUARD_MAX_DT = 34;
+
+  const pointOf = (event) => ({
+    x: Number(event && event.clientX),
+    y: Number(event && event.clientY),
+    t: Number(event && event.timeStamp),
+    event,
+  });
+
+  const finitePoint = (p) => !!p && Number.isFinite(p.x) && Number.isFinite(p.y);
+  const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  const sampleTime = (p, fallback) => Number.isFinite(p.t) ? p.t : fallback;
+
+  function isPaintPenEvent(event) {
+    if (!event || event.pointerType !== 'pen') return false;
+    const target = event.target;
+    return !!target && (target.id === 'c' || String(target.tagName || '').toUpperCase() === 'CANVAS');
+  }
+
+  function isIsolatedPointerSpike(a, b, c, recentStep) {
+    if (!finitePoint(a) || !finitePoint(b) || !finitePoint(c)) return false;
+    const ab = distance(a, b);
+    const bc = distance(b, c);
+    const ac = distance(a, c);
+    const arm = Math.min(ab, bc);
+    const dynamicMin = Math.max(GUARD_MIN_JUMP, (recentStep || 0) * GUARD_STEP_MULTIPLIER);
+    if (arm < dynamicMin) return false;
+    if (Math.max(ab, bc) > arm * GUARD_ARM_RATIO) return false;
+    return ac <= Math.max(12, arm * GUARD_RETURN_RATIO);
+  }
+
+  function filterPointerSamples(state, events) {
+    const accepted = [];
+    const incoming = [];
+    if (state.pending) incoming.push(state.pending);
+    for (const event of events || []) incoming.push(pointOf(event));
+    state.pending = null;
+
+    for (let i = 0; i < incoming.length; i++) {
+      const cur = incoming[i];
+      if (!finitePoint(cur)) {
+        state.dropped = (state.dropped || 0) + 1;
+        continue;
+      }
+      const prev = state.last;
+      const next = incoming[i + 1];
+
+      if (prev && next && isIsolatedPointerSpike(prev, cur, next, state.recentStep)) {
+        state.dropped = (state.dropped || 0) + 1;
+        continue;
+      }
+
+      if (prev && i === incoming.length - 1) {
+        const jump = distance(prev, cur);
+        const threshold = Math.max(GUARD_MIN_JUMP, (state.recentStep || 0) * GUARD_STEP_MULTIPLIER);
+        const dt = Math.max(0, sampleTime(cur, 0) - sampleTime(prev, 0));
+        if (jump >= threshold && (!dt || dt <= GUARD_MAX_DT)) {
+          state.pending = cur;
+          continue;
+        }
+      }
+
+      if (prev) {
+        const step = distance(prev, cur);
+        state.recentStep = state.recentStep
+          ? state.recentStep * 0.78 + step * 0.22
+          : step;
+      }
+      state.last = cur;
+      accepted.push(cur.event);
+    }
+    return accepted;
+  }
+
+  function isHardPointerJump(state, event) {
+    const cur = pointOf(event);
+    const prev = state && state.outerLast;
+    if (!finitePoint(cur) || !finitePoint(prev)) return false;
+    const jump = distance(prev, cur);
+    const dynamic = Math.max(GUARD_HARD_JUMP, (state.outerStep || 0) * GUARD_STEP_MULTIPLIER);
+    const dt = Math.max(0, sampleTime(cur, 0) - sampleTime(prev, 0));
+    return jump >= dynamic && (!dt || dt <= GUARD_MAX_DT);
+  }
+
+  function installPointerSampleGuard(root) {
+    const PointerEventCtor = root && root.PointerEvent;
+    if (!PointerEventCtor || !PointerEventCtor.prototype) return false;
+    const proto = PointerEventCtor.prototype;
+    const original = proto.getCoalescedEvents;
+    if (typeof original === 'function' && original.__inkframeGuard) return false;
+
+    const states = new Map();
+    const stats = { dropped: 0 };
+    const stateFor = (event) => {
+      const id = event.pointerId == null ? -1 : event.pointerId;
+      let state = states.get(id);
+      if (!state) {
+        state = { last: null, pending: null, recentStep: 0, outerLast: null, outerStep: 0, firstMove: true, downEvent: null, dropped: 0 };
+        states.set(id, state);
+      }
+      return state;
+    };
+
+    root.addEventListener('pointerdown', (event) => {
+      if (!isPaintPenEvent(event)) return;
+      const p = pointOf(event);
+      states.set(event.pointerId, {
+        last: p,
+        pending: null,
+        recentStep: 0,
+        outerLast: p,
+        outerStep: 0,
+        firstMove: true,
+        downEvent: event,
+        dropped: 0,
+      });
+    }, true);
+
+    root.addEventListener('pointermove', (event) => {
+      if (!isPaintPenEvent(event)) return;
+      const state = stateFor(event);
+      if (isHardPointerJump(state, event)) {
+        state.dropped++;
+        stats.dropped++;
+        root.__inkframeStylusDrops = stats.dropped;
+        event.stopImmediatePropagation();
+        return;
+      }
+      const cur = pointOf(event);
+      if (finitePoint(state.outerLast)) {
+        const step = distance(state.outerLast, cur);
+        state.outerStep = state.outerStep ? state.outerStep * 0.78 + step * 0.22 : step;
+      }
+      state.outerLast = cur;
+    }, true);
+
+    const wrapped = function getInkFrameCoalescedEvents() {
+      const raw = typeof original === 'function' ? (original.call(this) || []) : [this];
+      if (!isPaintPenEvent(this)) return raw;
+      const state = stateFor(this);
+      const list = Array.from(raw);
+      const tail = list.length ? pointOf(list[list.length - 1]) : null;
+      const owner = pointOf(this);
+      if (!tail || distance(tail, owner) > 0.01) list.push(this);
+
+      if (state.firstMove && state.downEvent) {
+        const head = list.length ? pointOf(list[0]) : null;
+        if (!head || distance(pointOf(state.downEvent), head) > 0.01) list.unshift(state.downEvent);
+        state.firstMove = false;
+      }
+
+      const before = state.dropped || 0;
+      const filtered = filterPointerSamples(state, list);
+      stats.dropped += (state.dropped || 0) - before;
+      root.__inkframeStylusDrops = stats.dropped;
+      return filtered;
+    };
+    wrapped.__inkframeGuard = true;
+
+    if (typeof original === 'function') {
+      try {
+        Object.defineProperty(proto, 'getCoalescedEvents', {
+          configurable: true,
+          writable: true,
+          value: wrapped,
+        });
+      } catch (_) {
+        try { proto.getCoalescedEvents = wrapped; } catch (_) { }
+      }
+    }
+
+    const cleanup = (event) => {
+      if (event && event.pointerId != null) states.delete(event.pointerId);
+    };
+    root.addEventListener('pointerup', cleanup, true);
+    root.addEventListener('pointercancel', cleanup, true);
+    root.InkFrameStylusGuard = {
+      stats: () => ({ dropped: stats.dropped }),
+      reset: () => { stats.dropped = 0; root.__inkframeStylusDrops = 0; },
+    };
+    return true;
+  }
+
+  const _api = {
+    GRAIN_SIZE,
+    buildGrain,
+    sampleGrain,
+    easeAngle,
+    hexWithAlpha,
+    catmullRom,
+    isIsolatedPointerSpike,
+    filterPointerSamples,
+    isHardPointerJump,
+    installPointerSampleGuard,
+  };
+  if (typeof window !== 'undefined') {
+    window.InkFrameBrushMath = _api;
+    installPointerSampleGuard(window);
+  }
   if (typeof module !== 'undefined' && module.exports) module.exports = _api;
 }
