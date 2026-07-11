@@ -11,6 +11,7 @@ semantic versioning once it reaches a public release.
 - Removes duplicate micro-samples and caps pathological pointer batches while always preserving the newest physical endpoint.
 - Adds velocity-aware pressure cleanup that follows fast pressure changes while damping slow hand jitter.
 - Deliberate low-speed pressure changes now receive an adaptive response boost before the painter's own smoothing, while tiny stationary pressure fluctuations remain damped.
+- Learns a conservative resting-pressure floor only from pre-contact pen-hover samples, restoring a true light-pressure range on devices that report nonzero hover pressure while leaving normal zero-floor devices unchanged.
 - Explicitly preserves native S Pen pressure, tilt, altitude, azimuth, barrel-button state, twist, and contact geometry, including inherited `PointerEvent` fields.
 
 ### Canvas panning and zooming
@@ -19,12 +20,14 @@ semantic versioning once it reaches a public release.
 - Fixed the one-pointer Hand-mode dead zone so a zero-distance gesture is no longer misread as a pinch.
 - Once an intentional two-finger navigation gesture activates, those touch pointers stay suppressed until lift and cannot resume an accidental paint stroke.
 - Canvas dimension changes from project switching automatically fit the new canvas into the workspace.
+- High-frequency pan and Hand-mode pointer updates are now coalesced to animation frames, reducing redundant transform writes on high-refresh tablets.
+- Viewport persistence is deferred until gesture completion instead of repeatedly scheduling storage work for every pointer sample.
 - Added **Hand** mode for deliberate one-finger or pen panning without drawing, plus two-pointer pan/zoom while Hand mode is active.
 - Added cursor-anchored mouse-wheel/trackpad zoom, **Fit**, a live zoom percentage, tap-to-reset navigation, Space-drag, and middle-mouse panning.
 - View movement is clamped so the canvas cannot be completely lost offscreen.
 
 ### Interaction regression protection
-- Added deterministic smoke tests for coalesced pressure filtering, deliberate slow-pressure response, native stylus-field preservation, viewport wrapping, anchor correction, Hand-mode dead zones, two-finger touch suppression, real pinch zoom, project auto-fit, Fit, zoom display, and reset behavior.
+- Added deterministic smoke tests for coalesced pressure filtering, deliberate slow-pressure response, hover-floor calibration, native stylus-field preservation, viewport wrapping, anchor correction, Hand-mode dead zones, two-finger touch suppression, real pinch zoom, transform-frame coalescing, deferred viewport persistence, project auto-fit, Fit, zoom display, and reset behavior.
 - APK assembly is blocked unless the brush-input and canvas-navigation tests pass with the existing square-canvas, Classic Plus, vector, dynamics, JVM, and boot checks.
 
 ## [0.2.0] - 2026-07-10
