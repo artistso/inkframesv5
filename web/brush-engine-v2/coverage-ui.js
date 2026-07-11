@@ -1,69 +1,109 @@
-// InkFrame Brush Engine V2 — tablet coverage-mode selector
+// InkFrame Brush Engine V2 — tablet coverage and width-continuity selectors
 'use strict';
 
 (function(root){
-  const SELECT_ID = 'inkframe-v2-coverage-mode';
+  const COVERAGE_ID = 'inkframe-v2-coverage-mode';
+  const RADIUS_ID = 'inkframe-v2-radius-mode';
 
-  function normalizeMode(value) {
+  function normalizeCoverage(value) {
     return value === 'dabs' ? 'dabs' : 'ribbon';
+  }
+
+  function normalizeRadius(value) {
+    return value === 'raw' ? 'raw' : 'guarded';
   }
 
   function adapter() {
     return root.InkFrameBrushV2Adapter || null;
   }
 
-  function sync(select) {
+  function sync(selects) {
     const api = adapter();
-    if (!select || !api || typeof api.currentTuning !== 'function') return false;
+    if (!selects || !api || typeof api.currentTuning !== 'function') return false;
     const tuning = api.currentTuning() || {};
-    select.value = normalizeMode(tuning.coverageMode);
-    select.disabled = typeof api.isActive === 'function' && api.isActive();
+    if (selects.coverage) selects.coverage.value = normalizeCoverage(tuning.coverageMode);
+    if (selects.radius) selects.radius.value = normalizeRadius(tuning.radiusMode);
+    const disabled = typeof api.isActive === 'function' && api.isActive();
+    if (selects.coverage) selects.coverage.disabled = disabled;
+    if (selects.radius) selects.radius.disabled = disabled;
     return true;
   }
 
-  function install() {
-    if (!root.document) return false;
-    if (root.document.getElementById(SELECT_ID)) return true;
-    const api = adapter();
-    const tuningPanel = root.document.getElementById('inkframe-v2-tuning');
-    if (!api || !tuningPanel) return false;
-
+  function addSelect(panel, id, label, options, noteText, onChange) {
     const row = root.document.createElement('label');
     row.className = 'inkframe-v2-tune-row';
-    row.id = 'inkframe-v2-coverage-row';
+    row.id = id + '-row';
 
     const name = root.document.createElement('span');
-    name.textContent = 'Coverage';
+    name.textContent = label;
 
     const select = root.document.createElement('select');
-    select.id = SELECT_ID;
-    for (const [value, label] of [['ribbon', 'Ribbon'], ['dabs', 'Dabs']]) {
+    select.id = id;
+    for (const [value, text] of options) {
       const option = root.document.createElement('option');
       option.value = value;
-      option.textContent = label;
+      option.textContent = text;
       select.appendChild(option);
     }
 
     const note = root.document.createElement('output');
-    note.textContent = 'edge';
-    select.addEventListener('change', () => {
-      if (typeof api.setTuning === 'function') api.setTuning({ coverageMode: normalizeMode(select.value) });
-      sync(select);
-    });
-
+    note.textContent = noteText;
+    select.addEventListener('change', onChange);
     row.append(name, select, note);
-    tuningPanel.appendChild(row);
+    panel.appendChild(row);
+    return select;
+  }
+
+  function install() {
+    if (!root.document) return false;
+    if (root.document.getElementById(COVERAGE_ID) && root.document.getElementById(RADIUS_ID)) return true;
+    const api = adapter();
+    const tuningPanel = root.document.getElementById('inkframe-v2-tuning');
+    if (!api || !tuningPanel) return false;
+
+    const selects = {
+      coverage: root.document.getElementById(COVERAGE_ID),
+      radius: root.document.getElementById(RADIUS_ID),
+    };
+
+    if (!selects.coverage) {
+      selects.coverage = addSelect(
+        tuningPanel,
+        COVERAGE_ID,
+        'Coverage',
+        [['ribbon', 'Ribbon'], ['dabs', 'Dabs']],
+        'edge',
+        () => {
+          if (typeof api.setTuning === 'function') api.setTuning({ coverageMode: normalizeCoverage(selects.coverage.value) });
+          sync(selects);
+        }
+      );
+    }
+
+    if (!selects.radius) {
+      selects.radius = addSelect(
+        tuningPanel,
+        RADIUS_ID,
+        'Width guard',
+        [['guarded', 'Guarded'], ['raw', 'Raw']],
+        'radius',
+        () => {
+          if (typeof api.setTuning === 'function') api.setTuning({ radiusMode: normalizeRadius(selects.radius.value) });
+          sync(selects);
+        }
+      );
+    }
 
     const tuneButton = root.document.querySelector('#inkframe-v2-ab button:nth-child(2)');
-    if (tuneButton) tuneButton.addEventListener('click', () => root.setTimeout(() => sync(select), 0));
-    const preset = tuningPanel.querySelector('select:not(#' + SELECT_ID + ')');
-    if (preset) preset.addEventListener('change', () => root.setTimeout(() => sync(select), 0));
+    if (tuneButton) tuneButton.addEventListener('click', () => root.setTimeout(() => sync(selects), 0));
+    const preset = tuningPanel.querySelector('select:not(#' + COVERAGE_ID + '):not(#' + RADIUS_ID + ')');
+    if (preset) preset.addEventListener('change', () => root.setTimeout(() => sync(selects), 0));
 
-    sync(select);
+    sync(selects);
     return true;
   }
 
-  const api = { SELECT_ID, normalizeMode, sync, install };
+  const api = { COVERAGE_ID, RADIUS_ID, normalizeCoverage, normalizeRadius, sync, install };
   root.InkFrameBrushV2CoverageUI = api;
   if (root.document) {
     const start = () => {
