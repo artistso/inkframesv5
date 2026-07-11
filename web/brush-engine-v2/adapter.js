@@ -173,7 +173,7 @@
       if (typeof stroke.env.finishUi === 'function') stroke.env.finishUi();
       if (typeof stroke.env.commit === 'function') stroke.env.commit(stroke.snapshot);
       const stats = trace.metadata.engineStats;
-      setStatus('V2 · ' + stroke.brushId + ' · ' + stats.acceptedSamples + ' accepted · ' + stats.validator.rejected + ' rejected · ' + stats.dabs + ' dabs');
+      setStatus('V2 · ' + stroke.brushId + ' · ' + stats.acceptedSamples + ' accepted · ' + stats.validator.dropped + ' dropped · ' + stats.dabs + ' dabs');
       updatePanel();
       return true;
     } catch (error) {
