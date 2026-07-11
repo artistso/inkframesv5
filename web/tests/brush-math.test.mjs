@@ -11,11 +11,26 @@ const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(resolve(here, '..', 'brush-math.js'), 'utf8');
 const sandbox = { module: { exports: {} }, exports: {}, Math, Float32Array };
 vm.runInNewContext(source, sandbox, { filename: 'brush-math.js' });
-const { catmullRom, buildGrain, sampleGrain, easeAngle } = sandbox.module.exports;
+const {
+  catmullRom,
+  buildGrain,
+  sampleGrain,
+  easeAngle,
+  isIsolatedPointerSpike,
+  filterPointerSamples,
+  isHardPointerJump,
+} = sandbox.module.exports;
 
 const near = (actual, expected, epsilon = 1e-9) => {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} ≉ ${expected}`);
 };
+const ev = (x, y, t = 0) => ({ clientX: x, clientY: y, timeStamp: t, pointerType: 'pen' });
+const state = (x = 0, y = 0, t = 0, recentStep = 4) => ({
+  last: { x, y, t, event: ev(x, y, t) },
+  pending: null,
+  recentStep,
+  dropped: 0,
+});
 
 assert.equal(typeof catmullRom, 'function');
 
@@ -55,6 +70,67 @@ assert.equal(typeof catmullRom, 'function');
     const p = catmullRom(i / 20, ...points);
     assert.ok(p.every(Number.isFinite), `duplicate-point spline failed at ${i}`);
   }
+}
+
+// Tablet regression: one coordinate teleports hundreds of pixels and the next
+// coordinate returns to the real path. This is an input spike, not a sharp turn.
+{
+  const a = { x: 100, y: 100 };
+  const b = { x: 780, y: 620 };
+  const c = { x: 108, y: 104 };
+  assert.equal(isIsolatedPointerSpike(a, b, c, 5), true);
+}
+
+// Same-batch outlier removal: keep the real points, drop only the excursion.
+{
+  const s = state(100, 100, 0, 5);
+  const good1 = ev(106, 103, 4);
+  const spike = ev(780, 620, 8);
+  const good2 = ev(112, 106, 12);
+  const out = filterPointerSamples(s, [good1, spike, good2]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0], good1);
+  assert.equal(out[1], good2);
+  assert.equal(s.dropped, 1);
+  assert.equal(s.pending, null);
+}
+
+// Cross-batch quarantine: do not paint an unconfirmed final jump. Drop it when
+// the next dispatched move returns to the original path.
+{
+  const s = state(100, 100, 0, 5);
+  const spike = ev(760, 610, 8);
+  const first = filterPointerSamples(s, [spike]);
+  assert.equal(first.length, 0);
+  assert.ok(s.pending, 'large terminal sample should be quarantined');
+  const good = ev(109, 105, 12);
+  const second = filterPointerSamples(s, [good]);
+  assert.equal(second.length, 1);
+  assert.equal(second[0], good);
+  assert.equal(s.pending, null);
+  assert.equal(s.dropped, 1);
+}
+
+// A real fast stroke that continues in the same direction must survive. The
+// first long sample is released when the next one confirms continued travel.
+{
+  const s = state(0, 0, 0, 4);
+  const fast1 = ev(160, 0, 16);
+  assert.equal(filterPointerSamples(s, [fast1]).length, 0);
+  const fast2 = ev(320, 0, 32);
+  const out = filterPointerSamples(s, [fast2]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0], fast1);
+  assert.equal(out[1], fast2);
+  assert.equal(s.pending, null);
+  assert.equal(s.dropped, 0);
+}
+
+// The dispatched-event safety net rejects only an impossible teleport.
+{
+  const s = { outerLast: { x: 20, y: 20, t: 0 }, outerStep: 5 };
+  assert.equal(isHardPointerJump(s, ev(500, 500, 10)), true);
+  assert.equal(isHardPointerJump(s, ev(60, 50, 10)), false);
 }
 
 // Existing helpers remain intact.
