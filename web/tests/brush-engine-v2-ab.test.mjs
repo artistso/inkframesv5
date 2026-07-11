@@ -6,12 +6,13 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import vm from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..');
 const sourceIndex = resolve(root, 'web/index.html');
 const injector = resolve(root, 'tools/inject-brush-v2-index.mjs');
+const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
 const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
 
@@ -43,8 +44,17 @@ try {
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
 
-  const require = createRequire(import.meta.url);
-  const adapter = require(resolve(root, 'web/brush-engine-v2/adapter.js'));
+  const sandbox = {
+    module: { exports: {} },
+    exports: {},
+    console,
+    setTimeout,
+    clearTimeout,
+    Blob,
+    URL,
+  };
+  vm.runInNewContext(readFileSync(adapterFile, 'utf8'), sandbox, { filename: 'adapter.js' });
+  const adapter = sandbox.module.exports;
   assert.equal(adapter.currentMode(), 'original');
   assert.equal(adapter.isSupportedBrush('ink'), true);
   assert.equal(adapter.isSupportedBrush('eraser'), true);
