@@ -1,4 +1,4 @@
-# InkFrame Studio 0.2.1-rc.1 Release Notes
+# InkFrame Studio 0.2.1-rc.2 Release Notes
 
 _Date: 2026-07-10_
 
@@ -21,18 +21,22 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 - Added an active coalesced-sample quality layer in front of the existing painter without replacing its rendering, undo, taper, or stabilization logic.
 - Removes duplicate micro-samples and caps pathological pointer batches while always preserving the newest physical endpoint.
 - Adds velocity-aware pressure cleanup that follows fast pressure changes while damping slow hand jitter.
+- Deliberate low-speed pressure changes now receive an adaptive response boost before the painter's own smoothing, while tiny stationary pressure fluctuations remain damped.
 - Explicitly preserves native S Pen pressure, tilt, altitude, azimuth, barrel-button state, twist, and contact geometry, including inherited `PointerEvent` fields.
 
 ## Canvas panning and zooming
 - Added a stylus-safe viewport wrapper around the square canvas. Canvas document pixels and the existing painter remain unchanged.
-- Two-finger gestures now combine the existing pinch scaling with midpoint-anchored panning, keeping the artwork under the fingers instead of drifting away.
+- Two-finger gestures now combine pinch scaling with midpoint-anchored panning, keeping the artwork under the fingers instead of drifting away.
+- Fixed the one-pointer Hand-mode dead zone so a zero-distance gesture is no longer misread as a pinch.
+- Once an intentional two-finger navigation gesture activates, those touch pointers stay suppressed until lift and cannot resume an accidental paint stroke.
+- Canvas dimension changes from project switching automatically fit the new canvas into the workspace.
 - Added **Hand** mode for deliberate one-finger or pen panning without drawing, plus two-pointer pan/zoom while Hand mode is active.
 - Added cursor-anchored mouse-wheel/trackpad zoom, **Fit**, a live zoom percentage, tap-to-reset navigation, Space-drag, and middle-mouse panning.
 - View movement is clamped so the canvas cannot be completely lost offscreen.
 
 ## Interaction regression protection
-- Added deterministic smoke tests for coalesced pressure filtering, native stylus-field preservation, viewport wrapping, anchor correction, Hand mode, Fit, zoom display, and reset behavior.
-- APK assembly is blocked unless the new brush-input and canvas-navigation tests pass with the existing square-canvas, Classic Plus, vector, dynamics, JVM, and boot checks.
+- Added deterministic smoke tests for coalesced pressure filtering, deliberate slow-pressure response, native stylus-field preservation, viewport wrapping, anchor correction, Hand-mode dead zones, two-finger touch suppression, real pinch zoom, project auto-fit, Fit, zoom display, and reset behavior.
+- APK assembly is blocked unless the brush-input and canvas-navigation tests pass with the existing square-canvas, Classic Plus, vector, dynamics, JVM, and boot checks.
 
 ## Minimum smoke test
 
