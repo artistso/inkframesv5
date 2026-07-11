@@ -15,6 +15,7 @@
       minimumJump: 84,
       speedLimitPxPerMs: 10,
       coverageMode: 'ribbon',
+      radiusMode: 'guarded',
     }),
     balanced: Object.freeze({
       name: 'Balanced',
@@ -24,6 +25,7 @@
       minimumJump: 72,
       speedLimitPxPerMs: 8,
       coverageMode: 'ribbon',
+      radiusMode: 'guarded',
     }),
     smooth: Object.freeze({
       name: 'Smooth',
@@ -33,11 +35,16 @@
       minimumJump: 64,
       speedLimitPxPerMs: 7,
       coverageMode: 'ribbon',
+      radiusMode: 'guarded',
     }),
   });
 
   function normalizeCoverageMode(value) {
     return value === 'dabs' ? 'dabs' : 'ribbon';
+  }
+
+  function normalizeRadiusMode(value) {
+    return value === 'raw' ? 'raw' : 'guarded';
   }
 
   function normalizeTuning(value) {
@@ -51,6 +58,7 @@
       minimumJump: clamp(input.minimumJump ?? base.minimumJump, 24, 220),
       speedLimitPxPerMs: clamp(input.speedLimitPxPerMs ?? base.speedLimitPxPerMs, 1, 20),
       coverageMode: normalizeCoverageMode(input.coverageMode ?? base.coverageMode),
+      radiusMode: normalizeRadiusMode(input.radiusMode ?? base.radiusMode),
     });
   }
 
@@ -83,6 +91,7 @@
     return Object.assign({}, profile || {}, {
       spacing: Math.max(0.01, Number(profile && profile.spacing || 0.1) * tuning.spacingScale),
       coverage: tuning.coverageMode,
+      radiusMode: tuning.radiusMode,
     });
   }
 
@@ -147,6 +156,7 @@
     STORAGE_KEY,
     PRESETS,
     normalizeCoverageMode,
+    normalizeRadiusMode,
     normalizeTuning,
     presetValue,
     tuningFilterOptions,
