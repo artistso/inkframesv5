@@ -41,6 +41,7 @@ try {
     'brush-engine-v2/engine.js',
     'brush-engine-v2/tuning.js',
     'brush-engine-v2/adapter.js',
+    'brush-engine-v2/coverage-ui.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
@@ -64,6 +65,7 @@ try {
   const adapter = sandbox.module.exports;
   assert.equal(adapter.currentMode(), 'original');
   assert.equal(adapter.currentTuning().preset, 'balanced');
+  assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.isSupportedBrush('ink'), true);
   assert.equal(adapter.isSupportedBrush('eraser'), true);
   assert.equal(adapter.isSupportedBrush('pencil'), false);
@@ -71,8 +73,11 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
+  assert.equal(adapter.setTuning({ coverageMode: 'dabs' }), true);
+  assert.equal(adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(adapter.setTuningPreset('smooth'), true);
   assert.equal(adapter.currentTuning().preset, 'smooth');
+  assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.setMode('original'), true);
 
   const profile = adapter.makeProfile({
@@ -83,8 +88,9 @@ try {
   assert.equal(profile.composite, 'source-over');
   assert.equal(adapter.makeProfile({ brushId: 'eraser', profile: {} }).composite, 'destination-out');
   assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
+  assert.equal(tuning.presetValue('direct').coverageMode, 'ribbon');
 
-  console.log('✅ brush-engine-v2 A/B tuning integration tests passed');
+  console.log('✅ brush-engine-v2 A/B ribbon integration tests passed');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
