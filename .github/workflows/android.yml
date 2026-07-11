@@ -47,6 +47,7 @@ jobs:
           node --check web/brush-engine-v2/adapter.js
           node --check web/brush-engine-v2/session.js
           node --check web/brush-engine-v2/input.js
+          node --check web/brush-engine-v2/native.js
           node --check web/brush-engine-v2/coverage-ui.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
@@ -64,6 +65,8 @@ jobs:
         run: node web/tests/brush-engine-v2-discontinuity.test.mjs
       - name: Brush V2 coalesced input normalization
         run: node web/tests/brush-engine-v2-batch.test.mjs
+      - name: Brush V2 native input diagnostics
+        run: node web/tests/brush-engine-v2-native.test.mjs
       - name: Brush V2 generated-index structure
         run: node web/tests/brush-engine-v2-ab.test.mjs
       - name: Brush V2 tuning and replay
