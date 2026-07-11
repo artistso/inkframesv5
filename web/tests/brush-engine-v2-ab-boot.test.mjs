@@ -42,7 +42,7 @@ try {
       w.HTMLCanvasElement.prototype.getContext = function(type) {
         if (type !== '2d') return null;
         const canvas = this;
-        const state = { fillStyle:'#000', globalAlpha:1, globalCompositeOperation:'source-over' };
+        const state = { fillStyle:'#000', strokeStyle:'#000', globalAlpha:1, globalCompositeOperation:'source-over', lineWidth:1, lineCap:'butt', lineJoin:'miter' };
         return new Proxy(state, {
           get(target, prop) {
             if (prop === 'canvas') return canvas;
@@ -76,8 +76,10 @@ try {
   const d = dom.window.document;
   const panel = d.getElementById('inkframe-v2-ab');
   const tuningPanel = d.getElementById('inkframe-v2-tuning');
+  const coverage = d.getElementById('inkframe-v2-coverage-mode');
   assert.ok(panel, 'V2 A/B panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
+  assert.ok(coverage, 'V2 coverage selector did not install');
   const buttons = panel.querySelectorAll('button');
   assert.equal(buttons.length, 5);
   assert.match(buttons[0].textContent, /Original/);
@@ -87,6 +89,8 @@ try {
   assert.equal(buttons[4].textContent, 'Export trace');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
+  assert.equal(coverage.value, 'ribbon');
   assert.equal(tuningPanel.hidden, true);
   buttons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
@@ -94,10 +98,13 @@ try {
   buttons[1].click();
   assert.equal(tuningPanel.hidden, false);
   assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 4);
+  coverage.value = 'dabs';
+  coverage.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(typeof dom.window.InkFrameBrushV2.createBrushEngine, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Environment, 'function');
 
-  console.log('✅ generated Brush V2 tuning/replay APK index booted');
+  console.log('✅ generated Brush V2 ribbon APK index booted');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
