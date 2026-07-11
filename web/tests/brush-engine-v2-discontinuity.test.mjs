@@ -96,14 +96,16 @@ const sample = (x, y, time, pressure = 0.5) => V2.normalizeSample({ x, y, time, 
   assert.equal(engine.stats().validator.breaks, 1);
 }
 
-// An unconfirmed terminal relocation remains quarantined and cannot paint.
+// An unconfirmed terminal relocation remains quarantined and cannot paint. No
+// terminal sample is supplied here; supplying the same relocated coordinate again
+// would correctly confirm a new region in Raw contact mode.
 {
   const engine = V2.createBrushEngine({ width:1000, height:800 });
   const commands = [
     ...engine.begin(sample(80, 80, 0)),
     ...engine.move(sample(92, 84, 8)),
     ...engine.move(sample(700, 620, 16)),
-    ...engine.end(sample(700, 620, 24, 0)),
+    ...engine.end(),
   ];
   assert.ok(Math.max(...commands.map(command => command.x)) < 130);
   assert.equal(engine.stats().discontinuities, 0);
