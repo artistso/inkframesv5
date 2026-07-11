@@ -13,8 +13,10 @@ const root = resolve(here, '..', '..');
 const sourceIndex = resolve(root, 'web/index.html');
 const injector = resolve(root, 'tools/inject-brush-v2-index.mjs');
 const tuningFile = resolve(root, 'web/brush-engine-v2/tuning.js');
+const batchFile = resolve(root, 'web/brush-engine-v2/batch.js');
 const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
 const sessionFile = resolve(root, 'web/brush-engine-v2/session.js');
+const inputFile = resolve(root, 'web/brush-engine-v2/input.js');
 const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
 
@@ -28,11 +30,17 @@ try {
   assert.equal((html.match(/InkFrameBrushV2Adapter\.begin/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Adapter\.move/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Adapter\.end/g) || []).length, 1);
+  assert.equal((html.match(/InkFrameBrushV2InputBridge\.begin/g) || []).length, 1);
+  assert.equal((html.match(/InkFrameBrushV2InputBridge\.move/g) || []).length, 1);
+  assert.equal((html.match(/InkFrameBrushV2InputBridge\.end/g) || []).length, 1);
   assert.equal((html.match(/function makeBrushV2Env\(/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Environment/g) || []).length, 1);
+  assert.ok(html.includes('coordinateTransform:inputTransform'));
+  assert.ok(html.includes('const inputRect=canvas.getBoundingClientRect()'));
 
   const expectedScripts = [
     'brush-engine-v2/sample.js',
+    'brush-engine-v2/batch.js',
     'brush-engine-v2/validator.js',
     'brush-engine-v2/contact.js',
     'brush-engine-v2/filters.js',
@@ -45,13 +53,16 @@ try {
     'brush-engine-v2/tuning.js',
     'brush-engine-v2/adapter.js',
     'brush-engine-v2/session.js',
+    'brush-engine-v2/input.js',
     'brush-engine-v2/coverage-ui.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
+  assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'), 'batch normalizer must load before adapter');
   assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'), 'session guard must load after adapter');
+  assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/input.js'), 'input bridge must call the session-wrapped adapter');
 
   const sandbox = {
     module: { exports: {} },
@@ -66,11 +77,18 @@ try {
   const tuning = sandbox.module.exports;
   sandbox.module = { exports: {} };
   sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(readFileSync(batchFile, 'utf8'), sandbox, { filename: 'batch.js' });
+  assert.equal(typeof sandbox.InkFrameBrushV2.createInputBatchNormalizer, 'function');
+  sandbox.module = { exports: {} };
+  sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(adapterFile, 'utf8'), sandbox, { filename: 'adapter.js' });
   const adapter = sandbox.module.exports;
   sandbox.module = { exports: {} };
   sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(sessionFile, 'utf8'), sandbox, { filename: 'session.js' });
+  sandbox.module = { exports: {} };
+  sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(readFileSync(inputFile, 'utf8'), sandbox, { filename: 'input.js' });
 
   assert.equal(adapter.currentMode(), 'original');
   assert.equal(adapter.currentTuning().preset, 'balanced');
@@ -97,6 +115,9 @@ try {
   assert.equal(adapter.__sessionContinuityInstalled, true);
   assert.equal(typeof adapter.finishStaleSession, 'function');
   assert.equal(typeof adapter.sessionStats, 'function');
+  assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.begin, 'function');
+  assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.move, 'function');
+  assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.end, 'function');
 
   const profile = adapter.makeProfile({
     brushId: 'ink',
@@ -110,7 +131,7 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ brush-engine-v2 A/B session integration tests passed');
+  console.log('✅ brush-engine-v2 A/B sanitized-input integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
