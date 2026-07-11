@@ -13,6 +13,7 @@
       validator: null,
       filter: null,
       arc: null,
+      radius: null,
       onDab: null,
     }, options || {});
 
@@ -22,6 +23,7 @@
     let filter = ns.createStrokeFilter(config.filter || {});
     let path = ns.createQuadraticPathBuilder();
     let sampler = ns.createArcSampler(Object.assign({ spacingPx: Math.max(0.35, profile.size * profile.spacing) }, config.arc || {}));
+    let radiusGuard = createRadiusGuard(profile);
     let active = false;
     let lastFiltered = null;
     let lastDabSample = null;
@@ -29,11 +31,22 @@
     let strokeDabIndex = 0;
     const totals = { strokes: 0, rawSamples: 0, acceptedSamples: 0, dabs: 0 };
 
+    function createRadiusGuard(nextProfile) {
+      if (!ns.createRadiusContinuityGuard) {
+        return { apply: dab => dab, reset: () => {}, stats: () => ({ enabled:false, processed:0, clamped:0 }) };
+      }
+      return ns.createRadiusContinuityGuard(Object.assign({
+        enabled: nextProfile.radiusMode === 'guarded',
+        size: nextProfile.size,
+      }, config.radius || {}));
+    }
+
     function setBrush(nextBrushId, overrides) {
       if (active) throw new Error('cannot change brush during an active stroke');
       brushId = nextBrushId || 'ink';
       profile = ns.resolveProfile(brushId, overrides);
       sampler.setSpacing(Math.max(0.35, profile.size * profile.spacing));
+      radiusGuard = createRadiusGuard(profile);
       return profile;
     }
 
@@ -42,11 +55,12 @@
         if (lastDabSample
           && Math.hypot(sample.x - lastDabSample.x, sample.y - lastDabSample.y) < 1e-6
           && Math.abs(sample.time - lastDabSample.time) < 1e-6) continue;
-        const dab = ns.dabFromSample(sample, brushId, profile, {
+        const rawDab = ns.dabFromSample(sample, brushId, profile, {
           strokeId: strokeSerial,
           strokeIndex: strokeDabIndex,
           strokeStart: strokeDabIndex === 0,
         });
+        const dab = radiusGuard.apply(rawDab);
         output.push(dab);
         lastDabSample = sample;
         strokeDabIndex++;
@@ -82,6 +96,7 @@
       lastDabSample = null;
       path.reset();
       sampler.reset();
+      radiusGuard.reset();
       sampler.setSpacing(Math.max(0.35, profile.size * profile.spacing));
       const sample = ns.normalizeSample(raw, 0);
       const output = [];
@@ -119,10 +134,16 @@
       strokeDabIndex = 0;
       path.reset();
       sampler.reset();
+      radiusGuard.reset();
     }
 
     function stats() {
-      return Object.assign({}, totals, { active, brushId, validator: validator.snapshot() });
+      return Object.assign({}, totals, {
+        active,
+        brushId,
+        validator: validator.snapshot(),
+        radius: radiusGuard.stats(),
+      });
     }
 
     return {
