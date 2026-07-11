@@ -32,6 +32,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/tuning.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
+<script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="flood-fill.js"></script>`;
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
 
@@ -119,6 +120,7 @@ for (const marker of [
   'InkFrameBrushV2Adapter.begin',
   'InkFrameBrushV2Adapter.move',
   'InkFrameBrushV2Adapter.end',
+  'brush-engine-v2/coverage-ui.js',
 ]) {
   if (!html.includes(marker)) throw new Error(`Generated index failed verification: ${marker}`);
 }
