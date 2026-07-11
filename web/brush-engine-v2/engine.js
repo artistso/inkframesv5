@@ -25,6 +25,8 @@
     let active = false;
     let lastFiltered = null;
     let lastDabSample = null;
+    let strokeSerial = 0;
+    let strokeDabIndex = 0;
     const totals = { strokes: 0, rawSamples: 0, acceptedSamples: 0, dabs: 0 };
 
     function setBrush(nextBrushId, overrides) {
@@ -40,9 +42,14 @@
         if (lastDabSample
           && Math.hypot(sample.x - lastDabSample.x, sample.y - lastDabSample.y) < 1e-6
           && Math.abs(sample.time - lastDabSample.time) < 1e-6) continue;
-        const dab = ns.dabFromSample(sample, brushId, profile);
+        const dab = ns.dabFromSample(sample, brushId, profile, {
+          strokeId: strokeSerial,
+          strokeIndex: strokeDabIndex,
+          strokeStart: strokeDabIndex === 0,
+        });
         output.push(dab);
         lastDabSample = sample;
+        strokeDabIndex++;
         totals.dabs++;
         if (typeof config.onDab === 'function') config.onDab(dab);
       }
@@ -69,6 +76,8 @@
       active = true;
       totals.strokes++;
       totals.rawSamples++;
+      strokeSerial++;
+      strokeDabIndex = 0;
       lastFiltered = null;
       lastDabSample = null;
       path.reset();
@@ -107,6 +116,7 @@
       active = false;
       lastFiltered = null;
       lastDabSample = null;
+      strokeDabIndex = 0;
       path.reset();
       sampler.reset();
     }
