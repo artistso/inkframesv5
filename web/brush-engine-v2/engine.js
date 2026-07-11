@@ -14,6 +14,7 @@
       filter: null,
       arc: null,
       radius: null,
+      contact: null,
       onDab: null,
     }, options || {});
 
@@ -24,7 +25,9 @@
     let path = ns.createQuadraticPathBuilder();
     let sampler = ns.createArcSampler(Object.assign({ spacingPx: Math.max(0.35, profile.size * profile.spacing) }, config.arc || {}));
     let radiusGuard = createRadiusGuard(profile);
+    let contactGuard = createContactGuard(profile);
     let active = false;
+    let validatorStarted = false;
     let lastFiltered = null;
     let lastDabSample = null;
     let strokeSerial = 0;
@@ -41,12 +44,28 @@
       }, config.radius || {}));
     }
 
+    function createContactGuard(nextProfile) {
+      if (!ns.createContactBoundaryGuard) {
+        return {
+          begin: sample => [sample],
+          move: sample => [sample],
+          end: sample => sample ? [sample] : [],
+          reset: () => {},
+          snapshot: () => ({ mode:'raw', unavailable:true }),
+        };
+      }
+      return ns.createContactBoundaryGuard(Object.assign({
+        mode: nextProfile.contactMode === 'strict' ? 'strict' : 'raw',
+      }, config.contact || {}));
+    }
+
     function setBrush(nextBrushId, overrides) {
       if (active) throw new Error('cannot change brush during an active stroke');
       brushId = nextBrushId || 'ink';
       profile = ns.resolveProfile(brushId, overrides);
       sampler.setSpacing(Math.max(0.35, profile.size * profile.spacing));
       radiusGuard = createRadiusGuard(profile);
+      contactGuard = createContactGuard(profile);
       return profile;
     }
 
@@ -69,10 +88,10 @@
       }
     }
 
-    function processAccepted(samples, output, isBegin) {
+    function processAccepted(samples, output) {
       for (const sample of samples) {
         totals.acceptedSamples++;
-        const filtered = isBegin && !lastFiltered ? filter.begin(sample) : filter.update(sample);
+        const filtered = !lastFiltered ? filter.begin(sample) : filter.update(sample);
         if (!lastFiltered) {
           path.begin(filtered);
           emitSamples(sampler.begin(filtered), output);
@@ -81,7 +100,14 @@
           for (const segment of segments) emitSamples(sampler.sampleSegment(segment), output);
         }
         lastFiltered = filtered;
-        isBegin = false;
+      }
+    }
+
+    function feedBoundarySamples(samples, output) {
+      for (const sample of samples || []) {
+        const accepted = validatorStarted ? validator.push(sample) : validator.begin(sample);
+        validatorStarted = true;
+        processAccepted(accepted, output);
       }
     }
 
@@ -92,16 +118,17 @@
       totals.rawSamples++;
       strokeSerial++;
       strokeDabIndex = 0;
+      validatorStarted = false;
       lastFiltered = null;
       lastDabSample = null;
       path.reset();
       sampler.reset();
       radiusGuard.reset();
+      contactGuard.reset();
       sampler.setSpacing(Math.max(0.35, profile.size * profile.spacing));
       const sample = ns.normalizeSample(raw, 0);
       const output = [];
-      processAccepted(validator.begin(sample), output, true);
-      if (!lastFiltered) active = false;
+      feedBoundarySamples(contactGuard.begin(sample), output);
       return output;
     }
 
@@ -109,32 +136,39 @@
       if (!active) throw new Error('stroke is not active');
       totals.rawSamples++;
       const output = [];
-      processAccepted(validator.push(ns.normalizeSample(raw, lastFiltered ? lastFiltered.time : 0)), output, false);
+      const sample = ns.normalizeSample(raw, lastFiltered ? lastFiltered.time : 0);
+      feedBoundarySamples(contactGuard.move(sample), output);
       return output;
     }
 
     function end(raw) {
       if (!active) return [];
       const output = [];
+      let sample = null;
       if (raw) {
         totals.rawSamples++;
-        processAccepted(validator.push(ns.normalizeSample(raw, lastFiltered ? lastFiltered.time : 0)), output, false);
+        sample = ns.normalizeSample(raw, lastFiltered ? lastFiltered.time : 0);
       }
-      processAccepted(validator.finish({ acceptHeld: false }), output, false);
-      for (const segment of path.finish()) emitSamples(sampler.sampleSegment(segment), output);
-      if (lastFiltered) emitSamples(sampler.finish(lastFiltered), output);
+      feedBoundarySamples(contactGuard.end(sample), output);
+      if (validatorStarted) processAccepted(validator.finish({ acceptHeld: false }), output);
+      if (lastFiltered) {
+        for (const segment of path.finish()) emitSamples(sampler.sampleSegment(segment), output);
+        emitSamples(sampler.finish(lastFiltered), output);
+      }
       active = false;
       return output;
     }
 
     function reset() {
       active = false;
+      validatorStarted = false;
       lastFiltered = null;
       lastDabSample = null;
       strokeDabIndex = 0;
       path.reset();
       sampler.reset();
       radiusGuard.reset();
+      contactGuard.reset();
     }
 
     function stats() {
@@ -143,6 +177,7 @@
         brushId,
         validator: validator.snapshot(),
         radius: radiusGuard.stats(),
+        contact: contactGuard.snapshot(),
       });
     }
 
