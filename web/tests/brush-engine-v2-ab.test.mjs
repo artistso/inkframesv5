@@ -12,6 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..', '..');
 const sourceIndex = resolve(root, 'web/index.html');
 const injector = resolve(root, 'tools/inject-brush-v2-index.mjs');
+const tuningFile = resolve(root, 'web/brush-engine-v2/tuning.js');
 const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
 const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
@@ -27,6 +28,7 @@ try {
   assert.equal((html.match(/InkFrameBrushV2Adapter\.move/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Adapter\.end/g) || []).length, 1);
   assert.equal((html.match(/function makeBrushV2Env\(/g) || []).length, 1);
+  assert.equal((html.match(/InkFrameBrushV2Environment/g) || []).length, 2);
 
   const expectedScripts = [
     'brush-engine-v2/sample.js',
@@ -37,6 +39,7 @@ try {
     'brush-engine-v2/rasterizer.js',
     'brush-engine-v2/trace.js',
     'brush-engine-v2/engine.js',
+    'brush-engine-v2/tuning.js',
     'brush-engine-v2/adapter.js',
   ];
   for (const src of expectedScripts) {
@@ -53,9 +56,14 @@ try {
     Blob,
     URL,
   };
+  vm.runInNewContext(readFileSync(tuningFile, 'utf8'), sandbox, { filename: 'tuning.js' });
+  const tuning = sandbox.module.exports;
+  sandbox.module = { exports: {} };
+  sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(adapterFile, 'utf8'), sandbox, { filename: 'adapter.js' });
   const adapter = sandbox.module.exports;
   assert.equal(adapter.currentMode(), 'original');
+  assert.equal(adapter.currentTuning().preset, 'balanced');
   assert.equal(adapter.isSupportedBrush('ink'), true);
   assert.equal(adapter.isSupportedBrush('eraser'), true);
   assert.equal(adapter.isSupportedBrush('pencil'), false);
@@ -63,6 +71,8 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
+  assert.equal(adapter.setTuningPreset('smooth'), true);
+  assert.equal(adapter.currentTuning().preset, 'smooth');
   assert.equal(adapter.setMode('original'), true);
 
   const profile = adapter.makeProfile({
@@ -72,8 +82,9 @@ try {
   assert.equal(profile.size, 22);
   assert.equal(profile.composite, 'source-over');
   assert.equal(adapter.makeProfile({ brushId: 'eraser', profile: {} }).composite, 'destination-out');
+  assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
 
-  console.log('✅ brush-engine-v2 A/B integration tests passed');
+  console.log('✅ brush-engine-v2 A/B tuning integration tests passed');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
