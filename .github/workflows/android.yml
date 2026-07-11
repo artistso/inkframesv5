@@ -20,12 +20,8 @@ permissions:
 
 jobs:
   web-smoke:
-    # Boots web/index.html in jsdom with the sibling modules inlined and
-    # asserts no uncaught JS errors + the core DOM structure is in place.
-    # Catches the class of bug where a syntax-clean IIFE throws at runtime
-    # (e.g. const reassignment under "use strict") and bricks the whole UI
-    # into a blank pink screen -- which was invisible to `node --check`.
-    # Runs before the APK build so a broken web bundle never ships as an APK.
+    # Boots both the checked-in fallback and generated Android A/B index in jsdom.
+    # Catches syntax-clean runtime failures before the APK build starts.
     name: Web boot smoke (jsdom)
     runs-on: ubuntu-latest
     steps:
@@ -43,10 +39,14 @@ jobs:
           node --check tools/update-release-notes.mjs
           node --check tools/prepare-release.mjs
           node --check tools/bump-version.mjs
+          node --check tools/inject-brush-v2-index.mjs
+          node --check web/brush-engine-v2/adapter.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
           node web/tests/brush-engine-v2.test.mjs
+          node web/tests/brush-engine-v2-ab.test.mjs
           node web/tests/boot-smoke.mjs
+          node web/tests/brush-engine-v2-ab-boot.test.mjs
 
   test:
     name: Unit tests (JVM)
@@ -90,6 +90,11 @@ jobs:
     needs: [web-smoke, test]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
