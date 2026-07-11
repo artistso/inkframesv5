@@ -38,6 +38,7 @@ jobs:
           node --check tools/prepare-release.mjs
           node --check tools/bump-version.mjs
           node --check tools/inject-brush-v2-index.mjs
+          node --check web/brush-engine-v2/radius.js
           node --check web/brush-engine-v2/tuning.js
           node --check web/brush-engine-v2/adapter.js
           node --check web/brush-engine-v2/coverage-ui.js
@@ -47,6 +48,8 @@ jobs:
         run: node web/tests/brush-engine-v2.test.mjs
       - name: Brush V2 continuous ribbon coverage
         run: node web/tests/brush-engine-v2-coverage.test.mjs
+      - name: Brush V2 radius continuity
+        run: node web/tests/brush-engine-v2-radius.test.mjs
       - name: Brush V2 generated-index structure
         run: node web/tests/brush-engine-v2-ab.test.mjs
       - name: Brush V2 tuning and replay
