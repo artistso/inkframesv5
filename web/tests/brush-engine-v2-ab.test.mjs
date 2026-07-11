@@ -36,6 +36,7 @@ try {
     'brush-engine-v2/filters.js',
     'brush-engine-v2/path.js',
     'brush-engine-v2/arc-sampler.js',
+    'brush-engine-v2/radius.js',
     'brush-engine-v2/rasterizer.js',
     'brush-engine-v2/trace.js',
     'brush-engine-v2/engine.js',
@@ -66,6 +67,7 @@ try {
   assert.equal(adapter.currentMode(), 'original');
   assert.equal(adapter.currentTuning().preset, 'balanced');
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
+  assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.isSupportedBrush('ink'), true);
   assert.equal(adapter.isSupportedBrush('eraser'), true);
   assert.equal(adapter.isSupportedBrush('pencil'), false);
@@ -73,11 +75,13 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
-  assert.equal(adapter.setTuning({ coverageMode: 'dabs' }), true);
+  assert.equal(adapter.setTuning({ coverageMode: 'dabs', radiusMode:'raw' }), true);
   assert.equal(adapter.currentTuning().coverageMode, 'dabs');
+  assert.equal(adapter.currentTuning().radiusMode, 'raw');
   assert.equal(adapter.setTuningPreset('smooth'), true);
   assert.equal(adapter.currentTuning().preset, 'smooth');
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
+  assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.setMode('original'), true);
 
   const profile = adapter.makeProfile({
@@ -89,8 +93,9 @@ try {
   assert.equal(adapter.makeProfile({ brushId: 'eraser', profile: {} }).composite, 'destination-out');
   assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
   assert.equal(tuning.presetValue('direct').coverageMode, 'ribbon');
+  assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
 
-  console.log('✅ brush-engine-v2 A/B ribbon integration tests passed');
+  console.log('✅ brush-engine-v2 A/B radius integration tests passed');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
