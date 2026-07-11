@@ -32,6 +32,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/radius.js"></script>
 <script src="brush-engine-v2/rasterizer.js"></script>
 <script src="brush-engine-v2/trace.js"></script>
+<script src="brush-engine-v2/native.js"></script>
 <script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/tuning.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
@@ -159,6 +160,7 @@ for (const marker of [
   'brush-engine-v2/batch.js',
   'brush-engine-v2/contact.js',
   'brush-engine-v2/radius.js',
+  'brush-engine-v2/native.js',
   'brush-engine-v2/session.js',
   'brush-engine-v2/input.js',
   'brush-engine-v2/coverage-ui.js',
