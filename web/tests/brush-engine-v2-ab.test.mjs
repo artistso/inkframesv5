@@ -14,6 +14,7 @@ const sourceIndex = resolve(root, 'web/index.html');
 const injector = resolve(root, 'tools/inject-brush-v2-index.mjs');
 const tuningFile = resolve(root, 'web/brush-engine-v2/tuning.js');
 const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
+const sessionFile = resolve(root, 'web/brush-engine-v2/session.js');
 const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
 
@@ -43,12 +44,14 @@ try {
     'brush-engine-v2/engine.js',
     'brush-engine-v2/tuning.js',
     'brush-engine-v2/adapter.js',
+    'brush-engine-v2/session.js',
     'brush-engine-v2/coverage-ui.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
+  assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'), 'session guard must load after adapter');
 
   const sandbox = {
     module: { exports: {} },
@@ -65,6 +68,10 @@ try {
   sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(adapterFile, 'utf8'), sandbox, { filename: 'adapter.js' });
   const adapter = sandbox.module.exports;
+  sandbox.module = { exports: {} };
+  sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(readFileSync(sessionFile, 'utf8'), sandbox, { filename: 'session.js' });
+
   assert.equal(adapter.currentMode(), 'original');
   assert.equal(adapter.currentTuning().preset, 'balanced');
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
@@ -87,6 +94,9 @@ try {
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
   assert.equal(adapter.setMode('original'), true);
+  assert.equal(adapter.__sessionContinuityInstalled, true);
+  assert.equal(typeof adapter.finishStaleSession, 'function');
+  assert.equal(typeof adapter.sessionStats, 'function');
 
   const profile = adapter.makeProfile({
     brushId: 'ink',
@@ -100,7 +110,7 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ brush-engine-v2 A/B contact integration tests passed');
+  console.log('✅ brush-engine-v2 A/B session integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
