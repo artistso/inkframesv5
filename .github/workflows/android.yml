@@ -46,6 +46,7 @@ jobs:
           node web/tests/brush-engine-smoke.mjs
           node web/tests/brush-dynamics-smoke.mjs
           node web/tests/brush-input-quality-smoke.mjs
+          node web/tests/brush-signatures-smoke.mjs
           node web/tests/vector-engine-smoke.mjs
           node web/tests/canvas-navigation-smoke.mjs
           node web/tests/release-candidate-smoke.mjs
