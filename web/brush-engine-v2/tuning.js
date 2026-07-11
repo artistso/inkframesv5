@@ -14,6 +14,7 @@
       spacingScale: 0.90,
       minimumJump: 84,
       speedLimitPxPerMs: 10,
+      coverageMode: 'ribbon',
     }),
     balanced: Object.freeze({
       name: 'Balanced',
@@ -22,6 +23,7 @@
       spacingScale: 1,
       minimumJump: 72,
       speedLimitPxPerMs: 8,
+      coverageMode: 'ribbon',
     }),
     smooth: Object.freeze({
       name: 'Smooth',
@@ -30,8 +32,13 @@
       spacingScale: 0.82,
       minimumJump: 64,
       speedLimitPxPerMs: 7,
+      coverageMode: 'ribbon',
     }),
   });
+
+  function normalizeCoverageMode(value) {
+    return value === 'dabs' ? 'dabs' : 'ribbon';
+  }
 
   function normalizeTuning(value) {
     const input = value || {};
@@ -43,6 +50,7 @@
       spacingScale: clamp(input.spacingScale ?? base.spacingScale, 0.35, 1.75),
       minimumJump: clamp(input.minimumJump ?? base.minimumJump, 24, 220),
       speedLimitPxPerMs: clamp(input.speedLimitPxPerMs ?? base.speedLimitPxPerMs, 1, 20),
+      coverageMode: normalizeCoverageMode(input.coverageMode ?? base.coverageMode),
     });
   }
 
@@ -74,6 +82,7 @@
     const tuning = normalizeTuning(value);
     return Object.assign({}, profile || {}, {
       spacing: Math.max(0.01, Number(profile && profile.spacing || 0.1) * tuning.spacingScale),
+      coverage: tuning.coverageMode,
     });
   }
 
@@ -137,6 +146,7 @@
   const api = {
     STORAGE_KEY,
     PRESETS,
+    normalizeCoverageMode,
     normalizeTuning,
     presetValue,
     tuningFilterOptions,
