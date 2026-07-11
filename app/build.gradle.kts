@@ -133,16 +133,36 @@ val stageWebAssets by tasks.registering(Copy::class) {
     into(layout.buildDirectory.dir("generated/webAssets"))
 }
 
-// Belt-and-braces: hook the copy in front of any asset-touching task, regardless
-// of variant name, so `merge…Assets`, `package…Assets`, and `generate…Assets`
-// always see a populated folder.
+// The checked-in web/index.html is the known-good v0.1.1 browser fallback. For
+// this tablet A/B branch, generate an Android-only copy that loads Brush Engine
+// V2 and adds three explicit handoff hooks. The injector fails hard if any source
+// marker moves, preventing a partially patched APK from being assembled.
+val injectBrushV2Index by tasks.registering(Exec::class) {
+    dependsOn(stageWebAssets)
+    val injector = rootProject.file("tools/inject-brush-v2-index.mjs")
+    val sourceIndex = rootProject.file("web/index.html")
+    val targetIndex = layout.buildDirectory.file("generated/webAssets/index.html")
+    inputs.files(injector, sourceIndex)
+    outputs.file(targetIndex)
+    workingDir(rootProject.projectDir)
+    commandLine(
+        "node",
+        injector.absolutePath,
+        sourceIndex.absolutePath,
+        targetIndex.get().asFile.absolutePath,
+    )
+}
+
+// Belt-and-braces: hook the generated index in front of any asset-touching task,
+// regardless of variant name, so the APK can never package the uninstrumented
+// file on this A/B branch.
 tasks.matching {
     val n = it.name
     n.startsWith("merge") && n.endsWith("Assets") ||
     n.startsWith("package") && n.endsWith("Assets") ||
     n.startsWith("generate") && n.endsWith("Assets") ||
     n == "preBuild"
-}.configureEach { dependsOn(stageWebAssets) }
+}.configureEach { dependsOn(injectBrushV2Index) }
 
 dependencies {
     // Minimal AndroidX surface — just what the WebView shell needs.
