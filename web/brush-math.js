@@ -72,7 +72,10 @@ function sampleGrain(grain, x, y, size) {
  * @returns {number}     eased angle in radians
  */
 function easeAngle(cur, tgt, k) {
-  let dA = ((tgt - cur + Math.PI) % (2 * Math.PI)) - Math.PI;
+  const tau = 2 * Math.PI;
+  // JavaScript's % is a signed remainder, not a mathematical modulo. Normalize
+  // twice so crossing -PI/PI always chooses the short rotation direction.
+  const dA = ((((tgt - cur + Math.PI) % tau) + tau) % tau) - Math.PI;
   return cur + dA * k;
 }
 
@@ -88,16 +91,56 @@ function hexWithAlpha(hex, a) {
 }
 
 // ============================================================================
-// Catmull-Rom (centripetal, tension 0.5) point sampler.
+// Catmull-Rom (centripetal, alpha 0.5) point sampler.
 // Feeds the smooth stroke path -- pushSample() in index.html accumulates a
 // rolling 4-sample window and this function paints the segment between p1
 // and p2 as a curve rather than a straight line.
 // ============================================================================
 
+const KNOT_EPSILON = 1e-4;
+
 /**
- * Evaluate a Catmull-Rom segment through (p1, p2) using p0 and p3 as tangent
- * hints. Standard tension-0.5 basis; adequate for the sample density the
- * paint engine emits (StreamLine already smooths inputs).
+ * Return a centripetal knot interval. The fourth root is intentional:
+ * distance is sqrt(dx²+dy²), then alpha=0.5 applies another square root.
+ * A small floor keeps repeated/coalesced pointer samples numerically stable.
+ *
+ * @param {[number,number]} a
+ * @param {[number,number]} b
+ * @returns {number}
+ */
+function knotInterval(a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  return Math.max(KNOT_EPSILON, Math.pow(dx * dx + dy * dy, 0.25));
+}
+
+/**
+ * Linear interpolation evaluated on an arbitrary knot interval.
+ *
+ * @param {[number,number]} a
+ * @param {[number,number]} b
+ * @param {number} ta
+ * @param {number} tb
+ * @param {number} u
+ * @returns {[number,number]}
+ */
+function interpolateAt(a, b, ta, tb, u) {
+  const span = tb - ta;
+  if (Math.abs(span) < KNOT_EPSILON) return [a[0], a[1]];
+  const wa = (tb - u) / span;
+  const wb = (u - ta) / span;
+  return [a[0] * wa + b[0] * wb, a[1] * wa + b[1] * wb];
+}
+
+/**
+ * Evaluate the Catmull-Rom segment through (p1, p2) using true centripetal
+ * parameterization. Unlike the old uniform polynomial basis, this respects
+ * the physical distance between stylus samples, preventing loops, hooks, and
+ * corner overshoot when Android delivers events at uneven spacing.
+ *
+ * The signature remains unchanged so the paint engine and fallback path keep
+ * working without profile migrations or UI changes.
+ *
  * @param {number} t   0..1 within the (p1, p2) segment
  * @param {[number,number]} p0
  * @param {[number,number]} p1
@@ -106,15 +149,20 @@ function hexWithAlpha(hex, a) {
  * @returns {[number, number]}
  */
 function catmullRom(t, p0, p1, p2, p3) {
-  const tt = t * t, ttt = tt * t;
-  const b0 = -0.5 * ttt +     tt - 0.5 * t;
-  const b1 =  1.5 * ttt - 2.5 * tt         + 1;
-  const b2 = -1.5 * ttt + 2.0 * tt + 0.5 * t;
-  const b3 =  0.5 * ttt - 0.5 * tt;
-  return [
-    b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0],
-    b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1],
-  ];
+  const clampedT = Math.max(0, Math.min(1, t));
+  const t0 = 0;
+  const t1 = t0 + knotInterval(p0, p1);
+  const t2 = t1 + knotInterval(p1, p2);
+  const t3 = t2 + knotInterval(p2, p3);
+  const u = t1 + (t2 - t1) * clampedT;
+
+  // Barry-Goldman evaluation of the non-uniform Catmull-Rom spline.
+  const a1 = interpolateAt(p0, p1, t0, t1, u);
+  const a2 = interpolateAt(p1, p2, t1, t2, u);
+  const a3 = interpolateAt(p2, p3, t2, t3, u);
+  const b1 = interpolateAt(a1, a2, t0, t2, u);
+  const b2 = interpolateAt(a2, a3, t1, t3, u);
+  return interpolateAt(b1, b2, t1, t2, u);
 }
 
 // ---- UMD-lite export ------------------------------------------------------
