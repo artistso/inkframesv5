@@ -1,4 +1,4 @@
-// InkFrame Brush Engine V2 — deterministic coalesced pointer-event normalization
+// InkFrame Brush Engine V2 — deterministic raw coalesced pointer-event normalization
 'use strict';
 
 (function(root){
@@ -14,7 +14,7 @@
       maxBatchSize: 256,
     }, options || {});
 
-    let lastSample = null;
+    let lastEvent = null;
     let lastTime = -Infinity;
     const totals = {
       batches: 0,
@@ -31,12 +31,17 @@
     };
 
     const finite = value => Number.isFinite(Number(value));
+    const numberOr = (value, fallback) => finite(value) ? Number(value) : fallback;
 
-    function sameSample(a, b) {
+    function eventTime(event) {
+      return numberOr(event && event.timeStamp, NaN);
+    }
+
+    function sameEvent(a, b) {
       if (!a || !b) return false;
-      return Math.abs(a.time - b.time) <= config.timestampTolerance
-        && Math.abs(a.x - b.x) <= config.coordinateEpsilon
-        && Math.abs(a.y - b.y) <= config.coordinateEpsilon
+      return Math.abs(a.timeStamp - b.timeStamp) <= config.timestampTolerance
+        && Math.abs(a.clientX - b.clientX) <= config.coordinateEpsilon
+        && Math.abs(a.clientY - b.clientY) <= config.coordinateEpsilon
         && Math.abs(a.pressure - b.pressure) <= config.pressureEpsilon
         && Math.abs(a.tiltX - b.tiltX) <= config.coordinateEpsilon
         && Math.abs(a.tiltY - b.tiltY) <= config.coordinateEpsilon;
@@ -82,12 +87,47 @@
       return list;
     }
 
-    function seed(sample) {
-      lastSample = sample || null;
-      lastTime = sample && finite(sample.time) ? Number(sample.time) : -Infinity;
+    function snapshot(raw, parent) {
+      const timeStamp = eventTime(raw);
+      const clientX = numberOr(raw && raw.clientX, NaN);
+      const clientY = numberOr(raw && raw.clientY, NaN);
+      if (!Number.isFinite(timeStamp) || !Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+      const pointerId = numberOr(raw && raw.pointerId, numberOr(parent && parent.pointerId, 0));
+      const pointerType = String((raw && raw.pointerType) || (parent && parent.pointerType) || config.pointerType || 'pen');
+      const prevent = parent && typeof parent.preventDefault === 'function'
+        ? () => parent.preventDefault()
+        : () => {};
+      return Object.freeze({
+        type: String((raw && raw.type) || (parent && parent.type) || 'pointermove'),
+        pointerId,
+        pointerType,
+        clientX,
+        clientY,
+        pressure: Math.max(0, Math.min(1, numberOr(raw && raw.pressure, 0))),
+        tiltX: numberOr(raw && raw.tiltX, 0),
+        tiltY: numberOr(raw && raw.tiltY, 0),
+        twist: numberOr(raw && raw.twist, 0),
+        altitudeAngle: numberOr(raw && raw.altitudeAngle, Math.PI / 2),
+        azimuthAngle: numberOr(raw && raw.azimuthAngle, 0),
+        width: Math.max(0, numberOr(raw && raw.width, 0)),
+        height: Math.max(0, numberOr(raw && raw.height, 0)),
+        buttons: numberOr(raw && raw.buttons, numberOr(parent && parent.buttons, 0)),
+        button: numberOr(raw && raw.button, numberOr(parent && parent.button, -1)),
+        timeStamp,
+        predicted: !!(raw && raw.predicted),
+        preventDefault: prevent,
+        getCoalescedEvents: () => [],
+      });
     }
 
-    function normalize(event, toSample) {
+    function seed(event) {
+      const value = snapshot(event, event);
+      lastEvent = value;
+      lastTime = value ? value.timeStamp : -Infinity;
+      return value;
+    }
+
+    function normalize(event) {
       totals.batches++;
       const rawList = collectRaw(event);
       totals.rawEvents += rawList.length;
@@ -96,21 +136,16 @@
       for (let index = 0; index < rawList.length; index++) {
         const raw = rawList[index];
         if (!belongs(raw, event)) continue;
-        let sample = null;
-        try { sample = typeof toSample === 'function' ? toSample(raw) : ns.normalizeSample(raw, lastTime); }
-        catch (_) { totals.invalid++; continue; }
-        if (!sample || !ns.isFiniteSample || !ns.isFiniteSample(sample)) {
-          totals.invalid++;
-          continue;
-        }
-        entries.push({ sample, index });
+        const value = snapshot(raw, event);
+        if (!value) { totals.invalid++; continue; }
+        entries.push({ value, index });
       }
 
       let reordered = false;
       for (let i = 1; i < entries.length; i++) {
-        if (entries[i].sample.time < entries[i - 1].sample.time) { reordered = true; break; }
+        if (entries[i].value.timeStamp < entries[i - 1].value.timeStamp) { reordered = true; break; }
       }
-      entries.sort((a, b) => (a.sample.time - b.sample.time) || (a.index - b.index));
+      entries.sort((a, b) => (a.value.timeStamp - b.value.timeStamp) || (a.index - b.index));
       if (reordered) totals.reorderedBatches++;
 
       if (entries.length > config.maxBatchSize) {
@@ -120,19 +155,19 @@
 
       const output = [];
       for (const entry of entries) {
-        const sample = entry.sample;
-        if (sample.time < lastTime - config.timestampTolerance) {
+        const value = entry.value;
+        if (value.timeStamp < lastTime - config.timestampTolerance) {
           totals.stale++;
           continue;
         }
-        const previous = output.length ? output[output.length - 1] : lastSample;
-        if (sameSample(previous, sample)) {
+        const previous = output.length ? output[output.length - 1] : lastEvent;
+        if (sameEvent(previous, value)) {
           totals.duplicates++;
           continue;
         }
-        output.push(sample);
-        lastSample = sample;
-        lastTime = Math.max(lastTime, sample.time);
+        output.push(value);
+        lastEvent = value;
+        lastTime = Math.max(lastTime, value.timeStamp);
         totals.emitted++;
       }
       return output;
@@ -141,14 +176,14 @@
     function stats() {
       return Object.assign({}, totals, {
         lastTime: Number.isFinite(lastTime) ? lastTime : null,
-        seeded: !!lastSample,
+        seeded: !!lastEvent,
       });
     }
 
-    function reset(sample) {
-      lastSample = null;
+    function reset(event) {
+      lastEvent = null;
       lastTime = -Infinity;
-      if (sample) seed(sample);
+      if (event) seed(event);
     }
 
     return {
