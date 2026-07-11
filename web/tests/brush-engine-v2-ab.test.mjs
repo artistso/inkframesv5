@@ -33,6 +33,7 @@ try {
   const expectedScripts = [
     'brush-engine-v2/sample.js',
     'brush-engine-v2/validator.js',
+    'brush-engine-v2/contact.js',
     'brush-engine-v2/filters.js',
     'brush-engine-v2/path.js',
     'brush-engine-v2/arc-sampler.js',
@@ -68,6 +69,7 @@ try {
   assert.equal(adapter.currentTuning().preset, 'balanced');
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
+  assert.equal(adapter.currentTuning().contactMode, 'strict');
   assert.equal(adapter.isSupportedBrush('ink'), true);
   assert.equal(adapter.isSupportedBrush('eraser'), true);
   assert.equal(adapter.isSupportedBrush('pencil'), false);
@@ -75,27 +77,30 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
-  assert.equal(adapter.setTuning({ coverageMode: 'dabs', radiusMode:'raw' }), true);
+  assert.equal(adapter.setTuning({ coverageMode:'dabs', radiusMode:'raw', contactMode:'raw' }), true);
   assert.equal(adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(adapter.currentTuning().radiusMode, 'raw');
+  assert.equal(adapter.currentTuning().contactMode, 'raw');
   assert.equal(adapter.setTuningPreset('smooth'), true);
   assert.equal(adapter.currentTuning().preset, 'smooth');
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
+  assert.equal(adapter.currentTuning().contactMode, 'strict');
   assert.equal(adapter.setMode('original'), true);
 
   const profile = adapter.makeProfile({
     brushId: 'ink',
-    profile: { size: 22, minSize: 0.1, opacity: 0.8, spacing: 0.06, hardness: 0.9, response: -0.2 },
+    profile: { size:22, minSize:0.1, opacity:0.8, spacing:0.06, hardness:0.9, response:-0.2 },
   });
   assert.equal(profile.size, 22);
   assert.equal(profile.composite, 'source-over');
-  assert.equal(adapter.makeProfile({ brushId: 'eraser', profile: {} }).composite, 'destination-out');
+  assert.equal(adapter.makeProfile({ brushId:'eraser', profile:{} }).composite, 'destination-out');
   assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
   assert.equal(tuning.presetValue('direct').coverageMode, 'ribbon');
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
+  assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ brush-engine-v2 A/B radius integration tests passed');
+  console.log('✅ brush-engine-v2 A/B contact integration tests passed');
 } finally {
-  rmSync(temp, { recursive: true, force: true });
+  rmSync(temp, { recursive:true, force:true });
 }
