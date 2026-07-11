@@ -49,6 +49,7 @@ try {
     'brush-engine-v2/radius.js',
     'brush-engine-v2/rasterizer.js',
     'brush-engine-v2/trace.js',
+    'brush-engine-v2/native.js',
     'brush-engine-v2/engine.js',
     'brush-engine-v2/tuning.js',
     'brush-engine-v2/adapter.js',
@@ -61,6 +62,8 @@ try {
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
   assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'), 'batch normalizer must load before adapter');
+  assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/native.js'), 'native diagnostics must wrap the trace recorder after trace.js');
+  assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'), 'native diagnostics must wrap before adapter creates recorders');
   assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'), 'session guard must load after adapter');
   assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/input.js'), 'input bridge must call the session-wrapped adapter');
 
@@ -118,6 +121,7 @@ try {
   assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.begin, 'function');
   assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.move, 'function');
   assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.end, 'function');
+  assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.traceSnapshot, 'function');
 
   const profile = adapter.makeProfile({
     brushId: 'ink',
@@ -131,7 +135,7 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ brush-engine-v2 A/B sanitized-input integration tests passed');
+  console.log('✅ brush-engine-v2 A/B native-trace integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
