@@ -1,18 +1,7 @@
 // InkFrame — Stylus-Safe Canvas Navigation
 // -----------------------------------------------------------------------------
-// Viewport-only pan and zoom around the existing square canvas. This module never
-// edits document pixels or the painter's internal display scale.
-//
-// Drawing mode:
-//   • one pen/finger keeps the existing painter behaviour
-//   • an intentional two-finger gesture pans and pinch-zooms the viewport
-//   • once two-finger navigation activates, those touches cannot resume painting
-//   • S Pen activity blocks touch navigation so palm contacts stay harmless
-//
-// Hand mode:
-//   • one pointer pans after a small dead zone
-//   • two pointers pan + anchored pinch zoom
-//   • Space-drag and middle mouse use the same gesture path
+// Viewport-only pan and zoom around the existing square canvas. Document pixels,
+// painter scale, brush math, undo, and export output remain untouched.
 'use strict';
 
 (function installInkFrameCanvasNavigation(root, factory){
@@ -20,17 +9,25 @@
   if (root) root.InkFrameCanvasNavigation = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis, function buildCanvasNavigation(root){
-  const VERSION = 'v3-fluid-touch-navigation';
+  const VERSION = 'v4-frame-coalesced-navigation';
   const MIN_ZOOM = 0.25;
   const MAX_ZOOM = 5;
   const SAFE_MARGIN = 54;
   const PAN_DEADZONE = 4;
   const PINCH_DEADZONE = 0.025;
   const STORAGE_KEY = 'inkframe.canvas.navigation.v2';
-  const SAVE_DELAY_MS = 120;
+  const SAVE_DELAY_MS = 140;
 
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const finite = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const raf = callback => typeof root.requestAnimationFrame === 'function'
+    ? root.requestAnimationFrame(callback)
+    : root.setTimeout(callback, 16);
+  const caf = id => {
+    if (!id) return;
+    if (typeof root.cancelAnimationFrame === 'function') root.cancelAnimationFrame(id);
+    else root.clearTimeout(id);
+  };
 
   let installed = false;
   let stage = null;
@@ -52,12 +49,17 @@
   let navMode = false;
   let spaceHeld = false;
 
+  let transformRAF = 0;
+  let queuedClamp = false;
+  let queuedPersist = false;
+  let handGestureRAF = 0;
+  let normalGestureRAF = 0;
+
   const touches = new Map();
   const activePens = new Set();
   const handPointers = new Map();
   const suppressedTouches = new Set();
   let normalGesture = null;
-  let normalGestureRAF = 0;
   let handGesture = null;
 
   let metrics = {
@@ -87,18 +89,24 @@
     restored:false,
     saveCount:0,
     dimensionWatch:false,
+    transformFrames:0,
+    coalescedTransformRequests:0,
+    deferredGestureSaves:0,
   };
 
   function midpoint(points){
-    const list = Array.from(points.values ? points.values() : points);
+    const list = Array.from(points && points.values ? points.values() : (points || []));
     if (!list.length) return { x:0, y:0 };
     let x = 0, y = 0;
-    for (const point of list) { x += finite(point && point.x, 0); y += finite(point && point.y, 0); }
+    for (const point of list) {
+      x += finite(point && point.x, 0);
+      y += finite(point && point.y, 0);
+    }
     return { x:x/list.length, y:y/list.length };
   }
 
   function distance(points){
-    const list = Array.from(points.values ? points.values() : points);
+    const list = Array.from(points && points.values ? points.values() : (points || []));
     if (list.length < 2) return 0;
     return Math.hypot(
       finite(list[0] && list[0].x, 0) - finite(list[1] && list[1].x, 0),
@@ -118,9 +126,8 @@
       finite(currentCenter && currentCenter.x, 0) - finite(startCenter && startCenter.x, 0),
       finite(currentCenter && currentCenter.y, 0) - finite(startCenter && startCenter.y, 0)
     );
-    const scale = gestureScale(startDistance, currentDistance);
-    const pinch = Math.abs(scale - 1);
-    return move >= PAN_DEADZONE || pinch >= PINCH_DEADZONE;
+    return move >= PAN_DEADZONE ||
+      Math.abs(gestureScale(startDistance, currentDistance) - 1) >= PINCH_DEADZONE;
   }
 
   function anchorCoordinates(rect, point){
@@ -135,10 +142,12 @@
   function anchorCorrection(rect, anchor, desiredPoint){
     return {
       x:finite(desiredPoint && desiredPoint.x, 0) - (
-        finite(rect && rect.left, 0) + finite(anchor && anchor.u, 0.5) * Math.max(0.0001, finite(rect && rect.width, 1))
+        finite(rect && rect.left, 0) +
+        finite(anchor && anchor.u, 0.5) * Math.max(0.0001, finite(rect && rect.width, 1))
       ),
       y:finite(desiredPoint && desiredPoint.y, 0) - (
-        finite(rect && rect.top, 0) + finite(anchor && anchor.v, 0.5) * Math.max(0.0001, finite(rect && rect.height, 1))
+        finite(rect && rect.top, 0) +
+        finite(anchor && anchor.v, 0.5) * Math.max(0.0001, finite(rect && rect.height, 1))
       ),
     };
   }
@@ -146,6 +155,10 @@
   function savedState(){ return { panX, panY, zoom, navMode, savedAt:Date.now() }; }
 
   function persistNow(){
+    if (saveTimer) {
+      root.clearTimeout(saveTimer);
+      saveTimer = 0;
+    }
     try {
       root.localStorage.setItem(STORAGE_KEY, JSON.stringify(savedState()));
       metrics.persistence = true;
@@ -161,7 +174,10 @@
   function schedulePersist(){
     if (!installed || typeof root.setTimeout !== 'function') return;
     if (saveTimer) root.clearTimeout(saveTimer);
-    saveTimer = root.setTimeout(() => { saveTimer = 0; persistNow(); }, SAVE_DELAY_MS);
+    saveTimer = root.setTimeout(() => {
+      saveTimer = 0;
+      persistNow();
+    }, SAVE_DELAY_MS);
   }
 
   function restoreState(){
@@ -178,7 +194,9 @@
       metrics.persistence = true;
       metrics.restored = true;
       return true;
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 
   function clearSavedState(){
@@ -205,7 +223,10 @@
       const sheet = style.sheet;
       if (sheet) {
         for (const rule of Array.from(sheet.cssRules || [])) {
-          if (rule.selectorText === '#inkframe-canvas-viewport') { transformRule = rule; break; }
+          if (rule.selectorText === '#inkframe-canvas-viewport') {
+            transformRule = rule;
+            break;
+          }
         }
       }
     } catch (_) {}
@@ -241,7 +262,8 @@
     return { ...metrics };
   }
 
-  function writeTransform(options){
+  function applyTransformNow(options){
+    const opts = options || {};
     ensureTransformRule();
     const value = `translate3d(${panX.toFixed(2)}px,${panY.toFixed(2)}px,0) scale(${zoom.toFixed(5)})`;
     if (transformRule && transformRule.style) transformRule.style.transform = value;
@@ -250,17 +272,9 @@
       zoomButton.textContent = Math.round(zoom*100) + '%';
       zoomButton.title = 'Viewport zoom. Tap to reset navigation to 100%.';
     }
+    metrics.transformFrames++;
     updateMetrics();
-    if (!options || options.persist !== false) schedulePersist();
-  }
-
-  function setView(next){
-    const value = next || {};
-    panX = finite(value.panX, panX);
-    panY = finite(value.panY, panY);
-    zoom = clamp(finite(value.zoom, zoom), MIN_ZOOM, MAX_ZOOM);
-    writeTransform();
-    return updateMetrics();
+    if (opts.persist !== false) schedulePersist();
   }
 
   function canvasRect(){
@@ -269,8 +283,9 @@
       : { left:0, top:0, width:1, height:1, right:1, bottom:1 };
   }
 
-  function clampView(){
-    if (!canvas || typeof root.innerWidth === 'undefined') return;
+  function clampView(options){
+    const opts = options || {};
+    if (!canvas || typeof root.innerWidth === 'undefined') return canvasRect();
     let rect = canvasRect();
     let dx = 0, dy = 0;
     if (rect.right < SAFE_MARGIN) dx = SAFE_MARGIN - rect.right;
@@ -278,36 +293,89 @@
     if (rect.bottom < SAFE_MARGIN) dy = SAFE_MARGIN - rect.bottom;
     else if (rect.top > root.innerHeight - SAFE_MARGIN) dy = root.innerHeight - SAFE_MARGIN - rect.top;
     if (dx || dy) {
-      panX += dx; panY += dy;
-      writeTransform();
+      panX += dx;
+      panY += dy;
+      applyTransformNow({ persist:opts.persist !== false });
       rect = canvasRect();
     }
     return rect;
   }
 
+  function flushTransform(options){
+    const opts = options || {};
+    if (transformRAF) {
+      caf(transformRAF);
+      transformRAF = 0;
+    }
+    const doClamp = queuedClamp || !!opts.clamp;
+    const doPersist = queuedPersist || !!opts.persist;
+    queuedClamp = false;
+    queuedPersist = false;
+    applyTransformNow({ persist:false });
+    if (doClamp) clampView({ persist:false });
+    if (doPersist) persistNow();
+    return updateMetrics();
+  }
+
+  function queueTransform(options){
+    const opts = options || {};
+    queuedClamp = queuedClamp || !!opts.clamp;
+    queuedPersist = queuedPersist || !!opts.persist;
+    if (transformRAF) {
+      metrics.coalescedTransformRequests++;
+      updateMetrics();
+      return;
+    }
+    transformRAF = raf(() => {
+      transformRAF = 0;
+      const doClamp = queuedClamp;
+      const doPersist = queuedPersist;
+      queuedClamp = false;
+      queuedPersist = false;
+      applyTransformNow({ persist:false });
+      if (doClamp) clampView({ persist:false });
+      if (doPersist) persistNow();
+    });
+  }
+
+  function setView(next){
+    const value = next || {};
+    panX = finite(value.panX, panX);
+    panY = finite(value.panY, panY);
+    zoom = clamp(finite(value.zoom, zoom), MIN_ZOOM, MAX_ZOOM);
+    flushTransform({ clamp:!!value.clamp, persist:value.persist !== false });
+    return updateMetrics();
+  }
+
   function zoomAt(clientX, clientY, nextZoom){
     if (!canvas) return;
+    if (transformRAF) flushTransform({ persist:false });
     const before = canvasRect();
     const anchor = anchorCoordinates(before, { x:clientX, y:clientY });
     zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
-    writeTransform({ persist:false });
+    applyTransformNow({ persist:false });
     const correction = anchorCorrection(canvasRect(), anchor, { x:clientX, y:clientY });
     panX += correction.x;
     panY += correction.y;
-    writeTransform();
-    clampView();
+    applyTransformNow({ persist:false });
+    clampView({ persist:false });
+    schedulePersist();
   }
 
   function resetView(){
-    panX = 0; panY = 0; zoom = 1;
+    panX = 0;
+    panY = 0;
+    zoom = 1;
     metrics.resetCount++;
-    writeTransform();
+    flushTransform({ clamp:true, persist:true });
   }
 
   function fitView(options){
     if (!canvas || !stage) return;
-    panX = 0; panY = 0; zoom = 1;
-    writeTransform({ persist:false });
+    panX = 0;
+    panY = 0;
+    zoom = 1;
+    applyTransformNow({ persist:false });
     const rect = canvasRect();
     const stageRect = stage.getBoundingClientRect
       ? stage.getBoundingClientRect()
@@ -315,11 +383,11 @@
     const availW = Math.max(120, finite(stageRect.width, root.innerWidth)-96);
     const availH = Math.max(120, finite(stageRect.height, root.innerHeight)-132);
     zoom = clamp(Math.min(availW/Math.max(1, rect.width), availH/Math.max(1, rect.height)), MIN_ZOOM, 2.5);
-    panX = 0; panY = 0;
+    panX = 0;
+    panY = 0;
     metrics.fitCount++;
     if (options && options.projectChange) metrics.projectFitCount++;
-    writeTransform();
-    clampView();
+    flushTransform({ clamp:true, persist:true });
   }
 
   function setNavMode(value){
@@ -350,7 +418,9 @@
       navButton.id = 'inkframe-canvas-nav-toggle';
       navButton.type = 'button';
       navButton.addEventListener('click', event => {
-        event.preventDefault(); event.stopPropagation(); setNavMode(!navMode);
+        event.preventDefault();
+        event.stopPropagation();
+        setNavMode(!navMode);
       });
       dock.appendChild(navButton);
     }
@@ -362,7 +432,9 @@
       fitButton.textContent = 'FIT';
       fitButton.title = 'Fit the canvas into the available workspace.';
       fitButton.addEventListener('click', event => {
-        event.preventDefault(); event.stopPropagation(); fitView();
+        event.preventDefault();
+        event.stopPropagation();
+        fitView();
       });
       dock.appendChild(fitButton);
     }
@@ -372,12 +444,14 @@
       zoomButton.id = 'inkframe-canvas-zoom-display';
       zoomButton.type = 'button';
       zoomButton.addEventListener('click', event => {
-        event.preventDefault(); event.stopPropagation(); resetView();
+        event.preventDefault();
+        event.stopPropagation();
+        resetView();
       });
       dock.appendChild(zoomButton);
     }
     setNavMode(navMode);
-    writeTransform({ persist:false });
+    applyTransformNow({ persist:false });
   }
 
   function insideViewport(target){
@@ -394,7 +468,6 @@
       startZoom:zoom,
       startCenter:center,
       startDistance:dist,
-      startRect:rect,
       anchor:anchorCoordinates(rect, center),
       activated:false,
     };
@@ -416,15 +489,16 @@
       panY = state.startPanY + (center.y-state.startCenter.y);
       if (kind === 'hand') metrics.handPans++;
       else metrics.touchPanFrames++;
-      writeTransform();
-      clampView();
+      queueTransform({ clamp:true, persist:false });
+      metrics.deferredGestureSaves++;
       return true;
     }
 
+    if (transformRAF) flushTransform({ persist:false });
     zoom = clamp(state.startZoom*gestureScale(state.startDistance, dist), MIN_ZOOM, MAX_ZOOM);
     panX = state.startPanX;
     panY = state.startPanY;
-    writeTransform({ persist:false });
+    applyTransformNow({ persist:false });
     const correction = anchorCorrection(canvasRect(), state.anchor, center);
     panX += correction.x;
     panY += correction.y;
@@ -433,8 +507,9 @@
       metrics.touchPinchFrames++;
       metrics.touchPanFrames++;
     }
-    writeTransform();
-    clampView();
+    applyTransformNow({ persist:false });
+    clampView({ persist:false });
+    metrics.deferredGestureSaves++;
     return true;
   }
 
@@ -445,18 +520,33 @@
     try { viewport.setPointerCapture && viewport.setPointerCapture(event.pointerId); } catch (_) {}
   }
 
-  function moveHandGesture(event){
-    if (!handPointers.has(event.pointerId) || !handGesture) return;
-    handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
+  function runHandGestureFrame(){
+    handGestureRAF = 0;
+    if (!handGesture || !handPointers.size) return;
     const active = applyGesture(handGesture, handPointers, 'hand');
     document.body.classList.toggle('inkframe-canvas-panning', !!active);
+  }
+
+  function scheduleHandGesture(){
+    if (handGestureRAF) {
+      metrics.coalescedTransformRequests++;
+      return;
+    }
+    handGestureRAF = raf(runHandGestureFrame);
+  }
+
+  function flushHandGesture(){
+    if (!handGestureRAF) return;
+    caf(handGestureRAF);
+    handGestureRAF = 0;
+    runHandGestureFrame();
   }
 
   function rebaseHandGesture(){
     if (!handPointers.size) {
       handGesture = null;
       document.body.classList.remove('inkframe-canvas-panning');
-      persistNow();
+      flushTransform({ clamp:true, persist:true });
       return;
     }
     handGesture = newGestureState(handPointers);
@@ -470,13 +560,25 @@
     metrics.touchGestureActivations++;
   }
 
+  function runNormalGestureFrame(){
+    normalGestureRAF = 0;
+    if (touches.size < 2 || activePens.size || !normalGesture || !normalGesture.activated) return;
+    applyGesture(normalGesture, touches, 'touch');
+  }
+
   function scheduleNormalGesture(){
-    if (normalGestureRAF || touches.size < 2 || activePens.size) return;
-    normalGestureRAF = root.requestAnimationFrame(() => {
-      normalGestureRAF = 0;
-      if (touches.size < 2 || activePens.size || !normalGesture || !normalGesture.activated) return;
-      applyGesture(normalGesture, touches, 'touch');
-    });
+    if (normalGestureRAF) {
+      metrics.coalescedTransformRequests++;
+      return;
+    }
+    normalGestureRAF = raf(runNormalGestureFrame);
+  }
+
+  function flushNormalGesture(){
+    if (!normalGestureRAF) return;
+    caf(normalGestureRAF);
+    normalGestureRAF = 0;
+    runNormalGestureFrame();
   }
 
   function onPointerDown(event){
@@ -508,7 +610,8 @@
         }
         const center = midpoint(touches);
         const dist = distance(touches);
-        if (!normalGesture.activated && gestureExceeded(normalGesture.startCenter, center, normalGesture.startDistance, dist)) {
+        if (!normalGesture.activated &&
+            gestureExceeded(normalGesture.startCenter, center, normalGesture.startDistance, dist)) {
           activateNormalGesture();
         }
         if (normalGesture.activated) {
@@ -531,16 +634,18 @@
     if (!handPointers.has(event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
-    moveHandGesture(event);
+    handPointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
+    scheduleHandGesture();
   }
 
   function onPointerEnd(event){
     if (event.pointerType === 'pen') activePens.delete(event.pointerId);
     if (event.pointerType === 'touch') {
+      flushNormalGesture();
       touches.delete(event.pointerId);
       suppressedTouches.delete(event.pointerId);
       if (touches.size < 2) {
-        if (normalGesture && normalGesture.activated) persistNow();
+        if (normalGesture && normalGesture.activated) flushTransform({ clamp:true, persist:true });
         normalGesture = null;
       } else if (normalGesture) {
         normalGesture = newGestureState(touches);
@@ -548,9 +653,11 @@
         metrics.gestureRebases++;
       }
     }
+
     if (!handPointers.has(event.pointerId)) return;
     event.preventDefault();
     event.stopPropagation();
+    flushHandGesture();
     handPointers.delete(event.pointerId);
     rebaseHandGesture();
   }
@@ -571,13 +678,14 @@
     if (dimensionObserver || typeof MutationObserver === 'undefined' || !canvas) return;
     canvasSizeKey = currentCanvasSizeKey();
     dimensionObserver = new MutationObserver(() => {
-      root.requestAnimationFrame(() => {
+      raf(() => {
         const next = currentCanvasSizeKey();
         if (next && next !== canvasSizeKey) {
           canvasSizeKey = next;
           fitView({ projectChange:true });
         } else {
-          clampView();
+          if (transformRAF) flushTransform({ persist:false });
+          clampView({ persist:false });
           schedulePersist();
         }
       });
@@ -587,6 +695,8 @@
   }
 
   function clearInteractions(){
+    if (handGestureRAF) { caf(handGestureRAF); handGestureRAF = 0; }
+    if (normalGestureRAF) { caf(normalGestureRAF); normalGestureRAF = 0; }
     spaceHeld = false;
     handPointers.clear();
     touches.clear();
@@ -595,6 +705,7 @@
     handGesture = null;
     normalGesture = null;
     document.body.classList.remove('inkframe-canvas-panning');
+    if (transformRAF) flushTransform({ clamp:true, persist:false });
   }
 
   function install(){
@@ -617,17 +728,29 @@
     stage.addEventListener('wheel', onWheel, { capture:true, passive:false });
 
     root.addEventListener('keydown', event => {
-      if (event.code !== 'Space' || (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName || ''))) return;
+      if (event.code !== 'Space' ||
+          (event.target && /INPUT|TEXTAREA|SELECT/.test(event.target.tagName || ''))) return;
       spaceHeld = true;
     }, true);
-    root.addEventListener('keyup', event => { if (event.code === 'Space') spaceHeld = false; }, true);
-    root.addEventListener('blur', () => { clearInteractions(); persistNow(); });
-    root.addEventListener('resize', () => root.requestAnimationFrame(clampView));
+    root.addEventListener('keyup', event => {
+      if (event.code === 'Space') spaceHeld = false;
+    }, true);
+    root.addEventListener('blur', () => {
+      clearInteractions();
+      persistNow();
+    });
+    root.addEventListener('resize', () => raf(() => {
+      if (transformRAF) flushTransform({ persist:false });
+      clampView({ persist:false });
+      schedulePersist();
+    }));
     root.addEventListener('pagehide', persistNow);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) persistNow();
+    });
 
     installDimensionWatch();
-    writeTransform({ persist:false });
+    applyTransformNow({ persist:false });
     setNavMode(navMode);
     return updateMetrics();
   }
@@ -647,6 +770,9 @@
       'Canvas Navigation persistence: ' + (m.persistence ? 'yes' : 'no'),
       'Canvas Navigation restored: ' + (m.restored ? 'yes' : 'no'),
       'Canvas Navigation dimension watch: ' + (m.dimensionWatch ? 'yes' : 'no'),
+      'Canvas Navigation transform frames: ' + m.transformFrames,
+      'Canvas Navigation coalesced requests: ' + m.coalescedTransformRequests,
+      'Canvas Navigation deferred gesture saves: ' + m.deferredGestureSaves,
       'Canvas Navigation deadzone blocks: ' + m.deadzoneBlocks,
       'Canvas Navigation touch activations: ' + m.touchGestureActivations,
       'Canvas Navigation suppressed touch moves: ' + m.suppressedTouchMoves,
@@ -680,6 +806,8 @@
     fitView,
     resetView,
     clampView,
+    queueTransform,
+    flushTransform,
     persistNow,
     restoreState,
     clearSavedState,
@@ -693,8 +821,11 @@
       root.setTimeout(() => { ensureControls(); updateMetrics(); }, 160);
       root.setTimeout(() => { ensureControls(); updateMetrics(); }, 520);
     };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true });
-    else boot();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', boot, { once:true });
+    } else {
+      boot();
+    }
   }
   return api;
 });
