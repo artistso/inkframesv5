@@ -77,9 +77,11 @@ try {
   const panel = d.getElementById('inkframe-v2-ab');
   const tuningPanel = d.getElementById('inkframe-v2-tuning');
   const coverage = d.getElementById('inkframe-v2-coverage-mode');
+  const radius = d.getElementById('inkframe-v2-radius-mode');
   assert.ok(panel, 'V2 A/B panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
   assert.ok(coverage, 'V2 coverage selector did not install');
+  assert.ok(radius, 'V2 radius selector did not install');
   const buttons = panel.querySelectorAll('button');
   assert.equal(buttons.length, 5);
   assert.match(buttons[0].textContent, /Original/);
@@ -90,7 +92,9 @@ try {
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(coverage.value, 'ribbon');
+  assert.equal(radius.value, 'guarded');
   assert.equal(tuningPanel.hidden, true);
   buttons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
@@ -100,11 +104,15 @@ try {
   assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 4);
   coverage.value = 'dabs';
   coverage.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  radius.value = 'raw';
+  radius.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'dabs');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'raw');
   assert.equal(typeof dom.window.InkFrameBrushV2.createBrushEngine, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.createRadiusContinuityGuard, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Environment, 'function');
 
-  console.log('✅ generated Brush V2 ribbon APK index booted');
+  console.log('✅ generated Brush V2 radius-continuity APK index booted');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
