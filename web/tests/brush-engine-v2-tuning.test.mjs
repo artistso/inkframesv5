@@ -1,12 +1,24 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
-const require = createRequire(import.meta.url);
 const here = dirname(fileURLToPath(import.meta.url));
 const tuningPath = resolve(here, '..', 'brush-engine-v2', 'tuning.js');
-const tuning = require(tuningPath);
+const adapterPath = resolve(here, '..', 'brush-engine-v2', 'adapter.js');
+const sandbox = {
+  module: { exports: {} },
+  exports: {},
+  console,
+  setTimeout,
+  clearTimeout,
+  Blob,
+  URL,
+};
+vm.createContext(sandbox);
+vm.runInContext(readFileSync(tuningPath, 'utf8'), sandbox, { filename: 'tuning.js' });
+const tuning = sandbox.module.exports;
 
 const balanced = tuning.presetValue('balanced');
 assert.equal(balanced.preset, 'balanced');
@@ -45,8 +57,8 @@ assert.ok(Math.abs(profile.spacing - 0.15) < 1e-12);
 assert.equal(tuning.tuningFilterOptions({ positionTimeConstantMs: 9 }).positionTimeConstantMs, 9);
 assert.equal(tuning.tuningValidatorOptions({ minimumJump: 88 }).minimumJump, 88);
 
-// Adapter API and deterministic replay against a mock active canvas.
-globalThis.InkFrameBrushV2 = Object.assign(globalThis.InkFrameBrushV2 || {}, {
+// Adapter API and deterministic replay against an explicit mock canvas context.
+Object.assign(sandbox.InkFrameBrushV2, {
   parseTrace(value) {
     const trace = typeof value === 'string' ? JSON.parse(value) : value;
     if (!trace || trace.format !== 'inkframe-brush-trace') throw new Error('bad trace');
@@ -67,7 +79,7 @@ globalThis.InkFrameBrushV2 = Object.assign(globalThis.InkFrameBrushV2 || {}, {
 let committed = 0;
 const layerCtx = { painted: [] };
 const mainCtx = { painted: [] };
-globalThis.InkFrameBrushV2Environment = () => ({
+sandbox.InkFrameBrushV2Environment = () => ({
   layerCtx, mainCtx, width:100, height:100, brushId:'ink', color:'#123456',
   profile:{ size:12, minSize:0.1, opacity:1, spacing:0.1, hardness:1, response:0 },
   snapshot:() => ({ before:true }),
@@ -75,8 +87,10 @@ globalThis.InkFrameBrushV2Environment = () => ({
   abort:() => {},
 });
 
-const adapterPath = resolve(here, '..', 'brush-engine-v2', 'adapter.js');
-const adapter = require(adapterPath);
+sandbox.module = { exports: {} };
+sandbox.exports = sandbox.module.exports;
+vm.runInContext(readFileSync(adapterPath, 'utf8'), sandbox, { filename: 'adapter.js' });
+const adapter = sandbox.module.exports;
 assert.equal(adapter.currentMode(), 'original');
 assert.equal(adapter.setMode('v2'), true);
 assert.equal(adapter.setTuningPreset('direct'), true);
