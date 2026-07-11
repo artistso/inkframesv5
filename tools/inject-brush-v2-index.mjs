@@ -24,6 +24,7 @@ const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_AB: generated into APK assets only -->
 <script src="brush-engine-v2/sample.js"></script>
 <script src="brush-engine-v2/validator.js"></script>
+<script src="brush-engine-v2/contact.js"></script>
 <script src="brush-engine-v2/filters.js"></script>
 <script src="brush-engine-v2/path.js"></script>
 <script src="brush-engine-v2/arc-sampler.js"></script>
@@ -121,6 +122,7 @@ for (const marker of [
   'InkFrameBrushV2Adapter.begin',
   'InkFrameBrushV2Adapter.move',
   'InkFrameBrushV2Adapter.end',
+  'brush-engine-v2/contact.js',
   'brush-engine-v2/radius.js',
   'brush-engine-v2/coverage-ui.js',
 ]) {
