@@ -75,17 +75,29 @@ try {
   assert.deepEqual(errors, [], errors.join('\n'));
   const d = dom.window.document;
   const panel = d.getElementById('inkframe-v2-ab');
+  const tuningPanel = d.getElementById('inkframe-v2-tuning');
   assert.ok(panel, 'V2 A/B panel did not install');
+  assert.ok(tuningPanel, 'V2 tuning panel did not install');
   const buttons = panel.querySelectorAll('button');
-  assert.equal(buttons.length, 2);
+  assert.equal(buttons.length, 5);
   assert.match(buttons[0].textContent, /Original/);
+  assert.match(buttons[1].textContent, /Tune/);
+  assert.equal(buttons[2].textContent, 'Import trace');
+  assert.equal(buttons[3].textContent, 'Replay');
+  assert.equal(buttons[4].textContent, 'Export trace');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
+  assert.equal(tuningPanel.hidden, true);
   buttons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
   assert.match(buttons[0].textContent, /V2/);
+  buttons[1].click();
+  assert.equal(tuningPanel.hidden, false);
+  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 4);
   assert.equal(typeof dom.window.InkFrameBrushV2.createBrushEngine, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2Environment, 'function');
 
-  console.log('✅ generated Brush V2 A/B APK index booted');
+  console.log('✅ generated Brush V2 tuning/replay APK index booted');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
