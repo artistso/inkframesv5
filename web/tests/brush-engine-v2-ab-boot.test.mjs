@@ -99,6 +99,10 @@ try {
   assert.equal(dom.window.InkFrameBrushV2Adapter.__sessionContinuityInstalled, true);
   assert.equal(typeof dom.window.InkFrameBrushV2Adapter.sessionStats, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Adapter.finishStaleSession, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.createInputBatchNormalizer, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.begin, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.move, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.end, 'function');
   assert.equal(coverage.value, 'ribbon');
   assert.equal(radius.value, 'guarded');
   assert.equal(contact.value, 'strict');
@@ -123,7 +127,24 @@ try {
   assert.equal(typeof dom.window.InkFrameBrushV2.createContactBoundaryGuard, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Environment, 'function');
 
-  console.log('✅ generated Brush V2 session-continuity APK index booted');
+  // Coordinate conversion is captured at environment creation. A later DOM-layout
+  // change must not move samples into a different canvas coordinate frame.
+  const canvas = d.getElementById('c');
+  let rect = { left:100, top:50, width:512, height:384, right:612, bottom:434 };
+  canvas.getBoundingClientRect = () => rect;
+  const env = dom.window.InkFrameBrushV2Environment();
+  assert.equal(env.coordinateTransform.left, 100);
+  assert.equal(env.coordinateTransform.scaleX, 2);
+  assert.equal(env.coordinateTransform.scaleY, 2);
+  rect = { left:0, top:0, width:1024, height:768, right:1024, bottom:768 };
+  const converted = env.toSample({
+    clientX:356, clientY:242, pressure:0.5, pointerId:7, pointerType:'pen', timeStamp:10,
+    tiltX:0, tiltY:0, width:1, height:1,
+  });
+  assert.equal(converted.x, 512);
+  assert.equal(converted.y, 384);
+
+  console.log('✅ generated Brush V2 sanitized-input APK index booted');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
