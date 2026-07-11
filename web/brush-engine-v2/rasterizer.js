@@ -7,8 +7,8 @@
   const coverageState = new WeakMap();
 
   const DEFAULT_PROFILES = Object.freeze({
-    ink: Object.freeze({ size: 14, minSize: 0.08, opacity: 1, spacing: 0.055, hardness: 0.92, composite: 'source-over', coverage: 'dabs' }),
-    eraser: Object.freeze({ size: 40, minSize: 1, opacity: 1, spacing: 0.12, hardness: 0.82, composite: 'destination-out', coverage: 'dabs' }),
+    ink: Object.freeze({ size: 14, minSize: 0.08, opacity: 1, spacing: 0.055, hardness: 0.92, composite: 'source-over', coverage: 'dabs', radiusMode: 'raw' }),
+    eraser: Object.freeze({ size: 40, minSize: 1, opacity: 1, spacing: 0.12, hardness: 0.82, composite: 'destination-out', coverage: 'dabs', radiusMode: 'raw' }),
   });
 
   function normalizeCoverage(value) {
@@ -37,6 +37,7 @@
     out.response = clamp(Number(out.response) || 0, -1, 1);
     out.composite = brushId === 'eraser' ? 'destination-out' : String(out.composite || 'source-over');
     out.coverage = normalizeCoverage(out.coverage);
+    out.radiusMode = ns.normalizeRadiusMode ? ns.normalizeRadiusMode(out.radiusMode) : (out.radiusMode === 'guarded' ? 'guarded' : 'raw');
     return Object.freeze(out);
   }
 
