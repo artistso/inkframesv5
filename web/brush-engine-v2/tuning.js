@@ -16,6 +16,7 @@
       speedLimitPxPerMs: 10,
       coverageMode: 'ribbon',
       radiusMode: 'guarded',
+      contactMode: 'strict',
     }),
     balanced: Object.freeze({
       name: 'Balanced',
@@ -26,6 +27,7 @@
       speedLimitPxPerMs: 8,
       coverageMode: 'ribbon',
       radiusMode: 'guarded',
+      contactMode: 'strict',
     }),
     smooth: Object.freeze({
       name: 'Smooth',
@@ -36,6 +38,7 @@
       speedLimitPxPerMs: 7,
       coverageMode: 'ribbon',
       radiusMode: 'guarded',
+      contactMode: 'strict',
     }),
   });
 
@@ -45,6 +48,10 @@
 
   function normalizeRadiusMode(value) {
     return value === 'raw' ? 'raw' : 'guarded';
+  }
+
+  function normalizeContactMode(value) {
+    return value === 'raw' ? 'raw' : 'strict';
   }
 
   function normalizeTuning(value) {
@@ -59,6 +66,7 @@
       speedLimitPxPerMs: clamp(input.speedLimitPxPerMs ?? base.speedLimitPxPerMs, 1, 20),
       coverageMode: normalizeCoverageMode(input.coverageMode ?? base.coverageMode),
       radiusMode: normalizeRadiusMode(input.radiusMode ?? base.radiusMode),
+      contactMode: normalizeContactMode(input.contactMode ?? base.contactMode),
     });
   }
 
@@ -92,6 +100,7 @@
       spacing: Math.max(0.01, Number(profile && profile.spacing || 0.1) * tuning.spacingScale),
       coverage: tuning.coverageMode,
       radiusMode: tuning.radiusMode,
+      contactMode: tuning.contactMode,
     });
   }
 
@@ -157,6 +166,7 @@
     PRESETS,
     normalizeCoverageMode,
     normalizeRadiusMode,
+    normalizeContactMode,
     normalizeTuning,
     presetValue,
     tuningFilterOptions,
