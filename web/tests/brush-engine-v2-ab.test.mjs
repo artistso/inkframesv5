@@ -28,7 +28,7 @@ try {
   assert.equal((html.match(/InkFrameBrushV2Adapter\.move/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Adapter\.end/g) || []).length, 1);
   assert.equal((html.match(/function makeBrushV2Env\(/g) || []).length, 1);
-  assert.equal((html.match(/InkFrameBrushV2Environment/g) || []).length, 2);
+  assert.equal((html.match(/InkFrameBrushV2Environment/g) || []).length, 1);
 
   const expectedScripts = [
     'brush-engine-v2/sample.js',
