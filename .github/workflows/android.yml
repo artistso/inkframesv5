@@ -42,6 +42,7 @@ jobs:
           node --check web/brush-engine-v2/radius.js
           node --check web/brush-engine-v2/tuning.js
           node --check web/brush-engine-v2/adapter.js
+          node --check web/brush-engine-v2/session.js
           node --check web/brush-engine-v2/coverage-ui.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
@@ -53,6 +54,8 @@ jobs:
         run: node web/tests/brush-engine-v2-radius.test.mjs
       - name: Brush V2 contact boundaries
         run: node web/tests/brush-engine-v2-contact.test.mjs
+      - name: Brush V2 live session continuity
+        run: node web/tests/brush-engine-v2-session.test.mjs
       - name: Brush V2 generated-index structure
         run: node web/tests/brush-engine-v2-ab.test.mjs
       - name: Brush V2 tuning and replay
