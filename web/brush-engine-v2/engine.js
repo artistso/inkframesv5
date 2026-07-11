@@ -32,7 +32,15 @@
     let lastDabSample = null;
     let strokeSerial = 0;
     let strokeDabIndex = 0;
-    const totals = { strokes: 0, rawSamples: 0, acceptedSamples: 0, dabs: 0 };
+    let lastBreakReason = null;
+    const totals = {
+      strokes: 0,
+      subpaths: 0,
+      discontinuities: 0,
+      rawSamples: 0,
+      acceptedSamples: 0,
+      dabs: 0,
+    };
 
     function createRadiusGuard(nextProfile) {
       if (!ns.createRadiusContinuityGuard) {
@@ -88,6 +96,32 @@
       }
     }
 
+    function flushSubpath(output) {
+      if (!lastFiltered) return;
+      for (const segment of path.finish()) emitSamples(sampler.sampleSegment(segment), output);
+      emitSamples(sampler.finish(lastFiltered), output);
+    }
+
+    function resetSubpath(startNew) {
+      path.reset();
+      sampler.reset();
+      radiusGuard.reset();
+      lastFiltered = null;
+      lastDabSample = null;
+      if (startNew) {
+        strokeSerial++;
+        strokeDabIndex = 0;
+        totals.subpaths++;
+      }
+    }
+
+    function severSubpath(output, reason) {
+      flushSubpath(output);
+      totals.discontinuities++;
+      lastBreakReason = reason || 'discontinuity';
+      resetSubpath(true);
+    }
+
     function processAccepted(samples, output) {
       for (const sample of samples) {
         totals.acceptedSamples++;
@@ -103,11 +137,21 @@
       }
     }
 
+    function validatorResult(sample) {
+      if (!validatorStarted) {
+        validatorStarted = true;
+        if (typeof validator.beginDetailed === 'function') return validator.beginDetailed(sample);
+        return { samples: validator.begin(sample), breakBefore:false, breakReason:null };
+      }
+      if (typeof validator.pushDetailed === 'function') return validator.pushDetailed(sample);
+      return { samples: validator.push(sample), breakBefore:false, breakReason:null };
+    }
+
     function feedBoundarySamples(samples, output) {
       for (const sample of samples || []) {
-        const accepted = validatorStarted ? validator.push(sample) : validator.begin(sample);
-        validatorStarted = true;
-        processAccepted(accepted, output);
+        const detailed = validatorResult(sample);
+        if (detailed && detailed.breakBefore) severSubpath(output, detailed.breakReason);
+        processAccepted(detailed && detailed.samples || [], output);
       }
     }
 
@@ -115,9 +159,11 @@
       if (active) throw new Error('stroke already active');
       active = true;
       totals.strokes++;
+      totals.subpaths++;
       totals.rawSamples++;
       strokeSerial++;
       strokeDabIndex = 0;
+      lastBreakReason = null;
       validatorStarted = false;
       lastFiltered = null;
       lastDabSample = null;
@@ -150,11 +196,14 @@
         sample = ns.normalizeSample(raw, lastFiltered ? lastFiltered.time : 0);
       }
       feedBoundarySamples(contactGuard.end(sample), output);
-      if (validatorStarted) processAccepted(validator.finish({ acceptHeld: false }), output);
-      if (lastFiltered) {
-        for (const segment of path.finish()) emitSamples(sampler.sampleSegment(segment), output);
-        emitSamples(sampler.finish(lastFiltered), output);
+      if (validatorStarted) {
+        const detailed = typeof validator.finishDetailed === 'function'
+          ? validator.finishDetailed({ acceptHeld:false })
+          : { samples:validator.finish({ acceptHeld:false }), breakBefore:false, breakReason:null };
+        if (detailed.breakBefore) severSubpath(output, detailed.breakReason);
+        processAccepted(detailed.samples || [], output);
       }
+      flushSubpath(output);
       active = false;
       return output;
     }
@@ -165,6 +214,7 @@
       lastFiltered = null;
       lastDabSample = null;
       strokeDabIndex = 0;
+      lastBreakReason = null;
       path.reset();
       sampler.reset();
       radiusGuard.reset();
@@ -175,6 +225,7 @@
       return Object.assign({}, totals, {
         active,
         brushId,
+        lastBreakReason,
         validator: validator.snapshot(),
         radius: radiusGuard.stats(),
         contact: contactGuard.snapshot(),
