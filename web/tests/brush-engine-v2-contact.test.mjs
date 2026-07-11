@@ -30,8 +30,8 @@ const sample = (x, y, time, pressure = 0.5) => V2.normalizeSample({ x, y, time, 
 // the contact anchor belongs to the real trajectory.
 {
   const guard = V2.createContactBoundaryGuard({ mode:'strict' });
-  assert.deepEqual(guard.begin(sample(0, 0, 0)), []);
-  assert.deepEqual(guard.move(sample(24, 0, 8)), []);
+  assert.equal(guard.begin(sample(0, 0, 0)).length, 0);
+  assert.equal(guard.move(sample(24, 0, 8)).length, 0);
   const released = guard.move(sample(48, 0, 16));
   assert.equal(released.length, 3);
   assert.equal(released[0].x, 0);
