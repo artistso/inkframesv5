@@ -50,9 +50,9 @@ const raw = (x, y, timeStamp, extra = {}) => Object.assign({
     },
   });
   const output = normalizer.normalize(parent);
-  assert.deepEqual(output.map(event => event.timeStamp), [8, 16, 24, 32]);
-  assert.deepEqual(output.map(event => event.clientX), [10, 20, 30, 40]);
-  assert.ok(output.every(event => event.getCoalescedEvents().length === 0));
+  assert.deepEqual(Array.from(output, event => event.timeStamp), [8, 16, 24, 32]);
+  assert.deepEqual(Array.from(output, event => event.clientX), [10, 20, 30, 40]);
+  assert.ok(Array.from(output).every(event => event.getCoalescedEvents().length === 0));
   output[0].preventDefault();
   assert.equal(prevented, 1);
   const stats = normalizer.stats();
@@ -73,9 +73,9 @@ const raw = (x, y, timeStamp, extra = {}) => Object.assign({
   const normalizer = sandbox.InkFrameBrushV2.createInputBatchNormalizer({ pointerId:7 });
   normalizer.seed(raw(10, 0, 10));
   const first = raw(30, 0, 30, { getCoalescedEvents:() => [raw(20, 0, 20), raw(30, 0, 30)] });
-  assert.deepEqual(normalizer.normalize(first).map(event => event.timeStamp), [20, 30]);
+  assert.deepEqual(Array.from(normalizer.normalize(first), event => event.timeStamp), [20, 30]);
   const second = raw(50, 0, 50, { getCoalescedEvents:() => [raw(20, 0, 20), raw(30, 0, 30), raw(40, 0, 40)] });
-  assert.deepEqual(normalizer.normalize(second).map(event => event.timeStamp), [40, 50]);
+  assert.deepEqual(Array.from(normalizer.normalize(second), event => event.timeStamp), [40, 50]);
   const stats = normalizer.stats();
   assert.equal(stats.stale, 1);
   assert.equal(stats.duplicates, 1);
