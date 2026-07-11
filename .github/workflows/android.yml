@@ -38,6 +38,7 @@ jobs:
           node --check tools/prepare-release.mjs
           node --check tools/bump-version.mjs
           node --check tools/inject-brush-v2-index.mjs
+          node --check web/brush-engine-v2/batch.js
           node --check web/brush-engine-v2/validator.js
           node --check web/brush-engine-v2/engine.js
           node --check web/brush-engine-v2/contact.js
@@ -45,6 +46,7 @@ jobs:
           node --check web/brush-engine-v2/tuning.js
           node --check web/brush-engine-v2/adapter.js
           node --check web/brush-engine-v2/session.js
+          node --check web/brush-engine-v2/input.js
           node --check web/brush-engine-v2/coverage-ui.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
@@ -60,6 +62,8 @@ jobs:
         run: node web/tests/brush-engine-v2-session.test.mjs
       - name: Brush V2 discontinuity segmentation
         run: node web/tests/brush-engine-v2-discontinuity.test.mjs
+      - name: Brush V2 coalesced input normalization
+        run: node web/tests/brush-engine-v2-batch.test.mjs
       - name: Brush V2 generated-index structure
         run: node web/tests/brush-engine-v2-ab.test.mjs
       - name: Brush V2 tuning and replay
