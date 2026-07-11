@@ -96,6 +96,9 @@ try {
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().contactMode, 'strict');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.__sessionContinuityInstalled, true);
+  assert.equal(typeof dom.window.InkFrameBrushV2Adapter.sessionStats, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2Adapter.finishStaleSession, 'function');
   assert.equal(coverage.value, 'ribbon');
   assert.equal(radius.value, 'guarded');
   assert.equal(contact.value, 'strict');
@@ -120,7 +123,7 @@ try {
   assert.equal(typeof dom.window.InkFrameBrushV2.createContactBoundaryGuard, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Environment, 'function');
 
-  console.log('✅ generated Brush V2 contact-boundary APK index booted');
+  console.log('✅ generated Brush V2 session-continuity APK index booted');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
