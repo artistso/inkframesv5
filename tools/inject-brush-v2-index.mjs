@@ -27,6 +27,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/filters.js"></script>
 <script src="brush-engine-v2/path.js"></script>
 <script src="brush-engine-v2/arc-sampler.js"></script>
+<script src="brush-engine-v2/radius.js"></script>
 <script src="brush-engine-v2/rasterizer.js"></script>
 <script src="brush-engine-v2/trace.js"></script>
 <script src="brush-engine-v2/engine.js"></script>
@@ -120,6 +121,7 @@ for (const marker of [
   'InkFrameBrushV2Adapter.begin',
   'InkFrameBrushV2Adapter.move',
   'InkFrameBrushV2Adapter.end',
+  'brush-engine-v2/radius.js',
   'brush-engine-v2/coverage-ui.js',
 ]) {
   if (!html.includes(marker)) throw new Error(`Generated index failed verification: ${marker}`);
