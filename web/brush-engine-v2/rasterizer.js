@@ -4,11 +4,16 @@
 (function(root){
   const ns = root.InkFrameBrushV2 || (root.InkFrameBrushV2 = {});
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const coverageState = new WeakMap();
 
   const DEFAULT_PROFILES = Object.freeze({
-    ink: Object.freeze({ size: 14, minSize: 0.08, opacity: 1, spacing: 0.055, hardness: 0.92, composite: 'source-over' }),
-    eraser: Object.freeze({ size: 40, minSize: 1, opacity: 1, spacing: 0.12, hardness: 0.82, composite: 'destination-out' }),
+    ink: Object.freeze({ size: 14, minSize: 0.08, opacity: 1, spacing: 0.055, hardness: 0.92, composite: 'source-over', coverage: 'dabs' }),
+    eraser: Object.freeze({ size: 40, minSize: 1, opacity: 1, spacing: 0.12, hardness: 0.82, composite: 'destination-out', coverage: 'dabs' }),
   });
+
+  function normalizeCoverage(value) {
+    return value === 'ribbon' ? 'ribbon' : 'dabs';
+  }
 
   function shapePressure(pressure, response) {
     const p = clamp(Number(pressure) || 0, 0, 1);
@@ -31,12 +36,14 @@
     out.hardness = clamp(Number(out.hardness), 0, 1);
     out.response = clamp(Number(out.response) || 0, -1, 1);
     out.composite = brushId === 'eraser' ? 'destination-out' : String(out.composite || 'source-over');
+    out.coverage = normalizeCoverage(out.coverage);
     return Object.freeze(out);
   }
 
-  function dabFromSample(sample, brushId, profile) {
+  function dabFromSample(sample, brushId, profile, metadata) {
     const p = shapePressure(sample.pressure, profile.response);
     const diameter = profile.size * (profile.minSize + (1 - profile.minSize) * p);
+    const meta = metadata || {};
     return Object.freeze({
       kind: 'round-dab',
       brushId,
@@ -46,15 +53,19 @@
       opacity: profile.opacity,
       hardness: profile.hardness,
       composite: profile.composite,
+      coverage: normalizeCoverage(profile.coverage),
       pressure: sample.pressure,
       time: sample.time,
       tiltX: sample.tiltX,
       tiltY: sample.tiltY,
       azimuth: sample.azimuth,
+      strokeId: Number(meta.strokeId) || 0,
+      strokeIndex: Math.max(0, Number(meta.strokeIndex) || 0),
+      strokeStart: !!meta.strokeStart,
     });
   }
 
-  function paintRoundDab(context, dab, color) {
+  function paintIsolatedRoundDab(context, dab, color) {
     if (!context || !dab) return false;
     context.save();
     context.globalCompositeOperation = dab.composite;
@@ -78,6 +89,118 @@
     return true;
   }
 
-  Object.assign(ns, { DEFAULT_PROFILES, shapePressure, resolveProfile, dabFromSample, paintRoundDab });
-  if (typeof module !== 'undefined' && module.exports) module.exports = { DEFAULT_PROFILES, shapePressure, resolveProfile, dabFromSample, paintRoundDab };
+  function ribbonGeometry(from, to) {
+    const radius = Math.max(0.05, (Math.max(0.05, from.radius) + Math.max(0.05, to.radius)) * 0.5);
+    const hardness = clamp((Number(from.hardness) + Number(to.hardness)) * 0.5, 0, 1);
+    const opacity = clamp((Number(from.opacity) + Number(to.opacity)) * 0.5, 0, 1);
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    return Object.freeze({
+      dx,
+      dy,
+      distance: Math.hypot(dx, dy),
+      radius,
+      coreRadius: Math.max(0.05, radius * Math.max(0.18, hardness)),
+      hardness,
+      opacity,
+      edgeAlpha: opacity * clamp((1 - hardness) * 0.55, 0, 0.35),
+    });
+  }
+
+  function paintRoundLine(context, from, to, width, alpha, composite, color) {
+    if (!(width > 0) || !(alpha > 0)) return;
+    context.save();
+    context.globalCompositeOperation = composite;
+    context.globalAlpha = clamp(alpha, 0, 1);
+    context.strokeStyle = composite === 'destination-out' ? '#000' : color;
+    context.lineWidth = Math.max(0.1, width);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
+    context.restore();
+  }
+
+  function resetRoundCoverage(context) {
+    if (context) coverageState.delete(context);
+  }
+
+  function paintRoundRibbonDab(context, dab, color) {
+    if (!context || !dab) return false;
+    let state = coverageState.get(context);
+    if (!state) {
+      state = { previous: null };
+      coverageState.set(context, state);
+    }
+
+    const previous = state.previous;
+    const reset = dab.strokeStart
+      || !previous
+      || previous.brushId !== dab.brushId
+      || previous.composite !== dab.composite
+      || dab.strokeIndex === 0;
+
+    if (reset) {
+      paintIsolatedRoundDab(context, dab, color);
+      state.previous = dab;
+      return true;
+    }
+
+    const geometry = ribbonGeometry(previous, dab);
+    if (geometry.distance <= 1e-7) {
+      paintIsolatedRoundDab(context, dab, color);
+      state.previous = dab;
+      return true;
+    }
+
+    if (geometry.edgeAlpha > 0.001) {
+      paintRoundLine(
+        context,
+        previous,
+        dab,
+        geometry.radius * 2,
+        geometry.edgeAlpha,
+        dab.composite,
+        color
+      );
+    }
+    paintRoundLine(
+      context,
+      previous,
+      dab,
+      geometry.coreRadius * 2,
+      geometry.opacity,
+      dab.composite,
+      color
+    );
+    paintIsolatedRoundDab(context, dab, color);
+    state.previous = dab;
+    return true;
+  }
+
+  function paintRoundDab(context, dab, color) {
+    if (!context || !dab) return false;
+    if (normalizeCoverage(dab.coverage) === 'ribbon') {
+      return paintRoundRibbonDab(context, dab, color);
+    }
+    if (dab.strokeStart || dab.strokeIndex === 0) resetRoundCoverage(context);
+    return paintIsolatedRoundDab(context, dab, color);
+  }
+
+  const api = {
+    DEFAULT_PROFILES,
+    normalizeCoverage,
+    shapePressure,
+    resolveProfile,
+    dabFromSample,
+    ribbonGeometry,
+    resetRoundCoverage,
+    paintIsolatedRoundDab,
+    paintRoundRibbonDab,
+    paintRoundDab,
+  };
+  Object.assign(ns, api);
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
