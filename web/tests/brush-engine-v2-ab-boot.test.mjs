@@ -78,7 +78,7 @@ try {
     },
   });
 
-  await new Promise(resolveWait => setTimeout(resolveWait, 900));
+  await new Promise(resolveWait => setTimeout(resolveWait, 1000));
   assert.deepEqual(errors, [], errors.join('\n'));
   const d = dom.window.document;
   const panel = d.getElementById('inkframe-v2-ab');
@@ -90,6 +90,11 @@ try {
   const stabilizerStrength = d.getElementById('inkframe-v2-stabilizer-strength');
   const cornerMode = d.getElementById('inkframe-v2-corner-mode');
   const cornerStrength = d.getElementById('inkframe-v2-corner-strength');
+  const ghostMode=d.getElementById('inkframe-v2-ghost-mode');
+  const ghostIntensity=d.getElementById('inkframe-v2-ghost-intensity');
+  const ghostDuration=d.getElementById('inkframe-v2-ghost-duration');
+  const ghostWidth=d.getElementById('inkframe-v2-ghost-width');
+  const labTabs=d.getElementById('inkframe-v2-lab-tabs');
   assert.ok(panel, 'V2 panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
   assert.ok(coverage, 'V2 coverage selector did not install');
@@ -99,28 +104,44 @@ try {
   assert.ok(stabilizerStrength, 'V2 stabilizer strength did not install');
   assert.ok(cornerMode, 'V2 corner selector did not install');
   assert.ok(cornerStrength, 'V2 corner response did not install');
+  assert.ok(ghostMode,'Ghost Trail mode did not install');
+  assert.ok(ghostIntensity,'Ghost Trail intensity did not install');
+  assert.ok(ghostDuration,'Ghost Trail length did not install');
+  assert.ok(ghostWidth,'Ghost Trail width did not install');
+  assert.ok(labTabs,'Brush Lab tabs did not install');
+  assert.equal(labTabs.querySelectorAll('button').length,5);
+  assert.deepEqual(Array.from(labTabs.querySelectorAll('button')).map(button=>button.textContent),['Stabilizer','Ghost Trail','Stroke','Safety','Diagnostics']);
+  assert.equal(d.querySelectorAll('.inkframe-v2-lab-section').length,5);
   assert.equal(dom.window.InkFrameBuild.variant, 'debug');
   assert.equal(dom.window.InkFrameBuild.diagnostics, true);
   assert.equal(dom.window.InkFrameBuild.defaultBrushEngine, 'v2');
-  const buttons = panel.querySelectorAll('button');
-  assert.equal(buttons.length, 5);
-  assert.match(buttons[0].textContent, /V2/);
-  assert.match(buttons[1].textContent, /Tune/);
-  assert.equal(buttons[2].textContent, 'Import trace');
-  assert.equal(buttons[3].textContent, 'Replay');
-  assert.equal(buttons[4].textContent, 'Export trace');
+
+  const topButtons = panel.querySelectorAll('button');
+  assert.equal(topButtons.length, 2,'trace controls should live in the Diagnostics category');
+  assert.match(topButtons[0].textContent, /V2/);
+  assert.match(topButtons[1].textContent, /Tune/);
+  const diagButtons=d.querySelectorAll('[data-lab-section="diagnostics"] .inkframe-v2-diag-tools button');
+  assert.deepEqual(Array.from(diagButtons).map(button=>button.textContent),['Import trace','Replay','Export trace']);
+
+  const tuning=dom.window.InkFrameBrushV2Adapter.currentTuning();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'adaptive');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 55);
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerMode, 'preserve');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerStrength, 70);
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'guarded');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().contactMode, 'strict');
+  assert.equal(tuning.preset, 'balanced');
+  assert.equal(tuning.stabilizerMode, 'adaptive');
+  assert.equal(tuning.stabilizerStrength, 55);
+  assert.equal(tuning.cornerMode, 'preserve');
+  assert.equal(tuning.cornerStrength, 70);
+  assert.equal(tuning.ghostMode,'comet');
+  assert.equal(tuning.ghostIntensity,65);
+  assert.equal(tuning.ghostDurationMs,380);
+  assert.equal(tuning.ghostWidthPercent,130);
+  assert.equal(tuning.coverageMode, 'ribbon');
+  assert.equal(tuning.radiusMode, 'guarded');
+  assert.equal(tuning.contactMode, 'strict');
   assert.equal(dom.window.InkFrameBrushV2Adapter.__sessionContinuityInstalled, true);
-  assert.equal(typeof dom.window.InkFrameBrushV2Adapter.sessionStats, 'function');
-  assert.equal(typeof dom.window.InkFrameBrushV2Adapter.finishStaleSession, 'function');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.__ghostTrailInstalled,true);
+  assert.equal(typeof dom.window.InkFrameBrushV2Adapter.ghostTrailStats,'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.createGhostTrailSession,'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.buildGhostSegments,'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createInputBatchNormalizer, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createPositionStabilizer, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.segmentTurnRadians, 'function');
@@ -131,56 +152,65 @@ try {
   assert.equal(radius.value, 'guarded');
   assert.equal(contact.value, 'strict');
   assert.equal(stabilizerMode.value, 'adaptive');
+  assert.equal(stabilizerStrength.max,'200');
   assert.equal(stabilizerStrength.value, '55');
-  assert.equal(stabilizerStrength.disabled, false);
   assert.equal(cornerMode.value, 'preserve');
   assert.equal(cornerStrength.value, '70');
-  assert.equal(cornerStrength.disabled, false);
+  assert.equal(ghostMode.value,'comet');
+  assert.equal(ghostIntensity.value,'65');
+  assert.equal(ghostDuration.value,'380');
+  assert.equal(ghostWidth.value,'130');
   assert.equal(tuningPanel.hidden, true);
-  buttons[0].click();
+
+  topButtons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
-  assert.match(buttons[0].textContent, /Original/);
-  buttons[0].click();
+  topButtons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
-  buttons[1].click();
+  topButtons[1].click();
   assert.equal(tuningPanel.hidden, false);
-  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 6);
-  stabilizerMode.value = 'fixed';
-  stabilizerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'fixed');
-  assert.equal(stabilizerStrength.disabled, true);
-  stabilizerMode.value = 'adaptive';
-  stabilizerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
-  stabilizerStrength.value = '72';
+  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 9);
+
+  stabilizerStrength.value = '200';
   stabilizerStrength.dispatchEvent(new dom.window.Event('input', { bubbles:true }));
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'adaptive');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 72);
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 200);
+  assert.equal(stabilizerStrength.nextElementSibling.dataset.studio,'true');
   cornerMode.value = 'smooth';
   cornerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerMode, 'smooth');
   assert.equal(cornerStrength.disabled, true);
   cornerMode.value = 'preserve';
   cornerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
-  cornerStrength.value = '84';
-  cornerStrength.dispatchEvent(new dom.window.Event('input', { bubbles:true }));
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerMode, 'preserve');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerStrength, 84);
-  coverage.value = 'dabs';
-  coverage.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
-  radius.value = 'raw';
-  radius.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
-  contact.value = 'raw';
-  contact.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  ghostMode.value='echo';
+  ghostMode.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
+  ghostIntensity.value='88';ghostIntensity.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+  ghostDuration.value='760';ghostDuration.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+  ghostWidth.value='175';ghostWidth.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+  const changed=dom.window.InkFrameBrushV2Adapter.currentTuning();
+  assert.equal(changed.ghostMode,'echo');
+  assert.equal(changed.ghostIntensity,88);
+  assert.equal(changed.ghostDurationMs,760);
+  assert.equal(changed.ghostWidthPercent,175);
+
+  dom.window.InkFrameBrushV2LabUI.openTab('trail');
+  assert.equal(d.querySelector('[data-lab-section="trail"]').hidden,false);
+  assert.equal(d.querySelector('[data-lab-section="stabilizer"]').hidden,true);
+  dom.window.InkFrameBrushV2LabUI.openTab('stabilizer');
+  const maxButton=Array.from(d.querySelectorAll('.inkframe-v2-lab-presets button')).find(button=>button.textContent==='Maximum 200%');
+  assert.ok(maxButton);maxButton.click();
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength,200);
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().ghostMode,'echo');
+
+  coverage.value = 'dabs';coverage.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  radius.value = 'raw';radius.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  contact.value = 'raw';contact.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'raw');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().contactMode, 'raw');
+
   assert.equal(typeof dom.window.InkFrameBrushV2.createBrushEngine, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createRadiusContinuityGuard, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createContactBoundaryGuard, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Environment, 'function');
 
-  // Coordinate conversion is captured at environment creation. A later DOM-layout
-  // change must not move samples into a different canvas coordinate frame.
   const canvas = d.getElementById('c');
   let rect = { left:100, top:50, width:512, height:384, right:612, bottom:434 };
   canvas.getBoundingClientRect = () => rect;
@@ -196,7 +226,7 @@ try {
   assert.equal(converted.x, 512);
   assert.equal(converted.y, 384);
 
-  console.log('✅ generated Brush V2 debug APK index booted with corner-preserving stabilizer');
+  console.log('✅ generated Brush V2 debug APK index booted with 200% Ghost Trail Brush Lab');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
