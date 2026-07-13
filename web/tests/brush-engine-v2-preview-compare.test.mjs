@@ -76,16 +76,21 @@ function load(stubs={}){
 {
   const appended=[];
   const document={
-    querySelector:selector=>appended.find(node=>selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||null,
-    createElement:tag=>({tag,dataset:{},src:'',async:true}),
+    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach))||null,
+    createElement:tag=>({tag,dataset:{},src:'',async:true,listeners:{},addEventListener(type,handler){this.listeners[type]=handler;}}),
     head:{appendChild:node=>appended.push(node)},
   };
   const sandbox=load({document,setTimeout:callback=>{callback();return 1;}});
   assert.equal(appended.length,1);
   assert.equal(appended[0].src,'brush-engine-v2/preview-replay.js');
   assert.equal(appended[0].async,false);
+  appended[0].listeners.load();
+  assert.equal(appended.length,2);
+  assert.equal(appended[1].src,'brush-engine-v2/brush-coach.js');
+  assert.equal(appended[1].async,false);
   assert.equal(sandbox.InkFrameBrushV2.loadReferenceReplay(),true);
-  assert.equal(appended.length,1,'loader must not append duplicate replay scripts');
+  assert.equal(sandbox.InkFrameBrushV2.loadBrushCoach(),true);
+  assert.equal(appended.length,2,'loader chain must not append duplicate scripts');
 }
 
 console.log('✅ Brush Engine V2 deterministic A/B preview comparison tests passed');
