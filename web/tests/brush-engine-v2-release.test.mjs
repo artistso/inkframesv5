@@ -92,6 +92,3 @@ try {
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
-
-await import('./canvas-shape.test.mjs');
-await import('./canvas-shape-autosave.test.mjs');
