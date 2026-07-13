@@ -57,6 +57,7 @@ jobs:
           node --check web/brush-engine-v2/preset-ui.js
           node --check web/brush-engine-v2/preview-compare.js
           node --check web/brush-engine-v2/preview-pad.js
+          node --check web/brush-engine-v2/preview-replay.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
       - name: Brush V2 core geometry and replay
@@ -75,6 +76,8 @@ jobs:
         run: node web/tests/brush-engine-v2-preview-pad.test.mjs
       - name: Brush V2 deterministic preview comparison
         run: node web/tests/brush-engine-v2-preview-compare.test.mjs
+      - name: Brush V2 reference-stroke replay model
+        run: node web/tests/brush-engine-v2-preview-replay.test.mjs
       - name: Brush V2 generated preview isolation
         env:
           NODE_PATH: /tmp/jsdom/node_modules
@@ -83,6 +86,10 @@ jobs:
         env:
           NODE_PATH: /tmp/jsdom/node_modules
         run: node web/tests/brush-engine-v2-preview-compare-boot.test.mjs
+      - name: Brush V2 generated reference replay isolation
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+        run: node web/tests/brush-engine-v2-preview-replay-boot.test.mjs
       - name: Brush V2 continuous ribbon coverage
         run: node web/tests/brush-engine-v2-coverage.test.mjs
       - name: Brush V2 radius continuity
@@ -232,6 +239,7 @@ jobs:
           jarsigner -verify -certs "$AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
           grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
           unzip -p "$APK" assets/index.html > "$RUNNER_TEMP/inkframe-release-index.html"
+          unzip -p "$APK" assets/brush-engine-v2/preview-compare.js > "$RUNNER_TEMP/preview-compare.js"
           grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
@@ -242,6 +250,8 @@ jobs:
           grep -F 'brush-engine-v2/preset-ui.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/preview-compare.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/preview-pad.js' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F "script.src='brush-engine-v2/preview-replay.js'" "$RUNNER_TEMP/preview-compare.js"
+          unzip -l "$APK" | grep -F 'assets/brush-engine-v2/preview-replay.js'
           if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
             echo "Production index unexpectedly loads native diagnostics" >&2
             exit 1
