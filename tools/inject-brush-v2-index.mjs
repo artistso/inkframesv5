@@ -19,12 +19,7 @@ const variant = option('variant', 'debug') === 'release' ? 'release' : 'debug';
 const diagnostics = option('diagnostics', variant === 'debug' ? 'true' : 'false') === 'true';
 const defaultBrushEngine = option('default-engine', 'v2') === 'original' ? 'original' : 'v2';
 const traceTools = diagnostics;
-const buildConfig = Object.freeze({
-  variant,
-  diagnostics,
-  traceTools,
-  defaultBrushEngine,
-});
+const buildConfig = Object.freeze({ variant, diagnostics, traceTools, defaultBrushEngine });
 
 let html = readFileSync(input, 'utf8');
 
@@ -38,9 +33,7 @@ function replaceOnce(source, needle, replacement, label) {
 }
 
 const scriptsNeedle = '<script src="brush-math.js"></script>\n<script src="flood-fill.js"></script>';
-const nativeScript = diagnostics
-  ? '<script src="brush-engine-v2/native.js"></script>\n'
-  : '';
+const nativeScript = diagnostics ? '<script src="brush-engine-v2/native.js"></script>\n' : '';
 const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->
 <script>window.InkFrameBuild=Object.freeze(${JSON.stringify(buildConfig)});</script>
@@ -48,6 +41,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/batch.js"></script>
 <script src="brush-engine-v2/validator.js"></script>
 <script src="brush-engine-v2/contact.js"></script>
+<script src="brush-engine-v2/stabilizer.js"></script>
 <script src="brush-engine-v2/filters.js"></script>
 <script src="brush-engine-v2/path.js"></script>
 <script src="brush-engine-v2/arc-sampler.js"></script>
@@ -61,6 +55,7 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/session.js"></script>
 <script src="brush-engine-v2/input.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
+<script src="brush-engine-v2/stabilizer-ui.js"></script>
 <script src="flood-fill.js"></script>`;
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
 
@@ -86,14 +81,7 @@ const helper = `  // Android runtime bridge for Brush Engine V2. This is injecte
       brushId:brush.id,
       color,
       coordinateTransform:inputTransform,
-      profile:{
-        size,
-        minSize:_bpMin,
-        opacity,
-        spacing:_bpS,
-        hardness:_bpH,
-        response:_bpR,
-      },
+      profile:{ size, minSize:_bpMin, opacity, spacing:_bpS, hardness:_bpH, response:_bpR },
       toSample(ev){
         const c=toC(ev);
         const clientX=Number(ev.clientX), clientY=Number(ev.clientY);
@@ -119,10 +107,7 @@ const helper = `  // Android runtime bridge for Brush Engine V2. This is injecte
         if(s) pushU(s);
         render();
       },
-      abort(s){
-        if(s) restoreSnap(s);
-        render();
-      }
+      abort(s){ if(s) restoreSnap(s); render(); }
     };
   }
   window.InkFrameBrushV2Environment=()=>makeBrushV2Env();
@@ -146,10 +131,7 @@ const moveHook = `    if(window.InkFrameBrushV2Adapter){
       const handled=window.InkFrameBrushV2InputBridge
         ? window.InkFrameBrushV2InputBridge.move(e)
         : window.InkFrameBrushV2Adapter.move(e);
-      if(handled){
-        updateLens(e);
-        return;
-      }
+      if(handled){ updateLens(e); return; }
     }
 ${moveNeedle}`;
 html = replaceOnce(html, moveNeedle, moveHook, 'pointermove handoff');
@@ -160,10 +142,7 @@ const upHook = `  const up=e=>{
       const handled=window.InkFrameBrushV2InputBridge
         ? window.InkFrameBrushV2InputBridge.end(e)
         : window.InkFrameBrushV2Adapter.end(e);
-      if(handled){
-        endBarrelEraser();
-        return;
-      }
+      if(handled){ endBarrelEraser(); return; }
     }
     // Compare-drag release: just clear the drag lock so future taps work.`;
 html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
@@ -185,11 +164,13 @@ const requiredMarkers = [
   'InkFrameBrushV2InputBridge.end',
   'brush-engine-v2/batch.js',
   'brush-engine-v2/contact.js',
+  'brush-engine-v2/stabilizer.js',
   'brush-engine-v2/radius.js',
   'brush-engine-v2/runtime.js',
   'brush-engine-v2/session.js',
   'brush-engine-v2/input.js',
   'brush-engine-v2/coverage-ui.js',
+  'brush-engine-v2/stabilizer-ui.js',
 ];
 if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js');
 for (const marker of requiredMarkers) {
