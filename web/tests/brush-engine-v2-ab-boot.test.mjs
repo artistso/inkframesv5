@@ -88,6 +88,8 @@ try {
   const contact = d.getElementById('inkframe-v2-contact-mode');
   const stabilizerMode = d.getElementById('inkframe-v2-stabilizer-mode');
   const stabilizerStrength = d.getElementById('inkframe-v2-stabilizer-strength');
+  const cornerMode = d.getElementById('inkframe-v2-corner-mode');
+  const cornerStrength = d.getElementById('inkframe-v2-corner-strength');
   assert.ok(panel, 'V2 panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
   assert.ok(coverage, 'V2 coverage selector did not install');
@@ -95,6 +97,8 @@ try {
   assert.ok(contact, 'V2 contact selector did not install');
   assert.ok(stabilizerMode, 'V2 stabilizer selector did not install');
   assert.ok(stabilizerStrength, 'V2 stabilizer strength did not install');
+  assert.ok(cornerMode, 'V2 corner selector did not install');
+  assert.ok(cornerStrength, 'V2 corner response did not install');
   assert.equal(dom.window.InkFrameBuild.variant, 'debug');
   assert.equal(dom.window.InkFrameBuild.diagnostics, true);
   assert.equal(dom.window.InkFrameBuild.defaultBrushEngine, 'v2');
@@ -109,6 +113,8 @@ try {
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'adaptive');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 55);
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerMode, 'preserve');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerStrength, 70);
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().contactMode, 'strict');
@@ -117,6 +123,7 @@ try {
   assert.equal(typeof dom.window.InkFrameBrushV2Adapter.finishStaleSession, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createInputBatchNormalizer, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createPositionStabilizer, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.segmentTurnRadians, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.begin, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.move, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.end, 'function');
@@ -126,6 +133,9 @@ try {
   assert.equal(stabilizerMode.value, 'adaptive');
   assert.equal(stabilizerStrength.value, '55');
   assert.equal(stabilizerStrength.disabled, false);
+  assert.equal(cornerMode.value, 'preserve');
+  assert.equal(cornerStrength.value, '70');
+  assert.equal(cornerStrength.disabled, false);
   assert.equal(tuningPanel.hidden, true);
   buttons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
@@ -134,7 +144,7 @@ try {
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
   buttons[1].click();
   assert.equal(tuningPanel.hidden, false);
-  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 5);
+  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 6);
   stabilizerMode.value = 'fixed';
   stabilizerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'fixed');
@@ -145,6 +155,16 @@ try {
   stabilizerStrength.dispatchEvent(new dom.window.Event('input', { bubbles:true }));
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'adaptive');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 72);
+  cornerMode.value = 'smooth';
+  cornerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerMode, 'smooth');
+  assert.equal(cornerStrength.disabled, true);
+  cornerMode.value = 'preserve';
+  cornerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  cornerStrength.value = '84';
+  cornerStrength.dispatchEvent(new dom.window.Event('input', { bubbles:true }));
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerMode, 'preserve');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().cornerStrength, 84);
   coverage.value = 'dabs';
   coverage.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
   radius.value = 'raw';
@@ -176,7 +196,7 @@ try {
   assert.equal(converted.x, 512);
   assert.equal(converted.y, 384);
 
-  console.log('✅ generated Brush V2 debug APK index booted with adaptive stabilizer');
+  console.log('✅ generated Brush V2 debug APK index booted with corner-preserving stabilizer');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
