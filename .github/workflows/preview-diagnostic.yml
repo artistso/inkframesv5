@@ -1,0 +1,41 @@
+name: Preview Compatibility Diagnostic
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install jsdom
+        run: npm install --no-save --prefix /tmp/jsdom jsdom
+      - name: Capture generated preview test
+        id: capture
+        shell: bash
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+        run: |
+          set +e
+          node web/tests/brush-engine-v2-preview-boot.test.mjs > preview-diagnostic.log 2>&1
+          STATUS=$?
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          cat preview-diagnostic.log
+          exit 0
+      - name: Upload diagnostic output
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-diagnostic-log
+          path: preview-diagnostic.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Report captured failure
+        if: steps.capture.outputs.status != '0'
+        run: echo "Preview compatibility test failed; inspect preview-diagnostic-log artifact."
