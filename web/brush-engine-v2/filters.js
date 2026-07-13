@@ -76,6 +76,7 @@
         mode:'fixed',
         unavailable:true,
         timeConstantMs:config.positionTimeConstantMs,
+        cornerMode:'smooth',
       }),
     };
   }
@@ -89,6 +90,12 @@
       stabilizerSpeedStartPxPerMs: 0.12,
       stabilizerSpeedEndPxPerMs: 4,
       speedSmoothingTimeConstantMs: 24,
+      cornerMode: 'smooth',
+      cornerStrength: 0,
+      cornerStartRadians: Math.PI / 10,
+      cornerEndRadians: Math.PI * 0.72,
+      cornerTimeConstantMs: 1.75,
+      cornerMinimumSegmentPx: 0.75,
       pressureTimeConstantMs: 12,
       tiltTimeConstantMs: 18,
       angleTimeConstantMs: 18,
@@ -103,6 +110,12 @@
           speedStartPxPerMs: config.stabilizerSpeedStartPxPerMs,
           speedEndPxPerMs: config.stabilizerSpeedEndPxPerMs,
           speedSmoothingTimeConstantMs: config.speedSmoothingTimeConstantMs,
+          cornerMode: config.cornerMode,
+          cornerStrength: config.cornerStrength,
+          cornerStartRadians: config.cornerStartRadians,
+          cornerEndRadians: config.cornerEndRadians,
+          cornerTimeConstantMs: config.cornerTimeConstantMs,
+          cornerMinimumSegmentPx: config.cornerMinimumSegmentPx,
         })
       : createFallbackPositionFilter(config);
     const pressure = createScalarFilter(config.pressureTimeConstantMs);
