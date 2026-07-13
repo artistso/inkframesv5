@@ -227,6 +227,7 @@
         brushId,
         lastBreakReason,
         validator: validator.snapshot(),
+        filter: filter.snapshot ? filter.snapshot() : null,
         radius: radiusGuard.stats(),
         contact: contactGuard.snapshot(),
       });
