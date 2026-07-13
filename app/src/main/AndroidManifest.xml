@@ -30,10 +30,19 @@
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode|density|smallestScreenSize"
-            android:exported="true"
+            android:exported="false"
             android:hardwareAccelerated="true"
             android:screenOrientation="userLandscape"
-            android:theme="@style/Theme.InkFrame">
+            android:theme="@style/Theme.InkFrame" />
+
+        <activity
+            android:name=".SplashActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:hardwareAccelerated="true"
+            android:noHistory="true"
+            android:screenOrientation="userLandscape"
+            android:theme="@style/Theme.InkFrame.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
