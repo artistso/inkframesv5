@@ -7,9 +7,10 @@ import vm from 'node:vm';
 const here=dirname(fileURLToPath(import.meta.url));
 const source=readFileSync(resolve(here,'..','brush-engine-v2','brush-coach.js'),'utf8');
 const sessionSource=readFileSync(resolve(here,'..','brush-engine-v2','coach-session.js'),'utf8');
+const reportSource=readFileSync(resolve(here,'..','brush-engine-v2','calibration-report.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -56,7 +57,8 @@ for(const item of cases){
 const invalid=ns.analyzeReferenceStroke(reference([{x:0,y:0,timeStamp:0},{x:1,y:1,timeStamp:1}]));
 assert.equal(invalid.valid,false);assert.equal(ns.recommendationFromAnalysis(invalid,{}).valid,false);
 
-const session=ns.createCoachSession({current:()=>({stabilizerStrength:55,cornerStrength:70,ghostMode:'comet'})});
+const baseline={stabilizerStrength:55,cornerStrength:70,ghostMode:'comet',ghostIntensity:65,ghostLengthMs:340,coverageMode:'ribbon',radiusMode:'guarded',contactMode:'strict'};
+const session=ns.createCoachSession({current:()=>baseline});
 assert.equal(session.capture(cases[0].ref),true);
 assert.equal(session.capture(cases[2].ref),true);
 assert.equal(session.capture(cases[1].ref),true);
@@ -66,5 +68,15 @@ assert.ok(combined.tuning.stabilizerStrength>=25&&combined.tuning.stabilizerStre
 assert.ok(combined.tuning.cornerStrength>=0&&combined.tuning.cornerStrength<=100);
 assert.equal(combined.tuning.coverageMode,'ribbon');assert.equal(combined.tuning.radiusMode,'guarded');assert.equal(combined.tuning.contactMode,'strict');
 assert.equal(JSON.stringify(session.suggestion()),JSON.stringify(session.suggestion()),'same session must remain deterministic');
+
+const quick=ns.recommendationFromAnalysis(ns.analyzeReferenceStroke(cases[0].ref),baseline);
+const report=ns.createCalibrationReport(baseline,quick,combined);
+assert.equal(report.ready,3);assert.equal(report.rows.length,8);assert.equal(report.profiles.current.valid,true);assert.equal(report.profiles.quick.valid,true);assert.equal(report.profiles.session.valid,true);
+assert.equal(report.rows.find(row=>row.key==='stabilizerStrength').current,'55%');
+const quickDiff=Array.from(ns.differenceRows(report.profiles.current,report.profiles.quick));
+assert.ok(quickDiff.some(row=>row.key==='stabilizerStrength'));assert.ok(quickDiff.every(row=>!('winner' in row)));
+assert.equal(JSON.stringify(ns.differenceRows(report.profiles.current,report.profiles.session)),JSON.stringify(ns.differenceRows(report.profiles.current,report.profiles.session)),'report differences must be deterministic');
+const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false});assert.equal(incomplete.ready,1);assert.equal(incomplete.profiles.quick.valid,false);assert.equal(incomplete.profiles.session.valid,false);
+
 session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach and four-stroke session are deterministic, bounded, and explainable');
+console.log('✅ Brush Coach, guided session, and calibration report are deterministic and bounded');
