@@ -35,7 +35,7 @@ try {
     assert.ok(html.includes(`<script src="brush-engine-v2/${script}"></script>`),`missing release script ${script}`);
     assert.ok(existsSync(resolve(root,`web/brush-engine-v2/${script}`)),`missing runtime file ${script}`);
   }
-  for(const asset of ['preview-replay.js','brush-coach.js','coach-session.js','calibration-report.js','profile-recovery.js','profile-recovery-observer.js','profile-identities.js','identity-mixer.js','brush-match.js']){
+  for(const asset of ['preview-replay.js','brush-coach.js','coach-session.js','calibration-report.js','profile-recovery.js','profile-recovery-observer.js','profile-identities.js','identity-mixer.js','brush-match.js','brush-signature.js']){
     assert.ok(existsSync(resolve(root,`web/brush-engine-v2/${asset}`)),`missing dynamic asset ${asset}`);
   }
   assert.ok(compareSource.includes("script.src='brush-engine-v2/preview-replay.js'"),'comparison runtime must load reference replay');
@@ -47,6 +47,7 @@ try {
   assert.ok(compareSource.includes("script.src='brush-engine-v2/profile-identities.js'"),'comparison runtime must load Creative Brush Identities');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/identity-mixer.js'"),'comparison runtime must load Identity Mixer');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/brush-match.js'"),'comparison runtime must load Brush Match');
+  assert.ok(compareSource.includes("script.src='brush-engine-v2/brush-signature.js'"),'comparison runtime must load Brush Signature');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadBrushCoach,0)"),'Brush Coach must be scheduled from the reference replay load event');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadCoachSession,0)"),'Coach Session must be scheduled from the Brush Coach load event');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadCalibrationReport,0)"),'Calibration Report must be scheduled from the Coach Session load event');
@@ -55,6 +56,7 @@ try {
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadProfileIdentities,0)"),'Creative Identities must be scheduled from the observer load event');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadIdentityMixer,0)"),'Identity Mixer must be scheduled from the identity load event');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadBrushMatch,0)"),'Brush Match must be scheduled from the mixer load event');
+  assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadBrushSignature,0)"),'Brush Signature must be scheduled from the Brush Match load event');
   assert.ok(compareSource.includes('script[data-inkframe-coach-session]'),'Coach Session loader must suppress duplicates');
   assert.ok(compareSource.includes('script[data-inkframe-calibration-report]'),'Calibration Report loader must suppress duplicates');
   assert.ok(compareSource.includes('script[data-inkframe-profile-recovery]'),'Profile Recovery loader must suppress duplicates');
@@ -62,6 +64,7 @@ try {
   assert.ok(compareSource.includes('script[data-inkframe-profile-identities]'),'Creative Identity loader must suppress duplicates');
   assert.ok(compareSource.includes('script[data-inkframe-identity-mixer]'),'Identity Mixer loader must suppress duplicates');
   assert.ok(compareSource.includes('script[data-inkframe-brush-match]'),'Brush Match loader must suppress duplicates');
+  assert.ok(compareSource.includes('script[data-inkframe-brush-signature]'),'Brush Signature loader must suppress duplicates');
   assert.equal(html.includes('<script src="brush-engine-v2/native.js"></script>'), false);
   assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
   assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
@@ -78,7 +81,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, identity, mixer, and Brush Match policy passed');
+  console.log('✅ generated Brush V2 production recovery, identity, mixer, Brush Match, and Brush Signature policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
