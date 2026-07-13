@@ -41,6 +41,8 @@ jobs:
           node --check web/brush-engine-v2/engine.js
           node --check web/brush-engine-v2/contact.js
           node --check web/brush-engine-v2/radius.js
+          node --check web/brush-engine-v2/ghost-trail.js
+          node --check web/brush-engine-v2/ghost-runtime.js
           node --check web/brush-engine-v2/tuning.js
           node --check web/brush-engine-v2/adapter.js
           node --check web/brush-engine-v2/session.js
@@ -49,6 +51,8 @@ jobs:
           node --check web/brush-engine-v2/native.js
           node --check web/brush-engine-v2/coverage-ui.js
           node --check web/brush-engine-v2/stabilizer-ui.js
+          node --check web/brush-engine-v2/ghost-ui.js
+          node --check web/brush-engine-v2/lab-ui.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
       - name: Brush V2 core geometry and replay
@@ -57,6 +61,8 @@ jobs:
         run: node web/tests/brush-engine-v2-stabilizer.test.mjs
       - name: Brush V2 corner preservation
         run: node web/tests/brush-engine-v2-corner.test.mjs
+      - name: Brush V2 Ghost Trail
+        run: node web/tests/brush-engine-v2-ghost.test.mjs
       - name: Brush V2 continuous ribbon coverage
         run: node web/tests/brush-engine-v2-coverage.test.mjs
       - name: Brush V2 radius continuity
@@ -209,6 +215,9 @@ jobs:
           grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'brush-engine-v2/ghost-trail.js' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'brush-engine-v2/ghost-runtime.js' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'brush-engine-v2/lab-ui.js' "$RUNNER_TEMP/inkframe-release-index.html"
           if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
             echo "Production index unexpectedly loads native diagnostics" >&2
             exit 1
