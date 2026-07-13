@@ -136,6 +136,7 @@ function createAutosave(env) {
       projects: await Promise.all(projects.map(async P => ({
         name: P.name || 'Canvas', w: P.w, h: P.h, cur: P.cur || 0, fps: P.fps || 12,
         paper: P.paper || '#fff0f3',
+        canvasShape: P.canvasShape === 'circle' ? 'circle' : 'square',
         holds: (P.holds || P.frames.map(() => 1)).slice(),
         frames: await Promise.all(P.frames.map(async fr => {
           const F = env.upgradeFrame(fr, P.w, P.h);
@@ -189,6 +190,7 @@ function createAutosave(env) {
         undo: [], redo: [],
         w, h, fps: P.fps || 12, name: P.name || 'Canvas',
         paper: P.paper || '#fff0f3',
+        canvasShape: P.canvasShape === 'circle' ? 'circle' : 'square',
       });
     }
     env.replaceProjects(restored);
