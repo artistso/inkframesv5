@@ -87,7 +87,18 @@
     const title=head&&head.querySelector('strong');
     if(title)title.textContent='Brush Lab';
     const tuneButton=Array.from(dock.querySelectorAll('button')).find(button=>String(button.textContent||'').startsWith('Tune'));
-    if(tuneButton){tuneButton.textContent='Brush Lab';tuneButton.setAttribute('aria-label','Open Brush Lab');}
+    if(tuneButton){
+      const enforceBrushLabLabel=()=>{
+        if(tuneButton.textContent!=='Brush Lab')tuneButton.textContent='Brush Lab';
+        if(tuneButton.getAttribute('aria-label')!=='Open Brush Lab')tuneButton.setAttribute('aria-label','Open Brush Lab');
+      };
+      enforceBrushLabLabel();
+      if(typeof root.MutationObserver==='function'){
+        const observer=new root.MutationObserver(enforceBrushLabLabel);
+        observer.observe(tuneButton,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['aria-label']});
+      }
+      root.setTimeout(enforceBrushLabLabel,0);
+    }
     const close=root.document.createElement('button');
     close.id='inkframe-v2-lab-close';close.type='button';close.textContent='×';close.title='Close Brush Lab';
     close.addEventListener('click',()=>{lab.hidden=true;});
@@ -133,7 +144,7 @@
       const destination=ADVANCED_LABELS.has(text)?advancedBodies.get(group).body:primaryBodies.get(group);
       destination.appendChild(row);
     }
-    for(const [key,value] of advancedBodies){if(!value.body.children.length)value.details.remove();}
+    for(const [,value] of advancedBodies){if(!value.body.children.length)value.details.remove();}
 
     const diagnostics=sections.get('diagnostics');
     if(diagnostics){
