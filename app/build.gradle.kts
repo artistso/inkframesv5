@@ -137,6 +137,9 @@ fun registerWebAssetPipeline(
                 "vite.config.js",
                 "node_modules/**", "dist/**",
             )
+            if (!diagnostics) {
+                exclude("brush-engine-v2/native.js")
+            }
         }
         into(outputDir)
     }
