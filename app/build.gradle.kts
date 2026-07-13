@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -12,11 +14,11 @@ plugins {
 // so Gradle configuration stays fast and works before any app dependencies exist.
 val webMetadataFile = rootProject.file("web/metadata.json")
 fun webMetadataString(key: String): String? =
-    Regex("\\\"$key\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+    Regex("\"$key\"\s*:\s*\"([^\"]+)\"")
         .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
         ?.groupValues?.getOrNull(1)
 fun webMetadataInt(key: String): Int? =
-    Regex("\\\"$key\\\"\\s*:\\s*(\\d+)")
+    Regex("\"$key\"\s*:\s*(\d+)")
         .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
         ?.groupValues?.getOrNull(1)?.toIntOrNull()
 
@@ -50,6 +52,65 @@ val hasReleaseSigning =
         !releaseStorePassword.isNullOrBlank() &&
         !releaseKeyAlias.isNullOrBlank() &&
         !releaseKeyPassword.isNullOrBlank()
+
+// --- Glass Horizon generated branding ------------------------------------
+// GitHub's text-oriented contents API stores the approved image masters as
+// compact base64 WebP files. This deterministic task reconstructs Android
+// resources in build/ and verifies the exact bytes before resource merging.
+val brandingSourceDir = rootProject.file("app/src/main/branding")
+val generatedBrandingResDir = layout.buildDirectory.dir("generated/brandingRes")
+val brandingAssets = listOf(
+    listOf(
+        "glass_horizon_icon.webp.b64",
+        "mipmap-xxxhdpi/ic_launcher.webp",
+        "265ec40a596d912a4372c75690e1d2911fa5513c916022119569f4986c789ad4",
+    ),
+    listOf(
+        "glass_horizon_splash.webp.b64",
+        "drawable-nodpi/inkframe_splash.webp",
+        "15fe71cfac141bcd1b8121c3aa257f11f3d527dc55027bef3f2ba35b58655327",
+    ),
+)
+
+val generateBrandingResources = tasks.register("generateBrandingResources") {
+    val sourceFiles = brandingAssets.map { asset -> brandingSourceDir.resolve(asset[0]) }
+    inputs.files(sourceFiles)
+    outputs.dir(generatedBrandingResDir)
+
+    doLast {
+        val outputRoot = generatedBrandingResDir.get().asFile
+        outputRoot.deleteRecursively()
+
+        brandingAssets.forEach { asset ->
+            val (sourceName, outputPath, expectedSha256) = asset
+            val source = brandingSourceDir.resolve(sourceName)
+            require(source.isFile) { "Missing branding source: ${source.absolutePath}" }
+
+            val encoded = source.readText(Charsets.US_ASCII)
+                .filterNot { character -> character.isWhitespace() }
+            val bytes = Base64.getDecoder().decode(encoded)
+            require(bytes.size >= 12) { "Branding asset is too small: $sourceName" }
+            require(String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF") {
+                "Branding asset is not a RIFF container: $sourceName"
+            }
+            require(String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP") {
+                "Branding asset is not WebP: $sourceName"
+            }
+
+            val actualSha256 = MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            require(actualSha256 == expectedSha256) {
+                "Branding digest mismatch for $sourceName: $actualSha256"
+            }
+
+            val target = outputRoot.resolve(outputPath)
+            target.parentFile.mkdirs()
+            target.writeBytes(bytes)
+            logger.lifecycle("Generated InkFrame branding resource: ${target.relativeTo(outputRoot)}")
+        }
+    }
+}
 
 android {
     namespace = "com.inkframe.studio"
@@ -99,6 +160,9 @@ android {
     // Debug and release receive independently generated web asset roots. This
     // prevents a release build from reusing a debug index containing telemetry.
     sourceSets {
+        getByName("main") {
+            res.srcDir(generatedBrandingResDir)
+        }
         getByName("debug") {
             assets.srcDir(layout.buildDirectory.dir("generated/webAssets/debug"))
         }
@@ -111,6 +175,14 @@ android {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
 }
+
+// Resource merging must never race the branding decoder.
+tasks.matching {
+    val name = it.name
+    name == "preBuild" ||
+        (name.startsWith("pre") && name.endsWith("Build")) ||
+        (name.startsWith("merge") && name.endsWith("Resources"))
+}.configureEach { dependsOn(generateBrandingResources) }
 
 fun registerWebAssetPipeline(
     variantName: String,
