@@ -3,6 +3,7 @@
 // Keeps web/metadata.json as the single source of truth for human version and
 // Android SDK/package metadata. No dependencies; safe to run before Gradle.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -35,3 +36,7 @@ if (errors.length) {
 }
 
 console.log(`✅ Version metadata smoke passed. version=${metadata.version} package=${metadata.packageName} targetSdk=${metadata.targetSdk}`);
+execFileSync(process.execPath, [resolve(root, 'tools/validate-play-release.mjs')], {
+  cwd: root,
+  stdio: 'inherit',
+});
