@@ -39,10 +39,10 @@
       const tuning=ns.normalizeTuning?ns.normalizeTuning(transient.tuning||transient):Object.assign({},transient.tuning||transient);
       return Object.freeze({id:'transient',kind:'transient',key:'transient',label:String(transient.label||'Previous A'),tuning});
     }
-    if(key.startsWith('studio:'))return studioChoice(key.slice(7));
+    if(key.startsWith('studio:'))return studioChoice(key.slice(7))||studioChoice('balanced');
     if(key.startsWith('saved:')){
       const wanted=key.slice(6);const state=normalizeLibrary(library);
-      return savedChoice(state.presets.find(item=>String(item.id)===wanted));
+      return savedChoice(state.presets.find(item=>String(item.id)===wanted))||studioChoice('balanced');
     }
     return studioChoice('balanced');
   }
@@ -57,7 +57,7 @@
     let ended=false;
 
     function feed(method,sample){
-      if(ended&&method!=='end')return Object.freeze({a:0,b:0});
+      if(ended)return Object.freeze({a:0,b:0});
       inputSamples++;
       const aCount=typeof a[method]==='function'?a[method](sample):0;
       const bCount=typeof b[method]==='function'?b[method](sample):0;
