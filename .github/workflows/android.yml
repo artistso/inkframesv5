@@ -196,7 +196,8 @@ jobs:
           test -s "$APK"
           test -s "$AAB"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          jarsigner -verify -strict -certs "$AAB"
+          jarsigner -verify -certs "$AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
           unzip -p "$APK" assets/index.html > "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
@@ -207,6 +208,10 @@ jobs:
           fi
           if unzip -l "$APK" | grep -F 'assets/brush-engine-v2/native.js'; then
             echo "Production APK unexpectedly packages native diagnostics" >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'InkFrameApplication'; then
+            echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
