@@ -47,6 +47,42 @@ for(const slot of ellipse.slots){
   assert.ok(Math.abs(unit-1)<1e-7,'rectangular project slot escaped its ellipse');
 }
 
+const holds=[1,3,2];
+const timing=api.timingMap(holds.length,i=>holds[i]);
+assert.equal(timing.count,3);
+assert.equal(timing.total,6);
+assert.deepEqual(Array.from(timing.holds),holds);
+assert.deepEqual(Array.from(timing.starts),[0,1,4]);
+assert.equal(Object.isFrozen(timing),true);
+assert.equal(Object.isFrozen(timing.holds),true);
+assert.ok(Math.abs(api.frameCenterFraction(0,timing)-1/12)<1e-12);
+assert.ok(Math.abs(api.frameCenterFraction(1,timing)-5/12)<1e-12);
+assert.ok(Math.abs(api.frameCenterFraction(2,timing)-5/6)<1e-12);
+const mid=api.timePosition(.5,timing);
+assert.equal(mid.index,1);
+assert.equal(mid.nextIndex,2);
+assert.ok(Math.abs(mid.local-2/3)<1e-12);
+assert.equal(api.timePosition(0,timing).index,0);
+assert.equal(api.timePosition(1,timing).index,2);
+assert.equal(api.timePosition(.2,timing).index,1,'three-tick hold must own a proportionally wider time interval');
+
+const playbackPlan=api.layout(3,metrics,'circle');
+const playback=api.playbackPoint(playbackPlan,.5,3,i=>holds[i]);
+assert.equal(playback.index,1);
+assert.equal(playback.nextIndex,2);
+assert.ok(Math.abs(playback.local-2/3)<1e-12);
+assert.ok(Math.abs(Math.hypot(playback.x-playbackPlan.metrics.centerX,playback.y-playbackPlan.metrics.centerY)-playbackPlan.rings[0].rx)<1e-7,'same-ring playback escaped the orbit');
+assert.equal(api.nearestSlotIndex(playbackPlan,playbackPlan.slots[2].x,playbackPlan.slots[2].y,3,-1),2);
+assert.equal(api.nearestSlotIndex(playbackPlan,playbackPlan.slots[2].x,playbackPlan.slots[2].y,2,-1),1,'nearest search must respect the filled-frame bound');
+
+const singleLoop=api.loopSegments(playbackPlan,0,2,3);
+assert.equal(singleLoop.length,1);
+assert.equal(singleLoop[0].first,0);
+assert.equal(singleLoop[0].last,2);
+const singleArc=api.loopArcPath(playbackPlan,singleLoop[0]);
+assert.ok(singleArc.startsWith('M')&&singleArc.includes(' A'));
+assert.equal(singleArc.includes('NaN'),false);
+
 const long=api.layout(120,{...metrics,canvasWidth:420,canvasHeight:300,canvasLeft:170,canvasTop:140},'square');
 assert.equal(long.slots.length,120);
 assert.ok(long.rings.length>=3,'120-frame tablet timeline must expand to multiple rings');
@@ -57,6 +93,12 @@ for(let i=1;i<long.rings.length;i++){
   assert.ok(long.rings[i].ry>long.rings[i-1].ry);
 }
 assert.ok(api.ringForIndex(long,119)>=2);
+const multiLoop=api.loopSegments(long,long.rings[0].size-2,long.rings[0].size+long.rings[1].size+1,120);
+assert.ok(multiLoop.length>=3,'loop range crossing ring boundaries must split into drawable orbital arcs');
+for(const segment of multiLoop){
+  const path=api.loopArcPath(long,segment);
+  assert.ok(path.startsWith('M')&&path.includes(' A')&&!path.includes('NaN'));
+}
 
 const repeat=api.layout(120,{...metrics,canvasWidth:420,canvasHeight:300,canvasLeft:170,canvasTop:140},'square');
 assert.equal(JSON.stringify(long),JSON.stringify(repeat),'radial layout must be deterministic');
@@ -79,7 +121,7 @@ assert.equal(safe.shape,'square');
 assert.equal(safe.rotation,0);
 assert.equal(safe.slots.length,4);
 assert.ok(safe.slots.every(slot=>Number.isFinite(slot.x)&&Number.isFinite(slot.y)));
-assert.deepEqual({...api.viewSnapshot({})},{rotation:0,focusCurrentRing:false});
+assert.deepEqual({...api.viewSnapshot({})},{rotation:0,focusCurrentRing:false,scrubMode:false});
 assert.equal(api.projectCanvasWrites,0);
 assert.equal(api.undoWrites,0);
-console.log('✅ radial timeline geometry, rotation, focus, stepping, and deterministic state policy passed');
+console.log('✅ radial timeline geometry, hold timing, playback, loop arcs, navigation, and isolation policy passed');
