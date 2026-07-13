@@ -1,13 +1,31 @@
 #!/usr/bin/env node
-// Generate the Android-only A/B index from the checked-in original engine.
-// The source web/index.html stays byte-for-byte unchanged; APK staging writes the
-// instrumented copy into build/generated/webAssets/index.html.
+// Generate an Android-only Brush Engine V2 index from the checked-in browser
+// fallback. Debug and release variants receive explicit, verifiable policies.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const input = resolve(process.argv[2] || 'web/index.html');
-const output = resolve(process.argv[3] || 'build/generated/webAssets/index.html');
+const output = resolve(process.argv[3] || 'build/generated/webAssets/debug/index.html');
+const rawOptions = process.argv.slice(4);
+
+function option(name, fallback) {
+  const prefix = `--${name}=`;
+  const value = rawOptions.find(item => item.startsWith(prefix));
+  return value ? value.slice(prefix.length) : fallback;
+}
+
+const variant = option('variant', 'debug') === 'release' ? 'release' : 'debug';
+const diagnostics = option('diagnostics', variant === 'debug' ? 'true' : 'false') === 'true';
+const defaultBrushEngine = option('default-engine', 'v2') === 'original' ? 'original' : 'v2';
+const traceTools = diagnostics;
+const buildConfig = Object.freeze({
+  variant,
+  diagnostics,
+  traceTools,
+  defaultBrushEngine,
+});
+
 let html = readFileSync(input, 'utf8');
 
 function replaceOnce(source, needle, replacement, label) {
@@ -20,8 +38,12 @@ function replaceOnce(source, needle, replacement, label) {
 }
 
 const scriptsNeedle = '<script src="brush-math.js"></script>\n<script src="flood-fill.js"></script>';
+const nativeScript = diagnostics
+  ? '<script src="brush-engine-v2/native.js"></script>\n'
+  : '';
 const scripts = `<script src="brush-math.js"></script>
-<!-- INKFRAME_BRUSH_V2_AB: generated into APK assets only -->
+<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->
+<script>window.InkFrameBuild=Object.freeze(${JSON.stringify(buildConfig)});</script>
 <script src="brush-engine-v2/sample.js"></script>
 <script src="brush-engine-v2/batch.js"></script>
 <script src="brush-engine-v2/validator.js"></script>
@@ -32,8 +54,8 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/radius.js"></script>
 <script src="brush-engine-v2/rasterizer.js"></script>
 <script src="brush-engine-v2/trace.js"></script>
-<script src="brush-engine-v2/native.js"></script>
-<script src="brush-engine-v2/engine.js"></script>
+<script src="brush-engine-v2/runtime.js"></script>
+${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/tuning.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="brush-engine-v2/session.js"></script>
@@ -43,8 +65,8 @@ const scripts = `<script src="brush-math.js"></script>
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
 
 const helperNeedle = '  // Pressure + position stabilization: the drawn point trails the raw stylus on a short';
-const helper = `  // Android test-build bridge for Brush Engine V2. This is injected into the
-  // staged APK index only; the checked-in browser source remains the v0.1.1 engine.
+const helper = `  // Android runtime bridge for Brush Engine V2. This is injected into staged
+  // APK assets only; the checked-in browser source remains the fallback engine.
   function makeBrushV2Env(){
     const inputRect=canvas.getBoundingClientRect();
     const inputTransform=Object.freeze({
@@ -146,8 +168,12 @@ const upHook = `  const up=e=>{
     // Compare-drag release: just clear the drag lock so future taps work.`;
 html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 
-for (const marker of [
-  'INKFRAME_BRUSH_V2_AB',
+const requiredMarkers = [
+  'INKFRAME_BRUSH_V2_RUNTIME',
+  'window.InkFrameBuild=Object.freeze',
+  `\"variant\":\"${variant}\"`,
+  `\"diagnostics\":${diagnostics}`,
+  `\"defaultBrushEngine\":\"${defaultBrushEngine}\"`,
   'makeBrushV2Env()',
   'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
@@ -160,14 +186,19 @@ for (const marker of [
   'brush-engine-v2/batch.js',
   'brush-engine-v2/contact.js',
   'brush-engine-v2/radius.js',
-  'brush-engine-v2/native.js',
+  'brush-engine-v2/runtime.js',
   'brush-engine-v2/session.js',
   'brush-engine-v2/input.js',
   'brush-engine-v2/coverage-ui.js',
-]) {
+];
+if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js');
+for (const marker of requiredMarkers) {
   if (!html.includes(marker)) throw new Error(`Generated index failed verification: ${marker}`);
+}
+if (!diagnostics && html.includes('<script src="brush-engine-v2/native.js"></script>')) {
+  throw new Error('Release index must not load native diagnostics');
 }
 
 mkdirSync(dirname(output), { recursive: true });
 writeFileSync(output, html, 'utf8');
-console.log(`Generated Brush V2 A/B index: ${output}`);
+console.log(`Generated Brush V2 ${variant} index: ${output}`);
