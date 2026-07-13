@@ -9,10 +9,10 @@
   function tuningDistance(targetValue,candidateValue){
     const target=ns.normalizeTuning?ns.normalizeTuning(targetValue||{}):targetValue||{},candidate=ns.normalizeTuning?ns.normalizeTuning(candidateValue||{}):candidateValue||{};let total=0,weight=0;
     for(const key of Object.keys(RANGES)){const w=WEIGHTS[key]||1;total+=Math.abs((Number(target[key])||0)-(Number(candidate[key])||0))/RANGES[key]*w;weight+=w;}
-    const ghostPenalty=target.ghostMode===candidate.ghostMode?0:(target.ghostMode==='off'||candidate.ghostMode==='off'?.12:.2);return round(clamp(total/Math.max(1,weight)+ghostPenalty,0,1),5);
+    const ghostPenalty=target.ghostMode===candidate.ghostMode?0:((target.ghostMode==='off'||candidate.ghostMode==='off')?.12:.2);return round(clamp(total/Math.max(1,weight)+ghostPenalty,0,1),5);
   }
   function rankBrushIdentities(target){
-    const identities=Array.from(ns.listBrushIdentities?ns.listBrushIdentities():[]);return Object.freeze(identities.map(identity=>Object.freeze({identity,distance:tuningDistance(target,identity.tuning),score:round(1-tuningDistance(target,identity.tuning),4)})).sort((a,b)=>a.distance-b.distance||a.identity.id.localeCompare(b.identity.id)));
+    const identities=Array.from(ns.listBrushIdentities?ns.listBrushIdentities():[]);return Object.freeze(identities.map(identity=>{const distance=tuningDistance(target,identity.tuning);return Object.freeze({identity,distance,score:round(1-distance,4)});}).sort((a,b)=>a.distance-b.distance||a.identity.id.localeCompare(b.identity.id)));
   }
   function matchBrushIdentities(analysis,currentValue){
     if(!analysis||!analysis.valid)return Object.freeze({valid:false,label:'No match',reason:analysis&&analysis.reason||'Draw a longer reference stroke',analysis});
