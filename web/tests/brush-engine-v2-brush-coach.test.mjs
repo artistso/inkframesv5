@@ -8,9 +8,10 @@ const here=dirname(fileURLToPath(import.meta.url));
 const source=readFileSync(resolve(here,'..','brush-engine-v2','brush-coach.js'),'utf8');
 const sessionSource=readFileSync(resolve(here,'..','brush-engine-v2','coach-session.js'),'utf8');
 const reportSource=readFileSync(resolve(here,'..','brush-engine-v2','calibration-report.js'),'utf8');
+const historySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-history.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(historySource,box,{filename:'profile-history.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -78,5 +79,25 @@ assert.ok(quickDiff.some(row=>row.key==='stabilizerStrength'));assert.ok(quickDi
 assert.equal(JSON.stringify(ns.differenceRows(report.profiles.current,report.profiles.session)),JSON.stringify(ns.differenceRows(report.profiles.current,report.profiles.session)),'report differences must be deterministic');
 const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false});assert.equal(incomplete.ready,1);assert.equal(incomplete.profiles.quick.valid,false);assert.equal(incomplete.profiles.session.valid,false);
 
+let clock=1000;
+const initial={preset:'balanced',stabilizerStrength:55,cornerStrength:70,ghostMode:'comet',ghostIntensity:65,ghostDurationMs:380,coverageMode:'ribbon',radiusMode:'guarded',contactMode:'strict',spacingScale:1};
+const history=ns.createBrushProfileHistory({initial,limit:4,now:()=>++clock});
+assert.equal(history.snapshot().count,1);
+assert.equal(history.record({...initial,preset:'custom'},'Label-only change'),false,'preset label alone must not create history');
+assert.equal(history.record({...initial,spacingScale:.9},'Advanced spacing'),true,'advanced tuning must create history');
+assert.equal(history.record({...initial,stabilizerStrength:80},'Smooth'),true);
+assert.equal(history.record({...initial,stabilizerStrength:120},'Studio'),true);
+assert.equal(history.record({...initial,stabilizerStrength:160},'Maximum'),true);
+assert.equal(history.snapshot().count,4,'history must remain bounded');
+assert.equal(history.snapshot().current.tuning.stabilizerStrength,160);
+assert.ok(Object.isFrozen(history.snapshot().current));assert.ok(Object.isFrozen(history.snapshot().current.tuning));
+history.lock();assert.equal(history.snapshot().locked.stabilizerStrength,160);
+assert.equal(history.undo().stabilizerStrength,120);assert.equal(history.snapshot().canRedo,true);
+assert.equal(history.record({...initial,stabilizerStrength:95},'New branch'),true);assert.equal(history.snapshot().canRedo,false,'new change after undo must truncate redo');
+assert.equal(history.restoreLocked().stabilizerStrength,160,'lock must remain independent of cursor history');
+const serialized=history.serialize();const hydrated=ns.createBrushProfileHistory({initial:history.snapshot().current.tuning,entries:serialized.entries,locked:serialized.locked,limit:4,now:()=>++clock});
+assert.equal(hydrated.snapshot().count,4);assert.equal(hydrated.snapshot().locked.stabilizerStrength,160);
+assert.ok(ns.describeTuningChange(initial,{...initial,stabilizerStrength:90,ghostMode:'echo'}).length>=2);
+
 session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach, guided session, and calibration report are deterministic and bounded');
+console.log('✅ Brush Coach, calibration report, and protected tuning history are deterministic and bounded');
