@@ -39,7 +39,7 @@ try {
   assert.ok(existsSync(resolve(root,'web/brush-engine-v2/brush-coach.js')),'missing Brush Coach asset');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/preview-replay.js'"),'comparison runtime must load reference replay');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/brush-coach.js'"),'comparison runtime must load Brush Coach');
-  assert.ok(compareSource.indexOf("preview-replay.js'")<compareSource.indexOf("brush-coach.js'"),'Brush Coach must load after reference replay');
+  assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadBrushCoach,0)"),'Brush Coach must be scheduled from the reference replay load event');
   assert.equal(html.includes('<script src="brush-engine-v2/native.js"></script>'), false);
   assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
   assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
