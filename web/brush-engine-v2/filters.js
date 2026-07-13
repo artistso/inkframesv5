@@ -62,16 +62,49 @@
     };
   }
 
+  function createFallbackPositionFilter(config) {
+    const x = createScalarFilter(config.positionTimeConstantMs);
+    const y = createScalarFilter(config.positionTimeConstantMs);
+    return {
+      reset(sample) {
+        return { x:x.reset(sample.x, sample.time), y:y.reset(sample.y, sample.time) };
+      },
+      update(sample) {
+        return { x:x.update(sample.x, sample.time), y:y.update(sample.y, sample.time) };
+      },
+      stats: () => ({
+        mode:'fixed',
+        unavailable:true,
+        timeConstantMs:config.positionTimeConstantMs,
+      }),
+    };
+  }
+
   function createStrokeFilter(options) {
     const config = Object.assign({
+      stabilizerMode: 'fixed',
       positionTimeConstantMs: 8,
+      positionSlowTimeConstantMs: 18,
+      positionFastTimeConstantMs: 3.5,
+      stabilizerSpeedStartPxPerMs: 0.12,
+      stabilizerSpeedEndPxPerMs: 4,
+      speedSmoothingTimeConstantMs: 24,
       pressureTimeConstantMs: 12,
       tiltTimeConstantMs: 18,
       angleTimeConstantMs: 18,
       resetGapMs: 80,
     }, options || {});
-    const x = createScalarFilter(config.positionTimeConstantMs);
-    const y = createScalarFilter(config.positionTimeConstantMs);
+    const position = ns.createPositionStabilizer
+      ? ns.createPositionStabilizer({
+          mode: config.stabilizerMode,
+          fixedTimeConstantMs: config.positionTimeConstantMs,
+          slowTimeConstantMs: config.positionSlowTimeConstantMs,
+          fastTimeConstantMs: config.positionFastTimeConstantMs,
+          speedStartPxPerMs: config.stabilizerSpeedStartPxPerMs,
+          speedEndPxPerMs: config.stabilizerSpeedEndPxPerMs,
+          speedSmoothingTimeConstantMs: config.speedSmoothingTimeConstantMs,
+        })
+      : createFallbackPositionFilter(config);
     const pressure = createScalarFilter(config.pressureTimeConstantMs);
     const tiltX = createScalarFilter(config.tiltTimeConstantMs);
     const tiltY = createScalarFilter(config.tiltTimeConstantMs);
@@ -81,9 +114,10 @@
 
     function begin(sample) {
       lastTime = sample.time;
+      const point = position.reset(sample);
       return Object.freeze(Object.assign({}, sample, {
-        x: x.reset(sample.x, sample.time),
-        y: y.reset(sample.y, sample.time),
+        x: point.x,
+        y: point.y,
         pressure: pressure.reset(sample.pressure, sample.time),
         tiltX: tiltX.reset(sample.tiltX, sample.time),
         tiltY: tiltY.reset(sample.tiltY, sample.time),
@@ -95,9 +129,10 @@
     function update(sample) {
       if (lastTime == null || sample.time - lastTime > config.resetGapMs) return begin(sample);
       lastTime = sample.time;
+      const point = position.update(sample);
       return Object.freeze(Object.assign({}, sample, {
-        x: x.update(sample.x, sample.time),
-        y: y.update(sample.y, sample.time),
+        x: point.x,
+        y: point.y,
         pressure: clamp(pressure.update(sample.pressure, sample.time), 0, 1),
         tiltX: clamp(tiltX.update(sample.tiltX, sample.time), -90, 90),
         tiltY: clamp(tiltY.update(sample.tiltY, sample.time), -90, 90),
@@ -106,7 +141,14 @@
       }));
     }
 
-    return { begin, update, config: Object.freeze(Object.assign({}, config)) };
+    function snapshot() {
+      return Object.freeze({
+        stabilizer: position.stats ? position.stats() : { mode:config.stabilizerMode },
+        resetGapMs: config.resetGapMs,
+      });
+    }
+
+    return { begin, update, snapshot, config: Object.freeze(Object.assign({}, config)) };
   }
 
   Object.assign(ns, { alphaForDt, shortestAngleDelta, createScalarFilter, createAngleFilter, createStrokeFilter });
