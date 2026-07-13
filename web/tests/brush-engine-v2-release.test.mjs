@@ -39,15 +39,19 @@ try {
   assert.ok(existsSync(resolve(root,'web/brush-engine-v2/brush-coach.js')),'missing Brush Coach asset');
   assert.ok(existsSync(resolve(root,'web/brush-engine-v2/coach-session.js')),'missing Coach Session asset');
   assert.ok(existsSync(resolve(root,'web/brush-engine-v2/calibration-report.js')),'missing Calibration Report asset');
+  assert.ok(existsSync(resolve(root,'web/brush-engine-v2/profile-recovery.js')),'missing Profile Recovery asset');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/preview-replay.js'"),'comparison runtime must load reference replay');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/brush-coach.js'"),'comparison runtime must load Brush Coach');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/coach-session.js'"),'comparison runtime must load Coach Session');
   assert.ok(compareSource.includes("script.src='brush-engine-v2/calibration-report.js'"),'comparison runtime must load Calibration Report');
+  assert.ok(compareSource.includes("script.src='brush-engine-v2/profile-recovery.js'"),'comparison runtime must load Profile Recovery');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadBrushCoach,0)"),'Brush Coach must be scheduled from the reference replay load event');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadCoachSession,0)"),'Coach Session must be scheduled from the Brush Coach load event');
   assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadCalibrationReport,0)"),'Calibration Report must be scheduled from the Coach Session load event');
+  assert.ok(compareSource.includes("script.addEventListener('load',()=>root.setTimeout(loadProfileRecovery,0)"),'Profile Recovery must be scheduled from the Calibration Report load event');
   assert.ok(compareSource.includes('script[data-inkframe-coach-session]'),'Coach Session loader must suppress duplicates');
   assert.ok(compareSource.includes('script[data-inkframe-calibration-report]'),'Calibration Report loader must suppress duplicates');
+  assert.ok(compareSource.includes('script[data-inkframe-profile-recovery]'),'Profile Recovery loader must suppress duplicates');
   assert.equal(html.includes('<script src="brush-engine-v2/native.js"></script>'), false);
   assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
   assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
@@ -64,7 +68,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production Calibration Report policy passed');
+  console.log('✅ generated Brush V2 production Profile Recovery policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
