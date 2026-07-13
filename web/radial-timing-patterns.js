@@ -3,6 +3,7 @@
 (function(root){
   const finite=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
   const clampHold=value=>Math.max(1,Math.min(8,Math.round(finite(value,1))));
+  const cleanText=(value,fallback,max)=>String(value||fallback||'').replace(/\s+/g,' ').trim().slice(0,max);
   const freezePattern=(id,label,values)=>Object.freeze({id,label,values:Object.freeze(values.map(clampHold))});
   const PATTERNS=Object.freeze([
     freezePattern('ones','Ones',[1]),
@@ -13,6 +14,15 @@
     freezePattern('ease-out','Ease Out',[1,1,2,2,3,3]),
   ]);
   const patternById=id=>PATTERNS.find(pattern=>pattern.id===String(id||''))||null;
+
+  function normalizeDefinition(value){
+    const input=value&&typeof value==='object'?value:{};
+    const values=(Array.isArray(input.values)?input.values:[]).slice(0,12).map(clampHold);
+    if(!values.length)return null;
+    const id=cleanText(input.id,'custom-rhythm',48).replace(/[^a-zA-Z0-9:_-]/g,'-')||'custom-rhythm';
+    const label=cleanText(input.label,'Custom Rhythm',32)||'Custom Rhythm';
+    return freezePattern(id,label,values);
+  }
 
   function normalizeIndices(indices,count){
     const total=Math.max(0,Math.floor(finite(count,0))),seen=new Set(),result=[];
@@ -111,8 +121,8 @@
     if(!entries.length)return false;
     lastEnvironment.setHolds(entries);scheduleRefresh();return true;
   }
-  function applyPattern(patternId){
-    const pattern=patternById(patternId);if(!pattern||!lastEnvironment||!canEdit(lastEnvironment))return false;
+  function applyDefinition(value){
+    const pattern=normalizeDefinition(value);if(!pattern||!lastEnvironment||!canEdit(lastEnvironment))return false;
     const scope=resolveTargetIndices(lastEnvironment),assignments=changedAssignments(assignmentsForPattern(pattern,scope.indices,lastEnvironment.holdAt));
     if(!assignments.length)return false;
     const history=historyFor(lastEnvironment);if(!writeAssignments(assignments))return false;
@@ -120,6 +130,7 @@
     if(history.undo.length>20)history.undo.shift();history.redo.length=0;
     const view=viewFor(lastEnvironment);view.previewPatternId=null;return true;
   }
+  function applyPattern(patternId){const pattern=patternById(patternId);return pattern?applyDefinition(pattern):false;}
   function undo(){
     if(!lastEnvironment||!canEdit(lastEnvironment))return false;
     const history=historyFor(lastEnvironment),transaction=history.undo.pop();if(!transaction)return false;
@@ -220,8 +231,8 @@
   }
 
   const api={
-    patterns:PATTERNS,patternById,normalizeIndices,resolveTargetIndices,assignmentsForPattern,changedAssignments,invertAssignments,
-    applyPattern,undo,redo,render,viewSnapshot,installIntoRadial,
+    patterns:PATTERNS,patternById,normalizeDefinition,normalizeIndices,resolveTargetIndices,assignmentsForPattern,changedAssignments,invertAssignments,
+    applyDefinition,applyPattern,undo,redo,render,viewSnapshot,installIntoRadial,
     projectCanvasWrites:0,artworkUndoWrites:0,timelineTimingWrites:true,projectSchemaWrites:0,
   };
   root.InkFrameRadialPatterns=api;installIntoRadial();
