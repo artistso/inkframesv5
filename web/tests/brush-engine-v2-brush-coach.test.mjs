@@ -12,9 +12,10 @@ const recoverySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-r
 const identitySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-identities.js'),'utf8');
 const mixerSource=readFileSync(resolve(here,'..','brush-engine-v2','identity-mixer.js'),'utf8');
 const matchSource=readFileSync(resolve(here,'..','brush-engine-v2','brush-match.js'),'utf8');
+const signatureSource=readFileSync(resolve(here,'..','brush-engine-v2','brush-signature.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});vm.runInContext(mixerSource,box,{filename:'identity-mixer.js'});vm.runInContext(matchSource,box,{filename:'brush-match.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});vm.runInContext(mixerSource,box,{filename:'identity-mixer.js'});vm.runInContext(matchSource,box,{filename:'brush-match.js'});vm.runInContext(signatureSource,box,{filename:'brush-signature.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -61,7 +62,7 @@ for(const item of cases){
 }
 
 const invalid=ns.analyzeReferenceStroke(reference([{x:0,y:0,timeStamp:0},{x:1,y:1,timeStamp:1}]));
-assert.equal(invalid.valid,false);assert.equal(ns.recommendationFromAnalysis(invalid,{}).valid,false);assert.equal(ns.matchBrushIdentities(invalid,{}).valid,false);
+assert.equal(invalid.valid,false);assert.equal(ns.recommendationFromAnalysis(invalid,{}).valid,false);assert.equal(ns.matchBrushIdentities(invalid,{}).valid,false);assert.equal(ns.createBrushSignature({valid:false,completed:2,required:4}).valid,false);
 
 const baseline={stabilizerStrength:55,cornerStrength:70,ghostMode:'comet',ghostIntensity:65,ghostLengthMs:340,coverageMode:'ribbon',radiusMode:'guarded',contactMode:'strict'};
 const session=ns.createCoachSession({current:()=>baseline});
@@ -74,6 +75,8 @@ assert.ok(combined.tuning.stabilizerStrength>=25&&combined.tuning.stabilizerStre
 assert.ok(combined.tuning.cornerStrength>=0&&combined.tuning.cornerStrength<=100);
 assert.equal(combined.tuning.coverageMode,'ribbon');assert.equal(combined.tuning.radiusMode,'guarded');assert.equal(combined.tuning.contactMode,'strict');
 assert.equal(JSON.stringify(session.suggestion()),JSON.stringify(session.suggestion()),'same session must remain deterministic');
+const directSessionMatch=ns.matchTuningToIdentities(combined.tuning,{confidence:combined.confidence});assert.equal(directSessionMatch.valid,true);assert.ok(directSessionMatch.distance<=directSessionMatch.ranking[0].distance+1e-8);
+const signature=ns.createBrushSignature(combined),signatureAgain=ns.createBrushSignature(combined);assert.equal(signature.valid,true);assert.equal(JSON.stringify(signature),JSON.stringify(signatureAgain),'same completed session must produce a byte-equivalent signature');assert.equal(signature.samples.length,4);assert.ok(signature.samples.every(item=>Object.isFrozen(item)));assert.ok(signature.stability>=0&&signature.stability<=1);assert.ok(signature.confidence>=.5&&signature.confidence<=.98);assert.ok(signature.distance<=signature.ranking[0].distance+1e-8);assert.equal(signature.tuning.coverageMode,'ribbon');assert.equal(signature.tuning.radiusMode,'guarded');assert.equal(signature.tuning.contactMode,'strict');assert.equal(ns.brushSignatureChips(signature).length,5);assert.equal(ns.signatureStabilityLabel(.95),'Highly consistent');assert.equal(ns.signatureStabilityLabel(.8),'Consistent');assert.equal(ns.signatureStabilityLabel(.7),'Versatile');assert.equal(ns.signatureStabilityLabel(.5),'Wide-ranging');
 
 const quick=ns.recommendationFromAnalysis(ns.analyzeReferenceStroke(cases[0].ref),baseline);
 const report=ns.createCalibrationReport(baseline,quick,combined);
@@ -113,6 +116,7 @@ const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false}
   const lovely=ns.resolveBrushIdentity('lovely-comet'),precision=ns.resolveBrushIdentity('precision-ink'),expressive=ns.resolveBrushIdentity('expressive-echo');
   assert.equal(ns.tuningDistance(lovely.tuning,lovely.tuning),0);assert.ok(ns.tuningDistance(lovely.tuning,precision.tuning)>0);
   const ranked=Array.from(ns.rankBrushIdentities(lovely.tuning));assert.equal(ranked[0].identity.id,'lovely-comet');assert.equal(ranked[0].score,1);
+  const exactMatch=ns.matchTuningToIdentities(lovely.tuning,{confidence:.9});assert.equal(exactMatch.valid,true);assert.equal(exactMatch.distance,0);assert.equal(exactMatch.score,1);
   assert.deepEqual({...ns.mixBrushTunings(lovely.tuning,precision.tuning,0)},{...lovely.tuning},'zero mix must equal A exactly');
   assert.deepEqual({...ns.mixBrushTunings(lovely.tuning,precision.tuning,1)},{...precision.tuning},'full mix must equal B exactly');
   const midpoint=ns.mixBrushIdentities('lovely-comet','precision-ink',50);assert.equal(midpoint.tuning.stabilizerStrength,101);assert.equal(midpoint.tuning.cornerStrength,84);assert.equal(midpoint.tuning.ghostIntensity,43);assert.equal(midpoint.tuning.ghostMode,'comet','non-off trail must fade continuously toward an off endpoint');
@@ -123,5 +127,5 @@ const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false}
   assert.equal(ns.mixBrushIdentities('lovely-comet','precision-ink',150).percent,100);assert.equal(ns.mixBrushIdentities('lovely-comet','precision-ink',-20).percent,0);assert.equal(ns.mixBrushIdentities('missing','precision-ink',50),null);
 }
 
-session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach, calibration, recovery, identities, mixer, and deterministic Brush Match passed');
+session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);assert.equal(ns.createBrushSignature(session.suggestion()).valid,false);
+console.log('✅ Brush Coach, calibration, recovery, identities, mixer, Brush Match, and Brush Signature passed');
