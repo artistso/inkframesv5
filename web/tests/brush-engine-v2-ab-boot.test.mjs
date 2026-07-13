@@ -1,4 +1,4 @@
-// Boots the generated Android A/B index with every sibling module inlined.
+// Boots the generated Android debug index with every sibling module inlined.
 
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -20,7 +20,14 @@ const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-boot-'));
 const generated = resolve(temp, 'index.html');
 
 try {
-  execFileSync(process.execPath, [resolve(root, 'tools/inject-brush-v2-index.mjs'), resolve(webDir, 'index.html'), generated], { cwd: root });
+  execFileSync(process.execPath, [
+    resolve(root, 'tools/inject-brush-v2-index.mjs'),
+    resolve(webDir, 'index.html'),
+    generated,
+    '--variant=debug',
+    '--diagnostics=true',
+    '--default-engine=v2',
+  ], { cwd: root });
   let html = readFileSync(generated, 'utf8');
   html = html.replace(/<script src="([^"]+)"><\/script>/g, (tag, src) => {
     const file = resolve(webDir, src);
@@ -79,19 +86,22 @@ try {
   const coverage = d.getElementById('inkframe-v2-coverage-mode');
   const radius = d.getElementById('inkframe-v2-radius-mode');
   const contact = d.getElementById('inkframe-v2-contact-mode');
-  assert.ok(panel, 'V2 A/B panel did not install');
+  assert.ok(panel, 'V2 panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
   assert.ok(coverage, 'V2 coverage selector did not install');
   assert.ok(radius, 'V2 radius selector did not install');
   assert.ok(contact, 'V2 contact selector did not install');
+  assert.equal(dom.window.InkFrameBuild.variant, 'debug');
+  assert.equal(dom.window.InkFrameBuild.diagnostics, true);
+  assert.equal(dom.window.InkFrameBuild.defaultBrushEngine, 'v2');
   const buttons = panel.querySelectorAll('button');
   assert.equal(buttons.length, 5);
-  assert.match(buttons[0].textContent, /Original/);
+  assert.match(buttons[0].textContent, /V2/);
   assert.match(buttons[1].textContent, /Tune/);
   assert.equal(buttons[2].textContent, 'Import trace');
   assert.equal(buttons[3].textContent, 'Replay');
   assert.equal(buttons[4].textContent, 'Export trace');
-  assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'guarded');
@@ -108,8 +118,10 @@ try {
   assert.equal(contact.value, 'strict');
   assert.equal(tuningPanel.hidden, true);
   buttons[0].click();
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
+  assert.match(buttons[0].textContent, /Original/);
+  buttons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
-  assert.match(buttons[0].textContent, /V2/);
   buttons[1].click();
   assert.equal(tuningPanel.hidden, false);
   assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 4);
@@ -144,7 +156,7 @@ try {
   assert.equal(converted.x, 512);
   assert.equal(converted.y, 384);
 
-  console.log('✅ generated Brush V2 sanitized-input APK index booted');
+  console.log('✅ generated Brush V2 debug APK index booted with V2 default');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
