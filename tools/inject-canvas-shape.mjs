@@ -2,6 +2,8 @@
 // Kept separate from Brush V2 injection so nested studio template literals are
 // emitted verbatim and the base brush generator stays small and reviewable.
 
+import { injectRadialTimeline } from './inject-radial-timeline.mjs';
+
 const block=(...lines)=>lines.join('\n');
 
 export function injectCanvasShape(html,replaceOnce){
@@ -106,5 +108,5 @@ export function injectCanvasShape(html,replaceOnce){
   for(const marker of ['canvas-shape.js','InkFrameCanvasShapeEnvironment','InkFrameCanvasShape.acceptsPointerDown','InkFrameCanvasShape.boundaryEvent','InkFrameCanvasShape.maskComposite',"canvasShape:P.canvasShape==='circle'?'circle':'square'"]){
     if(!html.includes(marker))throw new Error(`Circular Canvas injection verification failed: ${marker}`);
   }
-  return html;
+  return injectRadialTimeline(html,replaceOnce);
 }
