@@ -102,8 +102,8 @@ const baseProfile = { size:14, minSize:0.08, opacity:1, spacing:0.055, hardness:
 {
   const ctx = makeContext();
   const profile = V2.resolveProfile('ink', { ...baseProfile, coverage:'ribbon' });
-  const make = (x, index, start, id) => V2.dabFromSample(
-    { x, y:10, pressure:0.5, time:index * 8, tiltX:0, tiltY:0, azimuth:0 },
+  const make = (x, index, start, id, time=index * 8) => V2.dabFromSample(
+    { x, y:10, pressure:0.5, time, tiltX:0, tiltY:0, azimuth:0 },
     'ink', profile, { strokeId:id, strokeIndex:index, strokeStart:start }
   );
   V2.paintRoundDab(ctx, make(0, 0, true, 1), '#000');
@@ -112,6 +112,43 @@ const baseProfile = { size:14, minSize:0.08, opacity:1, spacing:0.055, hardness:
   V2.paintRoundDab(ctx, make(100, 0, true, 2), '#000');
   const after = ctx.calls.filter(call => call[0] === 'stroke').length;
   assert.equal(after, before);
+}
+
+// A changed stroke ID is itself a hard boundary, even if upstream metadata loses
+// the strokeStart flag or fails to reset the index.
+{
+  const ctx = makeContext();
+  const profile = V2.resolveProfile('ink', { ...baseProfile, coverage:'ribbon' });
+  const make = (x, index, id) => V2.dabFromSample(
+    { x, y:20, pressure:0.5, time:index * 8, tiltX:0, tiltY:0, azimuth:0 },
+    'ink', profile, { strokeId:id, strokeIndex:index, strokeStart:false }
+  );
+  V2.paintRoundDab(ctx, make(0, 0, 10), '#000');
+  V2.paintRoundDab(ctx, make(10, 1, 10), '#000');
+  const before = ctx.calls.filter(call => call[0] === 'stroke').length;
+  V2.paintRoundDab(ctx, make(300, 2, 11), '#000');
+  assert.equal(ctx.calls.filter(call => call[0] === 'stroke').length, before);
+}
+
+// Final pixel-stage failsafe: a huge adjacent-command relocation within the same
+// stroke paints a new cap but never emits a connecting line.
+{
+  const ctx = makeContext();
+  const profile = V2.resolveProfile('ink', { ...baseProfile, coverage:'ribbon' });
+  const make = (x, index, time) => V2.dabFromSample(
+    { x, y:30, pressure:0.5, time, tiltX:0, tiltY:0, azimuth:0 },
+    'ink', profile, { strokeId:20, strokeIndex:index, strokeStart:index === 0 }
+  );
+  const a = make(0, 0, 0);
+  const b = make(10, 1, 8);
+  const teleported = make(600, 2, 16);
+  V2.paintRoundDab(ctx, a, '#000');
+  V2.paintRoundDab(ctx, b, '#000');
+  const before = ctx.calls.filter(call => call[0] === 'stroke').length;
+  assert.ok(V2.ribbonGeometry(b, teleported).distance > V2.ribbonGapLimit(b, teleported));
+  V2.paintRoundDab(ctx, teleported, '#000');
+  assert.equal(ctx.calls.filter(call => call[0] === 'stroke').length, before);
+  assert.equal(ctx.calls.filter(call => call[0] === 'arc').length, 3);
 }
 
 // Dabs mode remains discrete and does not emit connecting line coverage.
@@ -126,4 +163,4 @@ const baseProfile = { size:14, minSize:0.08, opacity:1, spacing:0.055, hardness:
   assert.equal(ctx.calls.filter(call => call[0] === 'arc').length, 2);
 }
 
-console.log('✅ brush-engine-v2 ribbon coverage tests passed');
+console.log('✅ Brush Engine V2 ribbon coverage and final continuity failsafe tests passed');
