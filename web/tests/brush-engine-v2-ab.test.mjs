@@ -100,6 +100,8 @@ try {
   assert.equal(adapter.currentTuning().preset, 'balanced');
   assert.equal(adapter.currentTuning().stabilizerMode, 'adaptive');
   assert.equal(adapter.currentTuning().stabilizerStrength, 55);
+  assert.equal(adapter.currentTuning().cornerMode, 'preserve');
+  assert.equal(adapter.currentTuning().cornerStrength, 70);
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
@@ -110,8 +112,9 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
-  assert.equal(adapter.setTuning({ stabilizerMode:'fixed', coverageMode:'dabs', radiusMode:'raw', contactMode:'raw' }), true);
+  assert.equal(adapter.setTuning({ stabilizerMode:'fixed', cornerMode:'smooth', coverageMode:'dabs', radiusMode:'raw', contactMode:'raw' }), true);
   assert.equal(adapter.currentTuning().stabilizerMode, 'fixed');
+  assert.equal(adapter.currentTuning().cornerMode, 'smooth');
   assert.equal(adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(adapter.currentTuning().radiusMode, 'raw');
   assert.equal(adapter.currentTuning().contactMode, 'raw');
@@ -119,6 +122,8 @@ try {
   assert.equal(adapter.currentTuning().preset, 'smooth');
   assert.equal(adapter.currentTuning().stabilizerMode, 'adaptive');
   assert.equal(adapter.currentTuning().stabilizerStrength, 80);
+  assert.equal(adapter.currentTuning().cornerMode, 'preserve');
+  assert.equal(adapter.currentTuning().cornerStrength, 55);
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
@@ -140,6 +145,7 @@ try {
   assert.equal(adapter.makeProfile({ brushId:'eraser', profile:{} }).composite, 'destination-out');
   assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
   assert.equal(tuning.presetValue('direct').stabilizerMode, 'adaptive');
+  assert.equal(tuning.presetValue('direct').cornerMode, 'preserve');
   assert.equal(tuning.presetValue('direct').coverageMode, 'ribbon');
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
