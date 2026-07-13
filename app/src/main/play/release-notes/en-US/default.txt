@@ -1,0 +1,1 @@
+Brush Engine V2 is now the default for S Pen Ink and Eraser, with smoother continuous coverage, guarded pressure width, contact protection, event sanitization, discontinuity segmentation, and an Original-engine fallback. Production builds now exclude diagnostic telemetry and use verified release APK/AAB packaging.
