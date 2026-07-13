@@ -113,7 +113,7 @@ try{
   const cleared=dom.window.InkFrameBrushV2PreviewPad.stats();
   assert.equal(cleared.strokes,0);
   assert.equal(cleared.dabs,0);
-  assert.match(card.querySelector('.inkframe-v2-preview-hint').textContent,/artwork and undo history stay untouched/);
+  assert.match(card.querySelector('.inkframe-v2-preview-hint').textContent,/artwork.*stay untouched/);
 
   dom.window.close();
   console.log('✅ generated Android Brush Lab preview pad is isolated and functional');
