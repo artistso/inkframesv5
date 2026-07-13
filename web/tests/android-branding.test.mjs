@@ -39,7 +39,7 @@ function webpDimensions(bytes){
 const assets=[
   {
     path:'app/src/main/branding/glass_horizon_icon.webp.b64',
-    output:'mipmap-xxxhdpi/ic_launcher.webp',
+    output:'mipmap-xxxhdpi/ic_launcher_glass_horizon.webp',
     sha:'265ec40a596d912a4372c75690e1d2911fa5513c916022119569f4986c789ad4',
     size:11234,width:512,height:512,
   },
@@ -74,8 +74,9 @@ assert.ok(gradle.includes('String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP"'),'b
 const manifest=text('app/src/main/AndroidManifest.xml');
 assert.ok(manifest.includes('android:name=".SplashActivity"'),'SplashActivity missing from manifest');
 assert.ok(manifest.includes('android:name=".MainActivity"'),'MainActivity missing from manifest');
-assert.ok(manifest.includes('android:icon="@mipmap/ic_launcher"'),'launcher icon resource missing');
-assert.ok(manifest.includes('android:roundIcon="@mipmap/ic_launcher"'),'round launcher icon resource missing');
+assert.ok(manifest.includes('android:icon="@mipmap/ic_launcher_glass_horizon"'),'Glass Horizon launcher icon resource missing');
+assert.ok(manifest.includes('android:roundIcon="@mipmap/ic_launcher_glass_horizon"'),'Glass Horizon round icon resource missing');
+assert.equal(manifest.includes('android:excludeFromRecents="true"'),false,'splash must not remove the studio task from Recents');
 assert.match(manifest,/android:name="\.MainActivity"[\s\S]*?android:exported="false"/,'MainActivity must remain internal');
 assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android:exported="true"/,'SplashActivity must own the exported launcher entry');
 assert.equal((manifest.match(/android\.intent\.action\.MAIN/g)||[]).length,1,'exactly one activity must own MAIN');
@@ -96,7 +97,7 @@ assert.ok(themes.includes('name="Theme.InkFrame.Splash"'),'pre-Android 12 splash
 assert.ok(themes.includes('<item name="android:windowFullscreen">true</item>'),'fullscreen splash policy missing');
 const themes31=text('app/src/main/res/values-v31/themes.xml');
 assert.ok(themes31.includes('android:windowSplashScreenAnimatedIcon'),'Android 12 system splash icon missing');
-assert.ok(themes31.includes('@mipmap/ic_launcher'),'Android 12 system splash must use launcher artwork');
+assert.ok(themes31.includes('@mipmap/ic_launcher_glass_horizon'),'Android 12 system splash must use Glass Horizon artwork');
 assert.ok(themes31.includes('android:windowSplashScreenBackground'),'Android 12 splash background missing');
 
 assert.equal(app.endsWith('/app')||app.endsWith('\\app'),true);
