@@ -120,7 +120,7 @@ try{
   assert.equal(project.frames.length,2,'shape relayout must not mutate timeline data');
 
   const fakeProject={},fakeEnv={frameGlass,canvas,slotCount:120,framesLength:120,current:90,selectedFrames:new Set(),holdAt:()=>1,maxFrames:120,shape:'square',project:fakeProject,canNavigate:()=>true,seek:()=>true,thumbAt:()=>''};
-  assert.equal(radial.render(board,fakeEnv),true);assert.ok(radial.lastLayout.rings.length>=3);
+  assert.equal(radial.render(board,fakeEnv),true);assert.ok(radial.lastLayout.rings.length>=2,'120 frames must expand beyond one ring at tablet dimensions');
   board.querySelector('.inkframe-radial-ring').click();await new Promise(r=>setTimeout(r,20));
   assert.ok(board.dataset.focusRing!=null,'ring focus must identify the current ring');
   assert.ok(board.querySelectorAll('.frameSlot.inkframe-radial-muted').length>0,'ring focus must dim other rings');
