@@ -14,8 +14,10 @@ const sourceIndex = resolve(root, 'web/index.html');
 const injector = resolve(root, 'tools/inject-brush-v2-index.mjs');
 const tuningFile = resolve(root, 'web/brush-engine-v2/tuning.js');
 const batchFile = resolve(root, 'web/brush-engine-v2/batch.js');
+const ghostTrailFile = resolve(root, 'web/brush-engine-v2/ghost-trail.js');
 const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
 const sessionFile = resolve(root, 'web/brush-engine-v2/session.js');
+const ghostRuntimeFile = resolve(root, 'web/brush-engine-v2/ghost-runtime.js');
 const inputFile = resolve(root, 'web/brush-engine-v2/input.js');
 const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
@@ -45,39 +47,31 @@ try {
   assert.ok(html.includes('const inputRect=canvas.getBoundingClientRect()'));
 
   const expectedScripts = [
-    'brush-engine-v2/sample.js',
-    'brush-engine-v2/batch.js',
-    'brush-engine-v2/validator.js',
-    'brush-engine-v2/contact.js',
-    'brush-engine-v2/stabilizer.js',
-    'brush-engine-v2/filters.js',
-    'brush-engine-v2/path.js',
-    'brush-engine-v2/arc-sampler.js',
-    'brush-engine-v2/radius.js',
-    'brush-engine-v2/rasterizer.js',
-    'brush-engine-v2/trace.js',
-    'brush-engine-v2/runtime.js',
-    'brush-engine-v2/native.js',
-    'brush-engine-v2/engine.js',
-    'brush-engine-v2/tuning.js',
-    'brush-engine-v2/adapter.js',
-    'brush-engine-v2/session.js',
-    'brush-engine-v2/input.js',
-    'brush-engine-v2/coverage-ui.js',
-    'brush-engine-v2/stabilizer-ui.js',
+    'brush-engine-v2/sample.js','brush-engine-v2/batch.js','brush-engine-v2/validator.js',
+    'brush-engine-v2/contact.js','brush-engine-v2/stabilizer.js','brush-engine-v2/filters.js',
+    'brush-engine-v2/path.js','brush-engine-v2/arc-sampler.js','brush-engine-v2/radius.js',
+    'brush-engine-v2/rasterizer.js','brush-engine-v2/ghost-trail.js','brush-engine-v2/trace.js',
+    'brush-engine-v2/runtime.js','brush-engine-v2/native.js','brush-engine-v2/engine.js',
+    'brush-engine-v2/tuning.js','brush-engine-v2/adapter.js','brush-engine-v2/session.js',
+    'brush-engine-v2/ghost-runtime.js','brush-engine-v2/input.js','brush-engine-v2/coverage-ui.js',
+    'brush-engine-v2/stabilizer-ui.js','brush-engine-v2/ghost-ui.js','brush-engine-v2/lab-ui.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
-  assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'), 'stabilizer must load before filters');
-  assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'), 'batch normalizer must load before adapter');
-  assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'), 'runtime policy must load after trace.js');
-  assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/native.js'), 'debug native diagnostics must wrap after runtime policy');
-  assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'), 'native diagnostics must wrap before adapter creates recorders');
-  assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'), 'session guard must load after adapter');
-  assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/input.js'), 'input bridge must call the session-wrapped adapter');
-  assert.ok(html.indexOf('brush-engine-v2/coverage-ui.js') < html.indexOf('brush-engine-v2/stabilizer-ui.js'), 'stabilizer controls must load after the tuning panel extensions');
+  assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
+  assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
+  assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'));
+  assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'));
+  assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/native.js'));
+  assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'));
+  assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'));
+  assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/ghost-runtime.js'));
+  assert.ok(html.indexOf('brush-engine-v2/ghost-runtime.js') < html.indexOf('brush-engine-v2/input.js'));
+  assert.ok(html.indexOf('brush-engine-v2/coverage-ui.js') < html.indexOf('brush-engine-v2/stabilizer-ui.js'));
+  assert.ok(html.indexOf('brush-engine-v2/stabilizer-ui.js') < html.indexOf('brush-engine-v2/ghost-ui.js'));
+  assert.ok(html.indexOf('brush-engine-v2/ghost-ui.js') < html.indexOf('brush-engine-v2/lab-ui.js'));
 
   const sandbox = {
     module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, Blob, URL,
@@ -89,10 +83,15 @@ try {
   vm.runInNewContext(readFileSync(batchFile, 'utf8'), sandbox, { filename: 'batch.js' });
   assert.equal(typeof sandbox.InkFrameBrushV2.createInputBatchNormalizer, 'function');
   sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(readFileSync(ghostTrailFile, 'utf8'), sandbox, { filename: 'ghost-trail.js' });
+  sandbox.InkFrameBrushV2.createBrushEngine = options => ({ options });
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(adapterFile, 'utf8'), sandbox, { filename: 'adapter.js' });
   const adapter = sandbox.module.exports;
   sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(sessionFile, 'utf8'), sandbox, { filename: 'session.js' });
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(readFileSync(ghostRuntimeFile, 'utf8'), sandbox, { filename: 'ghost-runtime.js' });
   sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(inputFile, 'utf8'), sandbox, { filename: 'input.js' });
 
@@ -102,6 +101,8 @@ try {
   assert.equal(adapter.currentTuning().stabilizerStrength, 55);
   assert.equal(adapter.currentTuning().cornerMode, 'preserve');
   assert.equal(adapter.currentTuning().cornerStrength, 70);
+  assert.equal(adapter.currentTuning().ghostMode, 'comet');
+  assert.equal(adapter.currentTuning().ghostIntensity, 65);
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
@@ -112,9 +113,11 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
-  assert.equal(adapter.setTuning({ stabilizerMode:'fixed', cornerMode:'smooth', coverageMode:'dabs', radiusMode:'raw', contactMode:'raw' }), true);
+  assert.equal(adapter.setTuning({ stabilizerMode:'fixed',stabilizerStrength:200,cornerMode:'smooth',ghostMode:'off',coverageMode:'dabs',radiusMode:'raw',contactMode:'raw' }), true);
   assert.equal(adapter.currentTuning().stabilizerMode, 'fixed');
+  assert.equal(adapter.currentTuning().stabilizerStrength,200);
   assert.equal(adapter.currentTuning().cornerMode, 'smooth');
+  assert.equal(adapter.currentTuning().ghostMode,'off');
   assert.equal(adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(adapter.currentTuning().radiusMode, 'raw');
   assert.equal(adapter.currentTuning().contactMode, 'raw');
@@ -124,11 +127,14 @@ try {
   assert.equal(adapter.currentTuning().stabilizerStrength, 80);
   assert.equal(adapter.currentTuning().cornerMode, 'preserve');
   assert.equal(adapter.currentTuning().cornerStrength, 55);
+  assert.equal(adapter.currentTuning().ghostMode,'echo');
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
   assert.equal(adapter.setMode('original'), true);
   assert.equal(adapter.__sessionContinuityInstalled, true);
+  assert.equal(adapter.__ghostTrailInstalled, true);
+  assert.equal(typeof adapter.ghostTrailStats, 'function');
   assert.equal(typeof adapter.finishStaleSession, 'function');
   assert.equal(typeof adapter.sessionStats, 'function');
   assert.equal(typeof sandbox.InkFrameBrushV2InputBridge.begin, 'function');
@@ -146,11 +152,12 @@ try {
   assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
   assert.equal(tuning.presetValue('direct').stabilizerMode, 'adaptive');
   assert.equal(tuning.presetValue('direct').cornerMode, 'preserve');
+  assert.equal(tuning.presetValue('direct').ghostMode,'comet');
   assert.equal(tuning.presetValue('direct').coverageMode, 'ribbon');
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ Brush Engine V2 debug integration tests passed');
+  console.log('✅ Brush Engine V2 debug Ghost Trail integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
