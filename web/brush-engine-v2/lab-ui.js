@@ -74,9 +74,9 @@
       #inkframe-v2-lab-shell{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;align-items:start}
       #inkframe-v2-lab-tabs{display:flex;flex-direction:column;gap:9px;position:sticky;top:58px;align-self:start}
       #inkframe-v2-lab-tabs button{min-height:68px;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:rgba(255,255,255,.045);color:#fff;padding:10px 11px;display:grid;grid-template-columns:34px minmax(0,1fr);grid-template-rows:auto auto;column-gap:9px;text-align:left;align-items:center}
-      #inkframe-v2-lab-tabs button .inkframe-v2-tab-icon{grid-row:1/3;font-size:21px;line-height:1;opacity:.82;text-align:center}
-      #inkframe-v2-lab-tabs button .inkframe-v2-tab-label{font:770 12px/1.15 system-ui,sans-serif;letter-spacing:.015em}
-      #inkframe-v2-lab-tabs button .inkframe-v2-tab-summary{font:580 10px/1.2 system-ui,sans-serif;opacity:.56;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #inkframe-v2-lab-tabs button .inkframe-v2-tab-icon{grid-column:1;grid-row:1/3;font-size:21px;line-height:1;opacity:.82;text-align:center}
+      #inkframe-v2-lab-tabs button .inkframe-v2-tab-label{grid-column:2;grid-row:1;font:770 12px/1.15 system-ui,sans-serif;letter-spacing:.015em}
+      #inkframe-v2-lab-tabs button .inkframe-v2-tab-summary{grid-column:2;grid-row:2;font:580 10px/1.2 system-ui,sans-serif;opacity:.56;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       #inkframe-v2-lab-tabs button.on{background:linear-gradient(145deg,#bb0037,#69004e);border-color:#ffd0dc;box-shadow:0 0 0 1px rgba(255,255,255,.12) inset,0 8px 24px rgba(187,0,55,.28)}
       #inkframe-v2-lab-tabs button.on .inkframe-v2-tab-summary{opacity:.82}
       #inkframe-v2-lab-workspace{min-width:0}
@@ -158,7 +158,7 @@
       const iconNode=root.document.createElement('span');iconNode.className='inkframe-v2-tab-icon';iconNode.textContent=icon;
       const labelNode=root.document.createElement('span');labelNode.className='inkframe-v2-tab-label';labelNode.textContent=label;
       const summaryNode=root.document.createElement('span');summaryNode.className='inkframe-v2-tab-summary';summaryNode.textContent='—';
-      button.append(iconNode,labelNode,summaryNode);tabs.appendChild(button);buttons.set(key,button);summaries.set(key,summaryNode);
+      button.append(iconNode,summaryNode,labelNode);tabs.appendChild(button);buttons.set(key,button);summaries.set(key,summaryNode);
 
       const section=root.document.createElement('section');section.id=sectionId;section.className='inkframe-v2-lab-section';section.dataset.labSection=key;section.setAttribute('role','tabpanel');
       const sectionHead=root.document.createElement('div');sectionHead.className='inkframe-v2-lab-section-head';
