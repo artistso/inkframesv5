@@ -92,6 +92,47 @@ const near=(a,b,e=1e-6)=>assert.ok(Math.abs(a-b)<=e,`${a} != ${b}`);
   assert.ok(memory.has(V2.STORAGE_KEY));
 }
 
+// 0..100 preserves the exact v3 coefficient mapping.
+{
+  for(const strength of [0,25,55,80,100]){
+    const classic=strength/100;
+    const value=V2.adaptivePositionOptions({stabilizerStrength:strength});
+    near(value.positionSlowTimeConstantMs,5+24*classic,1e-12);
+    near(value.positionFastTimeConstantMs,1.5+4*classic,1e-12);
+    near(value.stabilizerSpeedStartPxPerMs,0.08+0.12*(1-classic),1e-12);
+    near(value.stabilizerSpeedEndPxPerMs,2.2+3.2*classic,1e-12);
+    near(value.speedSmoothingTimeConstantMs,10+24*classic,1e-12);
+  }
+}
+
+// The Studio range extends to 200 without unbounded time constants or disabling
+// fast-motion release.
+{
+  const studio=V2.adaptivePositionOptions({stabilizerStrength:150});
+  const maximum=V2.adaptivePositionOptions({stabilizerStrength:200});
+  assert.ok(studio.positionSlowTimeConstantMs>29);
+  assert.ok(studio.positionSlowTimeConstantMs<60);
+  near(maximum.positionSlowTimeConstantMs,60,1e-12);
+  near(maximum.positionFastTimeConstantMs,7,1e-12);
+  near(maximum.stabilizerSpeedStartPxPerMs,0.04,1e-12);
+  near(maximum.stabilizerSpeedEndPxPerMs,7.5,1e-12);
+  near(maximum.speedSmoothingTimeConstantMs,50,1e-12);
+  assert.equal(V2.normalizeTuning({stabilizerMode:'adaptive',stabilizerStrength:999}).stabilizerStrength,200);
+
+  const filter=V2.createPositionStabilizer({
+    mode:'adaptive',slowTimeConstantMs:maximum.positionSlowTimeConstantMs,
+    fastTimeConstantMs:maximum.positionFastTimeConstantMs,
+    speedStartPxPerMs:maximum.stabilizerSpeedStartPxPerMs,
+    speedEndPxPerMs:maximum.stabilizerSpeedEndPxPerMs,
+    speedSmoothingTimeConstantMs:maximum.speedSmoothingTimeConstantMs,
+  });
+  filter.reset({x:0,y:0,time:0});
+  for(let t=8;t<=160;t+=8)filter.update({x:t*2,y:0,time:t});
+  const stats=filter.stats();
+  assert.ok(stats.timeConstantMs>=7-1e-9);
+  assert.ok(stats.timeConstantMs<=60+1e-9);
+}
+
 // Strength maps only to bounded deterministic filter coefficients.
 {
   const direct=V2.tuningFilterOptions(V2.presetValue('direct'));
