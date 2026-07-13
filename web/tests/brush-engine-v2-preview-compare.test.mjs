@@ -76,7 +76,7 @@ function load(stubs={}){
 {
   const appended=[];
   const document={
-    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach)||(selector==='script[data-inkframe-coach-session]'&&node.dataset.inkframeCoachSession))||null,
+    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach)||(selector==='script[data-inkframe-coach-session]'&&node.dataset.inkframeCoachSession)||(selector==='script[data-inkframe-calibration-report]'&&node.dataset.inkframeCalibrationReport))||null,
     createElement:tag=>({tag,dataset:{},src:'',async:true,listeners:{},addEventListener(type,handler){this.listeners[type]=handler;}}),
     head:{appendChild:node=>appended.push(node)},
   };
@@ -92,10 +92,15 @@ function load(stubs={}){
   assert.equal(appended.length,3);
   assert.equal(appended[2].src,'brush-engine-v2/coach-session.js');
   assert.equal(appended[2].async,false);
+  appended[2].listeners.load();
+  assert.equal(appended.length,4);
+  assert.equal(appended[3].src,'brush-engine-v2/calibration-report.js');
+  assert.equal(appended[3].async,false);
   assert.equal(sandbox.InkFrameBrushV2.loadReferenceReplay(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadBrushCoach(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadCoachSession(),true);
-  assert.equal(appended.length,3,'loader chain must not append duplicate scripts');
+  assert.equal(sandbox.InkFrameBrushV2.loadCalibrationReport(),true);
+  assert.equal(appended.length,4,'loader chain must not append duplicate scripts');
 }
 
-console.log('✅ Brush Engine V2 deterministic A/B preview and Coach Session loaders passed');
+console.log('✅ Brush Engine V2 deterministic A/B preview and calibration loader chain passed');
