@@ -35,7 +35,7 @@ export function injectCanvasShape(html,replaceOnce){
 
   html=replaceOnce(html,
     block('        const c=toC(ev);','        const clientX=Number(ev.clientX), clientY=Number(ev.clientY);','        return {','          x:Number.isFinite(clientX)?(clientX-inputTransform.left)*inputTransform.scaleX:c.x,','          y:Number.isFinite(clientY)?(clientY-inputTransform.top)*inputTransform.scaleY:c.y,'),
-    block('        const c=toC(ev);','        const mapped=window.InkFrameCanvasShape','          ? window.InkFrameCanvasShape.mapEventPoint(ev,canvas,W,H,activeCanvasShape())','          : c;','        return {','          x:mapped.x,','          y:mapped.y,'),
+    block('        const c=toC(ev);','        const clientX=Number(ev.clientX), clientY=Number(ev.clientY);','        const rawX=Number.isFinite(clientX)?(clientX-inputTransform.left)*inputTransform.scaleX:c.x;','        const rawY=Number.isFinite(clientY)?(clientY-inputTransform.top)*inputTransform.scaleY:c.y;','        const mapped=window.InkFrameCanvasShape','          ? window.InkFrameCanvasShape.clampPoint(rawX,rawY,W,H,activeCanvasShape())','          : {x:rawX,y:rawY};','        return {','          x:mapped.x,','          y:mapped.y,'),
     'V2 sample circular clamp');
   html=replaceOnce(html,
     block('    return {x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height),','            p:e.pressure&&e.pressure>0?e.pressure:0.5, az, flat, type:e.pointerType};};'),
