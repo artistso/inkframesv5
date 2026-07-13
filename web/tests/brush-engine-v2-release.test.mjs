@@ -41,6 +41,15 @@ try {
   assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
+  assert.ok(html.includes('project:projects[pi]'),'release bridge must isolate navigation view by project');
+  assert.ok(html.includes('canNavigate:()=>'),'release bridge must block navigation during active strokes');
+  assert.ok(html.includes('seek:i=>'),'release bridge must expose bounded frame seeking');
+  assert.ok(radialSource.includes('inkframe-radial-hit'),'Radial Timeline must expose orbit-only drag targets');
+  assert.ok(radialSource.includes('focusCurrent'),'Radial Timeline must expose current-frame centering');
+  assert.ok(radialSource.includes('toggleRingFocus'),'Radial Timeline must expose ring focus');
+  assert.ok(radialSource.includes("event.key==='ArrowRight'"),'Radial Timeline must expose keyboard stepping');
+  assert.ok(radialSource.includes('aria-activedescendant'),'Radial Timeline must expose active-frame accessibility state');
+  assert.ok(radialSource.includes('const projectViews=new WeakMap()'),'Radial Timeline view state must remain non-persistent and per-project');
   assert.ok(radialSource.includes('projectCanvasWrites:0'),'Radial Timeline must declare project-canvas isolation');
   assert.ok(radialSource.includes('undoWrites:0'),'Radial Timeline must declare artwork-undo isolation');
   for(const script of [
@@ -96,7 +105,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, signature, Circular Canvas, and Radial Timeline policy passed');
+  console.log('✅ generated Brush V2 production recovery, signature, Circular Canvas, and radial navigation policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
