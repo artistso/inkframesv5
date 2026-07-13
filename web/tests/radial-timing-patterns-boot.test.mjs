@@ -69,7 +69,7 @@ try{
     pointer('pointerup',board,{pointerId:210+i,pointerType:'pen',clientX:100,clientY:100,buttons:0,button:0});
     await new Promise(r=>setTimeout(r,55));
   }
-  assert.equal(project.frames.length,5);assert.deepEqual(project.holds,[1,1,1,1,1]);
+  assert.equal(project.frames.length,5);assert.deepEqual(Array.from(project.holds),[1,1,1,1,1]);
   const frameRefs=project.frames.slice(),layerRefs=project.frames.map(frame=>frame.layers.slice());
 
   board.querySelector('.inkframe-radial-timing-toggle').click();await new Promise(r=>setTimeout(r,60));
@@ -81,21 +81,21 @@ try{
   assert.equal(board.querySelectorAll('.inkframe-rhythm-pattern').length,6);
 
   board.querySelector('.inkframe-rhythm-twos').click();await new Promise(r=>setTimeout(r,85));
-  assert.deepEqual(project.holds,[2,2,2,2,2],'one-tap Twos must batch the complete default scope');
+  assert.deepEqual(Array.from(project.holds),[2,2,2,2,2],'one-tap Twos must batch the complete default scope');
   assert.equal(patterns.viewSnapshot(project).undoDepth,1);assert.equal(patterns.viewSnapshot(project).redoDepth,0);
   board.querySelector('.inkframe-rhythm-undo').click();await new Promise(r=>setTimeout(r,75));
-  assert.deepEqual(project.holds,[1,1,1,1,1]);assert.equal(patterns.viewSnapshot(project).redoDepth,1);
+  assert.deepEqual(Array.from(project.holds),[1,1,1,1,1]);assert.equal(patterns.viewSnapshot(project).redoDepth,1);
   board.querySelector('.inkframe-rhythm-redo').click();await new Promise(r=>setTimeout(r,75));
-  assert.deepEqual(project.holds,[2,2,2,2,2]);
+  assert.deepEqual(Array.from(project.holds),[2,2,2,2,2]);
 
   board.querySelector('.inkframe-rhythm-preview').click();await new Promise(r=>setTimeout(r,35));
   board.querySelector('.inkframe-rhythm-ease-in').click();await new Promise(r=>setTimeout(r,45));
-  assert.deepEqual(project.holds,[2,2,2,2,2],'preview must not mutate established holds');
+  assert.deepEqual(Array.from(project.holds),[2,2,2,2,2],'preview must not mutate established holds');
   assert.equal(board.querySelectorAll('.inkframe-rhythm-preview-arc').length,5);
   assert.deepEqual(Array.from(board.querySelectorAll('.inkframe-rhythm-preview-arc'),node=>Number(node.dataset.hold)),[3,3,2,2,1]);
   assert.equal(board.querySelector('.inkframe-rhythm-apply').disabled,false);
   board.querySelector('.inkframe-rhythm-apply').click();await new Promise(r=>setTimeout(r,90));
-  assert.deepEqual(project.holds,[3,3,2,2,1]);assert.equal(patterns.viewSnapshot(project).undoDepth,2);
+  assert.deepEqual(Array.from(project.holds),[3,3,2,2,1]);assert.equal(patterns.viewSnapshot(project).undoDepth,2);
   assert.ok(frameRefs.every((frame,index)=>project.frames[index]===frame));
   assert.ok(layerRefs.every((layers,index)=>layers.every((layer,j)=>project.frames[index].layers[j]===layer)),'rhythms must preserve artwork object identity');
 
