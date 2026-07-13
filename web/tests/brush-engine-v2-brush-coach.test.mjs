@@ -11,9 +11,10 @@ const reportSource=readFileSync(resolve(here,'..','brush-engine-v2','calibration
 const recoverySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-recovery.js'),'utf8');
 const identitySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-identities.js'),'utf8');
 const mixerSource=readFileSync(resolve(here,'..','brush-engine-v2','identity-mixer.js'),'utf8');
+const matchSource=readFileSync(resolve(here,'..','brush-engine-v2','brush-match.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});vm.runInContext(mixerSource,box,{filename:'identity-mixer.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});vm.runInContext(mixerSource,box,{filename:'identity-mixer.js'});vm.runInContext(matchSource,box,{filename:'brush-match.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -55,10 +56,12 @@ for(const item of cases){
   assert.equal(suggestion.tuning.coverageMode,'ribbon');assert.equal(suggestion.tuning.radiusMode,'guarded');assert.equal(suggestion.tuning.contactMode,'strict');
   assert.deepEqual({...ns.recommendationFromAnalysis(first,{stabilizerStrength:55})},{...ns.recommendationFromAnalysis(first,{stabilizerStrength:55})});
   assert.equal(ns.analysisChips(first).length,4);
+  const match=ns.matchBrushIdentities(first,{stabilizerStrength:55,cornerStrength:70,ghostMode:'comet'}),again=ns.matchBrushIdentities(first,{stabilizerStrength:55,cornerStrength:70,ghostMode:'comet'});
+  assert.equal(match.valid,true);assert.equal(JSON.stringify(match),JSON.stringify(again),`${item.name} identity match must be deterministic`);assert.equal(match.ranking.length,3);assert.ok(match.score>=0&&match.score<=1);assert.ok(match.confidence>=.5&&match.confidence<=.97);assert.ok(match.mix.percent>=0&&match.mix.percent<=100);assert.ok(match.distance<=match.ranking[0].distance+1e-8,'pair search must be at least as close as the best single identity endpoint');assert.equal(match.tuning.coverageMode,'ribbon');assert.equal(match.tuning.radiusMode,'guarded');assert.equal(match.tuning.contactMode,'strict');assert.equal(ns.brushMatchChips(match).length,4);
 }
 
 const invalid=ns.analyzeReferenceStroke(reference([{x:0,y:0,timeStamp:0},{x:1,y:1,timeStamp:1}]));
-assert.equal(invalid.valid,false);assert.equal(ns.recommendationFromAnalysis(invalid,{}).valid,false);
+assert.equal(invalid.valid,false);assert.equal(ns.recommendationFromAnalysis(invalid,{}).valid,false);assert.equal(ns.matchBrushIdentities(invalid,{}).valid,false);
 
 const baseline={stabilizerStrength:55,cornerStrength:70,ghostMode:'comet',ghostIntensity:65,ghostLengthMs:340,coverageMode:'ribbon',radiusMode:'guarded',contactMode:'strict'};
 const session=ns.createCoachSession({current:()=>baseline});
@@ -108,6 +111,8 @@ const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false}
   assert.equal(ns.resolveBrushIdentity('missing'),null);assert.equal(ns.brushIdentityChips('precision-ink').length,5);
 
   const lovely=ns.resolveBrushIdentity('lovely-comet'),precision=ns.resolveBrushIdentity('precision-ink'),expressive=ns.resolveBrushIdentity('expressive-echo');
+  assert.equal(ns.tuningDistance(lovely.tuning,lovely.tuning),0);assert.ok(ns.tuningDistance(lovely.tuning,precision.tuning)>0);
+  const ranked=Array.from(ns.rankBrushIdentities(lovely.tuning));assert.equal(ranked[0].identity.id,'lovely-comet');assert.equal(ranked[0].score,1);
   assert.deepEqual({...ns.mixBrushTunings(lovely.tuning,precision.tuning,0)},{...lovely.tuning},'zero mix must equal A exactly');
   assert.deepEqual({...ns.mixBrushTunings(lovely.tuning,precision.tuning,1)},{...precision.tuning},'full mix must equal B exactly');
   const midpoint=ns.mixBrushIdentities('lovely-comet','precision-ink',50);assert.equal(midpoint.tuning.stabilizerStrength,101);assert.equal(midpoint.tuning.cornerStrength,84);assert.equal(midpoint.tuning.ghostIntensity,43);assert.equal(midpoint.tuning.ghostMode,'comet','non-off trail must fade continuously toward an off endpoint');
@@ -119,4 +124,4 @@ const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false}
 }
 
 session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach, calibration, recovery, creative identities, and deterministic Identity Mixer passed');
+console.log('✅ Brush Coach, calibration, recovery, identities, mixer, and deterministic Brush Match passed');
