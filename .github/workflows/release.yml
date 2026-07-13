@@ -1,12 +1,18 @@
 name: Signed Android Release
 
-# A v* tag builds release-variant APK and AAB artifacts with the long-lived
-# InkFrame signing key. Missing or incomplete credentials fail before Gradle.
+# A matching v* tag builds and publishes release APK/AAB artifacts with the
+# long-lived InkFrame upload key. Manual runs are private signing dry runs only.
+# Missing or incomplete credentials fail before Gradle packages a release.
 
 on:
   push:
     tags: [ 'v*' ]
   workflow_dispatch:
+    inputs:
+      expected_version:
+        description: Version expected in web/metadata.json, for example 0.2.0
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,7 +23,7 @@ concurrency:
 
 jobs:
   release:
-    name: Test, sign, verify, and publish
+    name: Test, sign, verify, and stage or publish
     runs-on: ubuntu-latest
     env:
       INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
@@ -50,18 +56,42 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Resolve and validate version
+      - name: Resolve release mode and validate version
         shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./web/metadata.json').version")"
           test -n "$VERSION"
-          if [[ "$GITHUB_REF" == refs/tags/* ]] && [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match metadata version v$VERSION" >&2
-            exit 1
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test -n "$EXPECTED_VERSION" || {
+              echo "Manual signing requires expected_version." >&2
+              exit 1
+            }
+            if [[ "$EXPECTED_VERSION" != "$VERSION" ]]; then
+              echo "Expected version $EXPECTED_VERSION does not match metadata version $VERSION" >&2
+              exit 1
+            fi
+            RELEASE_MODE="dry-run"
+            RELEASE_LABEL="v${VERSION}-dry-run"
+          else
+            if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+              echo "Non-manual release runs must originate from a v* tag." >&2
+              exit 1
+            fi
+            if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match metadata version v$VERSION" >&2
+              exit 1
+            fi
+            RELEASE_MODE="tag-release"
+            RELEASE_LABEL="v${VERSION}"
           fi
+
           echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "INKFRAME_RELEASE_LABEL=v$VERSION" >> "$GITHUB_ENV"
+          echo "INKFRAME_RELEASE_MODE=$RELEASE_MODE" >> "$GITHUB_ENV"
+          echo "INKFRAME_RELEASE_LABEL=$RELEASE_LABEL" >> "$GITHUB_ENV"
 
       - name: Decode release keystore
         shell: bash
@@ -79,9 +109,10 @@ jobs:
           chmod 600 "$KEYSTORE_PATH"
           echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
-      - name: Verify release metadata
+      - name: Verify release and Play metadata
         run: |
           node tools/update-release-notes.mjs --check
+          node tools/validate-play-release.mjs
           node web/tests/version-smoke.mjs
           node --check tools/inject-brush-v2-index.mjs
           node --check web/brush-engine-v2/runtime.js
@@ -131,9 +162,11 @@ jobs:
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
+          BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK")"
+          grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
+          grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
 
-      - name: Collect release artifacts
+      - name: Collect signed artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -148,13 +181,33 @@ jobs:
           )
           ls -lh release
 
-      - name: Upload signed release artifacts
+      - name: Write release summary
+        shell: bash
+        run: |
+          {
+            echo "## InkFrame ${INKFRAME_VERSION} signed Android ${INKFRAME_RELEASE_MODE}"
+            echo
+            echo "- Package: \`com.inkframe.studio\`"
+            echo "- Version code: \`${INKFRAME_VERSION_CODE}\`"
+            echo "- APK and AAB signatures: verified"
+            echo "- Production assets: verified"
+            echo "- Brush Engine V2: production default"
+            echo "- Debug telemetry: excluded"
+            echo
+            if [[ "$INKFRAME_RELEASE_MODE" == "dry-run" ]]; then
+              echo "This manual run creates private verification artifacts only. It does not publish a GitHub Release or upload to Google Play."
+            else
+              echo "This tag run is eligible to publish the GitHub Release after all preceding checks pass."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload signed artifacts
         uses: actions/upload-artifact@v4
         with:
           name: inkframe-signed-${{ env.INKFRAME_RELEASE_LABEL }}
           path: release/*
           if-no-files-found: error
-          retention-days: 90
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 14 }}
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
