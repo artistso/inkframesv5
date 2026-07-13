@@ -22,6 +22,7 @@ try {
   ], { cwd:root, stdio:'pipe' });
 
   const html = readFileSync(generated, 'utf8');
+  const compareSource=readFileSync(resolve(root,'web/brush-engine-v2/preview-compare.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -34,6 +35,8 @@ try {
     assert.ok(html.includes(`<script src="brush-engine-v2/${script}"></script>`),`missing release script ${script}`);
     assert.ok(existsSync(resolve(root,`web/brush-engine-v2/${script}`)),`missing runtime file ${script}`);
   }
+  assert.ok(existsSync(resolve(root,'web/brush-engine-v2/preview-replay.js')),'missing reference replay asset');
+  assert.ok(compareSource.includes("script.src='brush-engine-v2/preview-replay.js'"),'comparison runtime must load reference replay');
   assert.equal(html.includes('<script src="brush-engine-v2/native.js"></script>'), false);
   assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
   assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
@@ -50,7 +53,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production A/B preview policy passed');
+  console.log('✅ generated Brush V2 production reference-replay policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
