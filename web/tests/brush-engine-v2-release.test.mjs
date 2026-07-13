@@ -25,6 +25,7 @@ try {
   const compareSource=readFileSync(resolve(root,'web/brush-engine-v2/preview-compare.js'),'utf8');
   const radialSource=readFileSync(resolve(root,'web/radial-timeline.js'),'utf8');
   const timingSource=readFileSync(resolve(root,'web/radial-timing-editor.js'),'utf8');
+  const patternsSource=readFileSync(resolve(root,'web/radial-timing-patterns.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -41,7 +42,10 @@ try {
   assert.ok(existsSync(resolve(root,'web/radial-timeline.js')),'missing Radial Timeline runtime');
   assert.ok(html.includes('<script src="radial-timing-editor.js"></script>'),'release index must load Radial Timing Editor');
   assert.ok(existsSync(resolve(root,'web/radial-timing-editor.js')),'missing Radial Timing Editor runtime');
+  assert.ok(html.includes('<script src="radial-timing-patterns.js"></script>'),'release index must load Radial Timing Patterns');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-patterns.js')),'missing Radial Timing Patterns runtime');
   assert.ok(html.indexOf('radial-timeline.js')<html.indexOf('radial-timing-editor.js'),'Radial Timing Editor must load after Radial Timeline');
+  assert.ok(html.indexOf('radial-timing-editor.js')<html.indexOf('radial-timing-patterns.js'),'Radial Timing Patterns must load after the direct editor');
   assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
@@ -55,6 +59,7 @@ try {
   assert.ok(html.includes('seekFraction:f=>'),'release bridge must delegate orbital scrubbing to hold-weighted rail seeking');
   assert.ok(html.includes('togglePlayback:()=>'),'release bridge must delegate play/pause to the established animation engine');
   assert.ok(html.includes('setHold:(i,v)=>'),'release bridge must delegate radial hold edits to the established hold array');
+  assert.ok(html.includes('setHolds:entries=>'),'release bridge must expose one batched hold transaction for exposure rhythms');
   assert.ok(html.includes('setLoopRange:(a,b)=>'),'release bridge must delegate loop handles to established loop bounds');
   assert.ok(html.includes('toggleLoop:()=>'),'release bridge must delegate loop enablement to the existing loop control');
   assert.ok(html.includes("AUTOSAVE.schedule)AUTOSAVE.schedule()"),'timing mutations must schedule existing project recovery');
@@ -87,6 +92,20 @@ try {
   assert.ok(timingSource.includes('projectCanvasWrites:0'),'Radial Timing Editor must declare project-canvas isolation');
   assert.ok(timingSource.includes('artworkUndoWrites:0'),'Radial Timing Editor must declare artwork-undo isolation');
   assert.ok(timingSource.includes('timelineTimingWrites:true'),'Radial Timing Editor must explicitly declare its bounded timeline mutation scope');
+  assert.ok(patternsSource.includes("freezePattern('ease-in'"),'Radial Timing Patterns must ship deterministic built-in rhythms');
+  assert.ok(patternsSource.includes('function resolveTargetIndices'),'Radial Timing Patterns must resolve selection, loop, and full-timeline scopes');
+  assert.ok(patternsSource.includes("kind:'selection'"),'selected frames must take scope priority');
+  assert.ok(patternsSource.includes("kind:'loop'"),'active loop ranges must be available as rhythm scope');
+  assert.ok(patternsSource.includes('inkframe-rhythm-preview-svg'),'Radial Timing Patterns must expose non-destructive preview arcs');
+  assert.ok(patternsSource.includes('inkframe-rhythm-undo'),'Radial Timing Patterns must expose timing-only undo');
+  assert.ok(patternsSource.includes('inkframe-rhythm-redo'),'Radial Timing Patterns must expose timing-only redo');
+  assert.ok(patternsSource.includes("typeof lastEnvironment.setHolds==='function'"),'Radial Timing Patterns must use the batched hold bridge');
+  assert.ok(patternsSource.includes('const projectViews=new WeakMap(),projectHistories=new WeakMap()'),'rhythm view and history must remain memory-only per project');
+  assert.ok(patternsSource.includes('canEditTiming'),'Radial Timing Patterns must honor active-stroke guards');
+  assert.ok(patternsSource.includes('projectCanvasWrites:0'),'Radial Timing Patterns must declare project-canvas isolation');
+  assert.ok(patternsSource.includes('artworkUndoWrites:0'),'Radial Timing Patterns must declare artwork-undo isolation');
+  assert.ok(patternsSource.includes('timelineTimingWrites:true'),'Radial Timing Patterns must declare bounded timing writes');
+  assert.ok(patternsSource.includes('projectSchemaWrites:0'),'Radial Timing Patterns must declare zero schema writes');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -140,7 +159,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, signature, Circular Canvas, radial playback, and direct timing-edit policy passed');
+  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial playback, direct timing, and exposure-rhythm policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
@@ -152,4 +171,6 @@ await import('./radial-timeline.test.mjs');
 await import('./radial-timeline-boot.test.mjs');
 await import('./radial-timing-editor.test.mjs');
 await import('./radial-timing-editor-boot.test.mjs');
+await import('./radial-timing-patterns.test.mjs');
+await import('./radial-timing-patterns-boot.test.mjs');
 await import('./android-branding.test.mjs');
