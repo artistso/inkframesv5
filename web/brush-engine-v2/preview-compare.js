@@ -83,7 +83,19 @@
     });
   }
 
-  const api={STUDIO_COMPARE_PRESETS:STUDIO_PRESETS,normalizeCompareLibrary:normalizeLibrary,studioCompareChoice:studioChoice,savedCompareChoice:savedChoice,compareChoices,resolveCompareChoice,createPairedPreviewSession};
+  function loadReferenceReplay(){
+    if(!root.document||root.InkFrameBrushV2ReferenceReplay)return false;
+    if(root.document.querySelector('script[data-inkframe-reference-replay]'))return true;
+    const script=root.document.createElement('script');
+    script.src='brush-engine-v2/preview-replay.js';
+    script.async=false;
+    script.dataset.inkframeReferenceReplay='true';
+    root.document.head.appendChild(script);
+    return true;
+  }
+
+  const api={STUDIO_COMPARE_PRESETS:STUDIO_PRESETS,normalizeCompareLibrary:normalizeLibrary,studioCompareChoice:studioChoice,savedCompareChoice:savedChoice,compareChoices,resolveCompareChoice,createPairedPreviewSession,loadReferenceReplay};
   Object.assign(ns,api);
+  if(root.document)root.setTimeout(loadReferenceReplay,0);
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
