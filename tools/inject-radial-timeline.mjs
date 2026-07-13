@@ -11,7 +11,7 @@ export function injectRadialTimeline(html,replaceOnce){
 
   html=replaceOnce(html,
     block('    const w=fg.clientWidth||1, h=fg.clientHeight||1, pad=14;','    const sideW=Math.max(1,w-pad*2), sideH=Math.max(1,h-pad*2), per=sideW*2+sideH*2;','    const slots=boardSlotCount();'),
-    block('    const slots=boardSlotCount();','    if(window.InkFrameRadialTimeline && window.InkFrameRadialTimeline.render(board,{','      frameGlass:fg,canvas,slotCount:slots,framesLength:frames.length,current:cur,','      selectedFrames,holdAt:hOf,maxFrames:MAX_FRAMES,shape:activeCanvasShape(),','      thumbAt:i=>i>=0&&i<frames.length?frameThumbData(frames[i]):\'\',','    })) return;','    const w=fg.clientWidth||1, h=fg.clientHeight||1, pad=14;','    const sideW=Math.max(1,w-pad*2), sideH=Math.max(1,h-pad*2), per=sideW*2+sideH*2;'),
+    block('    const slots=boardSlotCount();','    if(window.InkFrameRadialTimeline && window.InkFrameRadialTimeline.render(board,{','      frameGlass:fg,canvas,slotCount:slots,framesLength:frames.length,current:cur,','      selectedFrames,holdAt:hOf,maxFrames:MAX_FRAMES,shape:activeCanvasShape(),','      project:projects[pi],','      canNavigate:()=>{','        const adapter=window.InkFrameBrushV2Adapter;','        return !drawing&&!(adapter&&adapter.isActive&&adapter.isActive());','      },','      seek:i=>{','        const next=Math.max(0,Math.min(frames.length-1,Math.round(Number(i)||0)));','        if(next===cur)return true;','        setCur(next);render();refreshFrames();return true;','      },','      thumbAt:i=>i>=0&&i<frames.length?frameThumbData(frames[i]):\'\',','    })) return;','    const w=fg.clientWidth||1, h=fg.clientHeight||1, pad=14;','    const sideW=Math.max(1,w-pad*2), sideH=Math.max(1,h-pad*2), per=sideW*2+sideH*2;'),
     'Radial Timeline frame-board delegation');
 
   html=replaceOnce(html,
@@ -23,7 +23,10 @@ export function injectRadialTimeline(html,replaceOnce){
     'radial-timeline.js',
     'InkFrameRadialTimeline.render(board',
     'InkFrameRadialTimeline.refreshThumbnail(cur,thumb)',
-    "shape:activeCanvasShape()",
+    'shape:activeCanvasShape()',
+    'project:projects[pi]',
+    'canNavigate:()=>',
+    'seek:i=>',
     "thumbAt:i=>i>=0&&i<frames.length?frameThumbData(frames[i]):''",
   ]){
     if(!html.includes(marker))throw new Error(`Radial Timeline injection verification failed: ${marker}`);
