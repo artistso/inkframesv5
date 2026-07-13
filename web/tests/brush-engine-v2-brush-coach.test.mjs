@@ -9,9 +9,10 @@ const source=readFileSync(resolve(here,'..','brush-engine-v2','brush-coach.js'),
 const sessionSource=readFileSync(resolve(here,'..','brush-engine-v2','coach-session.js'),'utf8');
 const reportSource=readFileSync(resolve(here,'..','brush-engine-v2','calibration-report.js'),'utf8');
 const recoverySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-recovery.js'),'utf8');
+const identitySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-identities.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -97,5 +98,14 @@ const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false}
   assert.equal(ns.PROFILE_RECOVERY_LIMIT,24);assert.ok(ns.changeSummary(baseline,third).length>=2);
 }
 
+{
+  const identities=Array.from(ns.listBrushIdentities());
+  assert.deepEqual(identities.map(identity=>identity.name),['Lovely Comet','Precision Ink','Expressive Echo','Animation Cleanup','Fast Gesture','Maximum Stabilized']);
+  assert.equal(new Set(identities.map(identity=>identity.id)).size,6);assert.ok(identities.every(identity=>Object.isFrozen(identity)&&Object.isFrozen(identity.tuning)));
+  assert.ok(identities.every(identity=>identity.tuning.coverageMode==='ribbon'&&identity.tuning.radiusMode==='guarded'&&identity.tuning.contactMode==='strict'));
+  assert.equal(ns.resolveBrushIdentity('lovely-comet').tuning.ghostMode,'comet');assert.equal(ns.resolveBrushIdentity('expressive-echo').tuning.ghostMode,'echo');assert.equal(ns.resolveBrushIdentity('maximum-stabilized').tuning.stabilizerStrength,200);
+  assert.equal(ns.resolveBrushIdentity('missing'),null);assert.equal(ns.brushIdentityChips('precision-ink').length,5);
+}
+
 session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach, guided session, calibration report, profile lock, and recent changes are deterministic');
+console.log('✅ Brush Coach, guided session, calibration report, profile recovery, and creative identities are deterministic');
