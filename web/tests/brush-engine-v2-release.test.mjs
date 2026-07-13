@@ -23,6 +23,7 @@ try {
 
   const html = readFileSync(generated, 'utf8');
   const compareSource=readFileSync(resolve(root,'web/brush-engine-v2/preview-compare.js'),'utf8');
+  const radialSource=readFileSync(resolve(root,'web/radial-timeline.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -35,6 +36,13 @@ try {
   assert.ok(html.includes('InkFrameCanvasShape.boundaryEvent'),'release index must finish strokes at the circle rim');
   assert.ok(html.includes('InkFrameCanvasShape.maskComposite'),'release index must mask frame composites');
   assert.ok(html.includes("canvasShape:P.canvasShape==='circle'?'circle':'square'"),'release archives must preserve canvas shape');
+  assert.ok(html.includes('<script src="radial-timeline.js"></script>'),'release index must load Radial Timeline');
+  assert.ok(existsSync(resolve(root,'web/radial-timeline.js')),'missing Radial Timeline runtime');
+  assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
+  assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
+  assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
+  assert.ok(radialSource.includes('projectCanvasWrites:0'),'Radial Timeline must declare project-canvas isolation');
+  assert.ok(radialSource.includes('undoWrites:0'),'Radial Timeline must declare artwork-undo isolation');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -88,7 +96,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, signature, and Circular Canvas policy passed');
+  console.log('✅ generated Brush V2 production recovery, signature, Circular Canvas, and Radial Timeline policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
@@ -96,4 +104,6 @@ try {
 await import('./canvas-shape.test.mjs');
 await import('./canvas-shape-autosave.test.mjs');
 await import('./canvas-shape-boot.test.mjs');
+await import('./radial-timeline.test.mjs');
+await import('./radial-timeline-boot.test.mjs');
 await import('./android-branding.test.mjs');
