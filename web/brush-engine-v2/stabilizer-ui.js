@@ -15,7 +15,7 @@
     if(!api||typeof api.currentTuning!=='function')return false;
     const tuning=api.currentTuning()||{};
     const mode=normalizeMode(tuning.stabilizerMode);
-    const strength=clamp(tuning.stabilizerStrength??55,0,100);
+    const strength=clamp(tuning.stabilizerStrength??55,0,200);
     const cornerMode=normalizeCornerMode(tuning.cornerMode);
     const cornerStrength=clamp(tuning.cornerStrength??70,0,100);
     const active=typeof api.isActive==='function'&&api.isActive();
@@ -24,6 +24,7 @@
     nodes.strength.value=String(strength);
     nodes.strength.disabled=active||mode!=='adaptive';
     nodes.output.textContent=Math.round(strength)+'%';
+    nodes.output.dataset.studio=strength>100?'true':'false';
     nodes.cornerMode.value=cornerMode;
     nodes.cornerMode.disabled=active;
     nodes.cornerStrength.value=String(cornerStrength);
@@ -50,14 +51,14 @@
     return {row,select};
   }
 
-  function makeRangeRow(labelText,id){
+  function makeRangeRow(labelText,id,max){
     const row=root.document.createElement('label');
     row.className='inkframe-v2-tune-row';
     const name=root.document.createElement('span');
     name.textContent=labelText;
     const input=root.document.createElement('input');
     input.id=id;
-    input.type='range'; input.min='0'; input.max='100'; input.step='1';
+    input.type='range'; input.min='0'; input.max=String(max||100); input.step='1';
     const output=root.document.createElement('output');
     row.append(name,input,output);
     return {row,input,output};
@@ -83,11 +84,11 @@
     const stabilizerMode=makeSelectRow(
       'Stabilizer',MODE_ID,[['adaptive','Adaptive'],['fixed','Fixed']],'mode'
     );
-    const stabilizerStrength=makeRangeRow('Strength',STRENGTH_ID);
+    const stabilizerStrength=makeRangeRow('Strength',STRENGTH_ID,200);
     const cornerMode=makeSelectRow(
       'Corners',CORNER_MODE_ID,[['preserve','Preserve'],['smooth','Smooth']],'turns'
     );
-    const cornerStrength=makeRangeRow('Corner response',CORNER_STRENGTH_ID);
+    const cornerStrength=makeRangeRow('Corner response',CORNER_STRENGTH_ID,100);
 
     panel.insertBefore(cornerStrength.row,panel.children[1]||null);
     panel.insertBefore(cornerMode.row,panel.children[1]||null);
@@ -107,7 +108,7 @@
       api.setTuning({stabilizerMode:normalizeMode(nodes.mode.value)}); sync(nodes);
     });
     nodes.strength.addEventListener('input',()=>{
-      api.setTuning({stabilizerStrength:clamp(nodes.strength.value,0,100)}); sync(nodes);
+      api.setTuning({stabilizerStrength:clamp(nodes.strength.value,0,200)}); sync(nodes);
     });
     nodes.cornerMode.addEventListener('change',()=>{
       api.setTuning({cornerMode:normalizeCornerMode(nodes.cornerMode.value)}); sync(nodes);
