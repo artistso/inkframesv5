@@ -14,7 +14,7 @@
     ['cornerStrength','Corners',(a,b)=>`${Number(b)>=Number(a)?'+':''}${Math.round(Number(b)-Number(a))}%`],
     ['ghostMode','Trail',(a,b)=>`${a||'off'} → ${b||'off'}`],
     ['ghostIntensity','Trail intensity',(a,b)=>`${Number(b)>=Number(a)?'+':''}${Math.round(Number(b)-Number(a))}%`],
-    ['ghostDurationMs','Trail length',(a,b)=>`${Number(b)>=Number(a)?'+':''}${Math.round(Number(b)-Number(a))} ms`],
+    ['ghostLengthMs','Trail length',(a,b)=>`${Number(b)>=Number(a)?'+':''}${Math.round(Number(b)-Number(a))} ms`],
     ['coverageMode','Coverage',(a,b)=>`${a} → ${b}`],
     ['radiusMode','Width guard',(a,b)=>`${a} → ${b}`],
     ['contactMode','Contact',(a,b)=>`${a} → ${b}`],
