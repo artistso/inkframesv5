@@ -6,9 +6,10 @@ import vm from 'node:vm';
 
 const here=dirname(fileURLToPath(import.meta.url));
 const source=readFileSync(resolve(here,'..','brush-engine-v2','brush-coach.js'),'utf8');
+const sessionSource=readFileSync(resolve(here,'..','brush-engine-v2','coach-session.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -54,4 +55,16 @@ for(const item of cases){
 
 const invalid=ns.analyzeReferenceStroke(reference([{x:0,y:0,timeStamp:0},{x:1,y:1,timeStamp:1}]));
 assert.equal(invalid.valid,false);assert.equal(ns.recommendationFromAnalysis(invalid,{}).valid,false);
-console.log('✅ Brush Coach analysis is deterministic, bounded, and explainable');
+
+const session=ns.createCoachSession({current:()=>({stabilizerStrength:55,cornerStrength:70,ghostMode:'comet'})});
+assert.equal(session.capture(cases[0].ref),true);
+assert.equal(session.capture(cases[2].ref),true);
+assert.equal(session.capture(cases[1].ref),true);
+assert.equal(session.capture(cases[3].ref),true);
+const combined=session.suggestion();assert.equal(combined.valid,true);assert.equal(session.snapshot().completed,4);
+assert.ok(combined.tuning.stabilizerStrength>=25&&combined.tuning.stabilizerStrength<=200);
+assert.ok(combined.tuning.cornerStrength>=0&&combined.tuning.cornerStrength<=100);
+assert.equal(combined.tuning.coverageMode,'ribbon');assert.equal(combined.tuning.radiusMode,'guarded');assert.equal(combined.tuning.contactMode,'strict');
+assert.equal(JSON.stringify(session.suggestion()),JSON.stringify(session.suggestion()),'same session must remain deterministic');
+session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
+console.log('✅ Brush Coach and four-stroke session are deterministic, bounded, and explainable');
