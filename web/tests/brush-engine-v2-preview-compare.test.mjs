@@ -9,13 +9,14 @@ const here=dirname(fileURLToPath(import.meta.url));
 const root=resolve(here,'..');
 const source=readFileSync(resolve(root,'brush-engine-v2/preview-compare.js'),'utf8');
 
-function load(){
+function load(stubs={}){
   const sandbox={
     console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,
     InkFrameBrushV2:{
       presetValue:name=>({preset:name,stabilizerStrength:name==='direct'?25:name==='smooth'?80:55,ghostMode:name==='smooth'?'echo':'comet'}),
       normalizeTuning:value=>Object.freeze({...value}),
     },
+    ...stubs,
   };
   sandbox.globalThis=sandbox;vm.createContext(sandbox);vm.runInContext(source,sandbox,{filename:'preview-compare.js'});return sandbox;
 }
@@ -70,6 +71,21 @@ function load(){
   assert.equal(pair.abort(),true);
   assert.equal(aborts,2);
   assert.equal(pair.abort(),false);
+}
+
+{
+  const appended=[];
+  const document={
+    querySelector:selector=>appended.find(node=>selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||null,
+    createElement:tag=>({tag,dataset:{},src:'',async:true}),
+    head:{appendChild:node=>appended.push(node)},
+  };
+  const sandbox=load({document,setTimeout:callback=>{callback();return 1;}});
+  assert.equal(appended.length,1);
+  assert.equal(appended[0].src,'brush-engine-v2/preview-replay.js');
+  assert.equal(appended[0].async,false);
+  assert.equal(sandbox.InkFrameBrushV2.loadReferenceReplay(),true);
+  assert.equal(appended.length,1,'loader must not append duplicate replay scripts');
 }
 
 console.log('✅ Brush Engine V2 deterministic A/B preview comparison tests passed');
