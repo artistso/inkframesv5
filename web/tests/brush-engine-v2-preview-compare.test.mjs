@@ -76,7 +76,7 @@ function load(stubs={}){
 {
   const appended=[];
   const document={
-    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach)||(selector==='script[data-inkframe-coach-session]'&&node.dataset.inkframeCoachSession)||(selector==='script[data-inkframe-calibration-report]'&&node.dataset.inkframeCalibrationReport)||(selector==='script[data-inkframe-profile-recovery]'&&node.dataset.inkframeProfileRecovery))||null,
+    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach)||(selector==='script[data-inkframe-coach-session]'&&node.dataset.inkframeCoachSession)||(selector==='script[data-inkframe-calibration-report]'&&node.dataset.inkframeCalibrationReport)||(selector==='script[data-inkframe-profile-recovery]'&&node.dataset.inkframeProfileRecovery)||(selector==='script[data-inkframe-profile-recovery-observer]'&&node.dataset.inkframeProfileRecoveryObserver))||null,
     createElement:tag=>({tag,dataset:{},src:'',async:true,listeners:{},addEventListener(type,handler){this.listeners[type]=handler;}}),
     head:{appendChild:node=>appended.push(node)},
   };
@@ -100,12 +100,17 @@ function load(stubs={}){
   assert.equal(appended.length,5);
   assert.equal(appended[4].src,'brush-engine-v2/profile-recovery.js');
   assert.equal(appended[4].async,false);
+  appended[4].listeners.load();
+  assert.equal(appended.length,6);
+  assert.equal(appended[5].src,'brush-engine-v2/profile-recovery-observer.js');
+  assert.equal(appended[5].async,false);
   assert.equal(sandbox.InkFrameBrushV2.loadReferenceReplay(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadBrushCoach(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadCoachSession(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadCalibrationReport(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadProfileRecovery(),true);
-  assert.equal(appended.length,5,'loader chain must not append duplicate scripts');
+  assert.equal(sandbox.InkFrameBrushV2.loadProfileRecoveryObserver(),true);
+  assert.equal(appended.length,6,'loader chain must not append duplicate scripts');
 }
 
 console.log('✅ Brush Engine V2 deterministic A/B preview, calibration, and profile recovery loader chain passed');
