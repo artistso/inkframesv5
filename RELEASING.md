@@ -96,6 +96,34 @@ node tools/validate-play-release.mjs
 5. Complete `RELEASE_CHECKLIST.md`, including the Brush Engine V2 bridge tests.
 6. Merge the release candidate only after explicit approval.
 
+## Private signed dry run
+
+After the permanent upload-key secrets are configured, use a manual run to prove
+the real signing path before merging or tagging:
+
+1. Open **Actions → Signed Android Release → Run workflow**.
+2. Select the release-candidate branch.
+3. Enter the exact current metadata version in `expected_version`, such as
+   `0.2.0`.
+4. Start the workflow.
+
+The workflow rejects a version mismatch, runs the complete regression suite,
+builds the production variant, verifies both signatures, and confirms the
+production package and asset policy.
+
+Manual artifacts are clearly named:
+
+```text
+InkFrame-v0.2.0-dry-run-signed.apk
+InkFrame-v0.2.0-dry-run-signed.aab
+SHA256SUMS.txt
+```
+
+A manual run never publishes a GitHub Release and its artifacts are retained for
+14 days. They are validly signed with the permanent upload key and may be used
+for private installation or an approved Play Internal testing upload, but they
+must not be represented as the public tagged release.
+
 ## Publish a signed GitHub release
 
 From an approved, green commit on `main`:
@@ -126,8 +154,8 @@ InkFrame-v0.2.0-signed.aab
 SHA256SUMS.txt
 ```
 
-A manual `workflow_dispatch` run builds and verifies artifacts but does not
-publish a GitHub Release because it is not associated with a version tag.
+Only a matching `v*` tag can publish. A manual workflow run cannot reach the
+GitHub Release publication step.
 
 ## Production versus debug brush runtime
 
@@ -152,7 +180,7 @@ Google Play Publishing API cannot create a new app/package registration.
    privacy-policy, and store-listing forms.
 4. Create an **Internal testing** release.
 5. Enroll the app in **Play App Signing**.
-6. Upload `InkFrame-v0.2.0-signed.aab`, signed with the permanent upload key.
+6. Upload an approved 0.2.0 AAB signed with the permanent upload key.
 7. Confirm Play Console shows the expected package, version name, version code,
    target SDK, and upload certificate.
 8. Resolve all blocking errors before adding testers.
