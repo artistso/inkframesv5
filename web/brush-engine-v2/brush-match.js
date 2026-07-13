@@ -14,17 +14,22 @@
   function rankBrushIdentities(target){
     const identities=Array.from(ns.listBrushIdentities?ns.listBrushIdentities():[]);return Object.freeze(identities.map(identity=>{const distance=tuningDistance(target,identity.tuning);return Object.freeze({identity,distance,score:round(1-distance,4)});}).sort((a,b)=>a.distance-b.distance||a.identity.id.localeCompare(b.identity.id)));
   }
+  function matchTuningToIdentities(targetValue,options){
+    const config=options||{},target=ns.normalizeTuning?ns.normalizeTuning(targetValue||{}):targetValue||{},identities=Array.from(ns.listBrushIdentities?ns.listBrushIdentities():[]),ranking=rankBrushIdentities(target);
+    if(identities.length<2||!ns.mixBrushIdentities)return Object.freeze({valid:false,label:'No match',reason:'Identity Mixer unavailable',target});
+    let best=null;
+    for(let i=0;i<identities.length;i++)for(let j=i+1;j<identities.length;j++)for(let percent=0;percent<=100;percent++){
+      const mix=ns.mixBrushIdentities(identities[i],identities[j],percent),distance=tuningDistance(target,mix.tuning),key=`${identities[i].id}|${identities[j].id}|${String(percent).padStart(3,'0')}`;
+      if(!best||distance<best.distance-1e-8||(Math.abs(distance-best.distance)<=1e-8&&key<best.key))best={mix,distance,key};
+    }
+    const score=round(1-best.distance,4),baseConfidence=clamp(Number(config.confidence)||.75,.5,.99),confidence=round(clamp(baseConfidence*(.72+score*.28),.5,.97),2);
+    return Object.freeze({valid:true,id:String(config.id||'identity-match:recommended'),kind:String(config.kind||'identity-match'),label:`Matched · ${best.mix.presetName.replace(/^Mix /,'')}`,confidence,score,distance:best.distance,target,mix:best.mix,tuning:best.mix.tuning,ranking:Object.freeze(ranking.slice(0,3))});
+  }
   function matchBrushIdentities(analysis,currentValue){
     if(!analysis||!analysis.valid)return Object.freeze({valid:false,label:'No match',reason:analysis&&analysis.reason||'Draw a longer reference stroke',analysis});
     const recommendation=ns.recommendationFromAnalysis?ns.recommendationFromAnalysis(analysis,currentValue||{}):null;if(!recommendation||!recommendation.valid)return Object.freeze({valid:false,label:'No match',reason:'Brush Coach target unavailable',analysis});
-    const identities=Array.from(ns.listBrushIdentities?ns.listBrushIdentities():[]),ranking=rankBrushIdentities(recommendation.tuning);if(identities.length<2||!ns.mixBrushIdentities)return Object.freeze({valid:false,label:'No match',reason:'Identity Mixer unavailable',analysis});
-    let best=null;
-    for(let i=0;i<identities.length;i++)for(let j=i+1;j<identities.length;j++)for(let percent=0;percent<=100;percent++){
-      const mix=ns.mixBrushIdentities(identities[i],identities[j],percent),distance=tuningDistance(recommendation.tuning,mix.tuning),key=`${identities[i].id}|${identities[j].id}|${String(percent).padStart(3,'0')}`;
-      if(!best||distance<best.distance-1e-8||(Math.abs(distance-best.distance)<=1e-8&&key<best.key))best={mix,distance,key};
-    }
-    const confidence=round(clamp((Number(recommendation.confidence)||.55)*(.72+(1-best.distance)*.28),.5,.97),2),score=round(1-best.distance,4);
-    return Object.freeze({valid:true,id:'brush-match:recommended',kind:'brush-match',label:`Matched · ${best.mix.presetName.replace(/^Mix /,'')}`,confidence,score,distance:best.distance,analysis,recommendation,mix:best.mix,tuning:best.mix.tuning,ranking:Object.freeze(ranking.slice(0,3)),reasons:Object.freeze([`Reference intent: ${analysis.intent}.`,`Closest generated blend: ${best.mix.name}.`,`Match score: ${Math.round(score*100)}%.`])});
+    const core=matchTuningToIdentities(recommendation.tuning,{id:'brush-match:recommended',kind:'brush-match',confidence:recommendation.confidence});if(!core.valid)return Object.freeze(Object.assign({},core,{analysis,recommendation}));
+    return Object.freeze({valid:true,id:core.id,kind:core.kind,label:core.label,confidence:core.confidence,score:core.score,distance:core.distance,analysis,recommendation,mix:core.mix,tuning:core.tuning,ranking:core.ranking,reasons:Object.freeze([`Reference intent: ${analysis.intent}.`,`Closest generated blend: ${core.mix.name}.`,`Match score: ${Math.round(core.score*100)}%.`])});
   }
   function brushMatchChips(match){if(!match||!match.valid)return Object.freeze([]);return Object.freeze([`${Math.round(match.confidence*100)}% confidence`,`${Math.round(match.score*100)}% tuning match`,`${Math.round(100-match.mix.percent)}% ${match.mix.a.name}`,`${Math.round(match.mix.percent)}% ${match.mix.b.name}`]);}
 
@@ -45,5 +50,5 @@
     actions[0].addEventListener('click',previewMatch);actions[1].addEventListener('click',loadInMixer);actions[2].addEventListener('click',applyMatch);actions[3].addEventListener('click',saveAndPin);actions[4].addEventListener('click',applyAndLock);preview.card&&preview.card.addEventListener('pointerup',()=>root.setTimeout(refresh,0),true);preview.card&&preview.card.addEventListener('pointercancel',()=>root.setTimeout(refresh,0),true);root.setTimeout(refresh,0);
     root.InkFrameBrushMatch=Object.freeze({installed:true,details,refresh,current:()=>match,preview:previewMatch,loadInMixer,apply:applyMatch,saveAndPin,applyAndLock,render:refresh,projectCanvasWrites:0,undoWrites:0});return true;
   }
-  const api={BRUSH_MATCH_RANGES:RANGES,BRUSH_MATCH_WEIGHTS:WEIGHTS,tuningDistance,rankBrushIdentities,matchBrushIdentities,brushMatchChips,install};Object.assign(ns,api);root.InkFrameBrushMatch=api;if(root.document){const start=()=>{if(!install())root.setTimeout(start,16);};if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',start,{once:true});else start();}if(typeof module!=='undefined'&&module.exports)module.exports=api;
+  const api={BRUSH_MATCH_RANGES:RANGES,BRUSH_MATCH_WEIGHTS:WEIGHTS,tuningDistance,rankBrushIdentities,matchTuningToIdentities,matchBrushIdentities,brushMatchChips,install};Object.assign(ns,api);root.InkFrameBrushMatch=api;if(root.document){const start=()=>{if(!install())root.setTimeout(start,16);};if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',start,{once:true});else start();}if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
