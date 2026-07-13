@@ -29,7 +29,7 @@ try {
   assert.ok(html.includes('"defaultBrushEngine":"v2"'));
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
-    'stabilizer-ui.js','ghost-ui.js','lab-ui.js',
+    'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js',
   ]){
     assert.ok(html.includes(`<script src="brush-engine-v2/${script}"></script>`),`missing release script ${script}`);
     assert.ok(existsSync(resolve(root,`web/brush-engine-v2/${script}`)),`missing runtime file ${script}`);
@@ -38,14 +38,17 @@ try {
   assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
   assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
   assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'));
+  assert.ok(html.indexOf('brush-engine-v2/tuning.js') < html.indexOf('brush-engine-v2/user-presets.js'));
+  assert.ok(html.indexOf('brush-engine-v2/user-presets.js') < html.indexOf('brush-engine-v2/adapter.js'));
   assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/adapter.js'));
   assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/ghost-runtime.js'));
   assert.ok(html.indexOf('brush-engine-v2/ghost-runtime.js') < html.indexOf('brush-engine-v2/input.js'));
   assert.ok(html.indexOf('brush-engine-v2/ghost-ui.js') < html.indexOf('brush-engine-v2/lab-ui.js'));
+  assert.ok(html.indexOf('brush-engine-v2/lab-ui.js') < html.indexOf('brush-engine-v2/preset-ui.js'));
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production release policy passed');
+  console.log('✅ generated Brush V2 production custom-preset policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
