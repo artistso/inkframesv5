@@ -116,6 +116,7 @@
   }
 
   ns.buildConfig = config;
+  ns.applyDefaultEngine = applyDefaultEngine;
   ns.applyRuntimePolicy = () => applyRuntimePolicy(0);
   scheduleRuntimePolicy();
 
