@@ -1,4 +1,4 @@
-// InkFrame Brush Engine V2 — bounded speed-adaptive position stabilizer
+// InkFrame Brush Engine V2 — bounded speed- and corner-adaptive position stabilizer
 'use strict';
 
 (function(root){
@@ -22,6 +22,8 @@
     const fast = clamp(input.fastTimeConstantMs ?? 3.5, 0.25, slow);
     const speedStart = clamp(input.speedStartPxPerMs ?? 0.12, 0, 20);
     const speedEnd = clamp(input.speedEndPxPerMs ?? 4, speedStart + 0.01, 40);
+    const cornerStart = clamp(input.cornerStartRadians ?? Math.PI / 10, 0.01, Math.PI - 0.02);
+    const cornerEnd = clamp(input.cornerEndRadians ?? Math.PI * 0.72, cornerStart + 0.01, Math.PI);
     return Object.freeze({
       mode: input.mode === 'adaptive' ? 'adaptive' : 'fixed',
       fixedTimeConstantMs: clamp(input.fixedTimeConstantMs ?? 8, 0.25, 60),
@@ -30,6 +32,12 @@
       speedStartPxPerMs: speedStart,
       speedEndPxPerMs: speedEnd,
       speedSmoothingTimeConstantMs: clamp(input.speedSmoothingTimeConstantMs ?? 24, 0.25, 100),
+      cornerMode: input.cornerMode === 'preserve' ? 'preserve' : 'smooth',
+      cornerStrength: clamp(input.cornerStrength ?? 0, 0, 1),
+      cornerStartRadians: cornerStart,
+      cornerEndRadians: cornerEnd,
+      cornerTimeConstantMs: clamp(input.cornerTimeConstantMs ?? 1.75, 0.2, slow),
+      cornerMinimumSegmentPx: clamp(input.cornerMinimumSegmentPx ?? 0.75, 0.05, 24),
     });
   }
 
@@ -43,6 +51,29 @@
     const release = smoothstep01(normalized);
     return config.slowTimeConstantMs
       + (config.fastTimeConstantMs - config.slowTimeConstantMs) * release;
+  }
+
+  function segmentTurnRadians(previousDx, previousDy, nextDx, nextDy, minimumLength) {
+    const previousLength = Math.hypot(previousDx, previousDy);
+    const nextLength = Math.hypot(nextDx, nextDy);
+    const minimum = Math.max(0, Number(minimumLength) || 0);
+    if (previousLength < minimum || nextLength < minimum) return 0;
+    const cosine = clamp(
+      (previousDx * nextDx + previousDy * nextDy) / (previousLength * nextLength),
+      -1,
+      1
+    );
+    return Math.acos(cosine);
+  }
+
+  function cornerResponse(turnRadians, options) {
+    const config = normalizeOptions(options);
+    if (config.cornerMode !== 'preserve' || config.cornerStrength <= 0) return 0;
+    const span = config.cornerEndRadians - config.cornerStartRadians;
+    const normalized = span > 0
+      ? (Number(turnRadians) - config.cornerStartRadians) / span
+      : 1;
+    return clamp(config.cornerStrength * smoothstep01(normalized), 0, 1);
   }
 
   // Exact solution of dy/dt=(x-y)/tau when x moves linearly from previousRaw
@@ -66,9 +97,17 @@
     let time = 0;
     let smoothedSpeed = 0;
     let lastRawSpeed = 0;
-    let lastTimeConstant = config.mode === 'adaptive'
+    let previousDx = 0;
+    let previousDy = 0;
+    let hasDirection = false;
+    let lastTurnRadians = 0;
+    let lastCornerFactor = 0;
+    let cornerActivations = 0;
+    let maximumCornerFactor = 0;
+    let lastBaseTimeConstant = config.mode === 'adaptive'
       ? config.slowTimeConstantMs
       : config.fixedTimeConstantMs;
+    let lastTimeConstant = lastBaseTimeConstant;
     let updates = 0;
     let speedTotal = 0;
     let tauTotal = 0;
@@ -84,9 +123,17 @@
       time = Number(next.time) || 0;
       smoothedSpeed = 0;
       lastRawSpeed = 0;
-      lastTimeConstant = config.mode === 'adaptive'
+      previousDx = 0;
+      previousDy = 0;
+      hasDirection = false;
+      lastTurnRadians = 0;
+      lastCornerFactor = 0;
+      cornerActivations = 0;
+      maximumCornerFactor = 0;
+      lastBaseTimeConstant = config.mode === 'adaptive'
         ? config.slowTimeConstantMs
         : config.fixedTimeConstantMs;
+      lastTimeConstant = lastBaseTimeConstant;
       initialized = true;
       updates = 0;
       speedTotal = 0;
@@ -104,7 +151,9 @@
       const nextTime = Number(next.time);
       const resolvedTime = Number.isFinite(nextTime) ? nextTime : time;
       const dt = Math.max(0, resolvedTime - time);
-      const distance = Math.hypot(nextX - rawX, nextY - rawY);
+      const dx = nextX - rawX;
+      const dy = nextY - rawY;
+      const distance = Math.hypot(dx, dy);
       const rawSpeed = dt > 0 ? distance / dt : 0;
 
       if (updates === 0) smoothedSpeed = rawSpeed;
@@ -113,27 +162,46 @@
           * alphaForDt(dt, config.speedSmoothingTimeConstantMs);
       }
 
-      const tau = adaptiveTimeConstant(smoothedSpeed, config);
+      const baseTau = adaptiveTimeConstant(smoothedSpeed, config);
+      const turn = hasDirection
+        ? segmentTurnRadians(previousDx, previousDy, dx, dy, config.cornerMinimumSegmentPx)
+        : 0;
+      const factor = cornerResponse(turn, config);
+      const cornerTau = Math.min(baseTau, config.cornerTimeConstantMs);
+      const effectiveTau = baseTau + (cornerTau - baseTau) * factor;
+
       if (config.mode === 'adaptive') {
-        filteredX = integrateLinearInput(filteredX, rawX, nextX, dt, tau);
-        filteredY = integrateLinearInput(filteredY, rawY, nextY, dt, tau);
+        filteredX = integrateLinearInput(filteredX, rawX, nextX, dt, effectiveTau);
+        filteredY = integrateLinearInput(filteredY, rawY, nextY, dt, effectiveTau);
       } else {
-        // Historical fixed mode deliberately retains the original endpoint EMA.
-        const alpha = alphaForDt(dt, tau);
+        // Historical fixed mode deliberately retains the original endpoint EMA
+        // whenever cornerMode is smooth (the compatibility default).
+        const alpha = alphaForDt(dt, effectiveTau);
         filteredX += (nextX - filteredX) * alpha;
         filteredY += (nextY - filteredY) * alpha;
       }
+
+      if (distance >= config.cornerMinimumSegmentPx) {
+        previousDx = dx;
+        previousDy = dy;
+        hasDirection = true;
+      }
+      if (factor > 1e-6) cornerActivations++;
 
       rawX = nextX;
       rawY = nextY;
       time = resolvedTime;
       lastRawSpeed = rawSpeed;
-      lastTimeConstant = tau;
+      lastTurnRadians = turn;
+      lastCornerFactor = factor;
+      maximumCornerFactor = Math.max(maximumCornerFactor, factor);
+      lastBaseTimeConstant = baseTau;
+      lastTimeConstant = effectiveTau;
       updates++;
       speedTotal += smoothedSpeed;
-      tauTotal += tau;
-      minimumTau = Math.min(minimumTau, tau);
-      maximumTau = Math.max(maximumTau, tau);
+      tauTotal += effectiveTau;
+      minimumTau = Math.min(minimumTau, effectiveTau);
+      maximumTau = Math.max(maximumTau, effectiveTau);
 
       return Object.freeze({ x:filteredX, y:filteredY });
     }
@@ -144,11 +212,18 @@
         updates,
         rawSpeedPxPerMs: lastRawSpeed,
         speedPxPerMs: smoothedSpeed,
+        baseTimeConstantMs: lastBaseTimeConstant,
         timeConstantMs: lastTimeConstant,
         averageSpeedPxPerMs: updates ? speedTotal / updates : 0,
         averageTimeConstantMs: updates ? tauTotal / updates : lastTimeConstant,
         minimumTimeConstantMs: updates ? minimumTau : lastTimeConstant,
         maximumTimeConstantMs: updates ? maximumTau : lastTimeConstant,
+        cornerMode: config.cornerMode,
+        cornerStrength: config.cornerStrength,
+        turnRadians: lastTurnRadians,
+        cornerFactor: lastCornerFactor,
+        cornerActivations,
+        maximumCornerFactor,
       });
     }
 
@@ -166,6 +241,8 @@
     smoothstep01,
     normalizeStabilizerOptions:normalizeOptions,
     adaptiveTimeConstant,
+    segmentTurnRadians,
+    cornerResponse,
     integrateLinearInput,
     createPositionStabilizer,
   };
