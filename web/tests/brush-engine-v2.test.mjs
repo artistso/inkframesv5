@@ -10,6 +10,7 @@ const root = resolve(here, '..');
 const files = [
   'brush-engine-v2/sample.js',
   'brush-engine-v2/validator.js',
+  'brush-engine-v2/stabilizer.js',
   'brush-engine-v2/filters.js',
   'brush-engine-v2/path.js',
   'brush-engine-v2/arc-sampler.js',
@@ -63,7 +64,7 @@ const sample = (x, y, time, pressure = 0.5) => V2.normalizeSample({ x, y, time, 
 // Time-constant filtering composes consistently across different event rates.
 {
   const run = step => {
-    const f = V2.createStrokeFilter({ positionTimeConstantMs: 12, pressureTimeConstantMs: 12 });
+    const f = V2.createStrokeFilter({ stabilizerMode:'fixed', positionTimeConstantMs: 12, pressureTimeConstantMs: 12 });
     let out = f.begin(sample(0, 0, 0, 0));
     for (let t = step; t <= 120; t += step) out = f.update(sample(100, 0, t, 1));
     return out;
