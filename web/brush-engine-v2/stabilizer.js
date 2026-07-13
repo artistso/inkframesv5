@@ -45,6 +45,17 @@
       + (config.fastTimeConstantMs - config.slowTimeConstantMs) * release;
   }
 
+  // Exact solution of dy/dt=(x-y)/tau when x moves linearly from previousRaw
+  // to nextRaw over dt. Unlike an endpoint EMA, constant-speed motion converges
+  // to the same filtered trajectory at different event rates.
+  function integrateLinearInput(filtered, previousRaw, nextRaw, dt, tau) {
+    if (!(dt > 0)) return filtered;
+    const velocity = (nextRaw - previousRaw) / dt;
+    const decay = Math.exp(-dt / Math.max(0.01, tau));
+    return nextRaw - velocity * tau
+      + (filtered - previousRaw + velocity * tau) * decay;
+  }
+
   function createPositionStabilizer(options) {
     const config = normalizeOptions(options);
     let initialized = false;
@@ -103,9 +114,15 @@
       }
 
       const tau = adaptiveTimeConstant(smoothedSpeed, config);
-      const alpha = alphaForDt(dt, tau);
-      filteredX += (nextX - filteredX) * alpha;
-      filteredY += (nextY - filteredY) * alpha;
+      if (config.mode === 'adaptive') {
+        filteredX = integrateLinearInput(filteredX, rawX, nextX, dt, tau);
+        filteredY = integrateLinearInput(filteredY, rawY, nextY, dt, tau);
+      } else {
+        // Historical fixed mode deliberately retains the original endpoint EMA.
+        const alpha = alphaForDt(dt, tau);
+        filteredX += (nextX - filteredX) * alpha;
+        filteredY += (nextY - filteredY) * alpha;
+      }
 
       rawX = nextX;
       rawY = nextY;
@@ -144,7 +161,14 @@
     };
   }
 
-  const api = { alphaForDt, smoothstep01, normalizeStabilizerOptions:normalizeOptions, adaptiveTimeConstant, createPositionStabilizer };
+  const api = {
+    alphaForDt,
+    smoothstep01,
+    normalizeStabilizerOptions:normalizeOptions,
+    adaptiveTimeConstant,
+    integrateLinearInput,
+    createPositionStabilizer,
+  };
   Object.assign(ns, api);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
