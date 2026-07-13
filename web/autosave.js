@@ -33,6 +33,10 @@
 // Both restore cleanly; v1 frames upgrade to single-layer frames on load.
 'use strict';
 
+function normalizeCanvasShape(value) {
+  return value === 'circle' ? 'circle' : 'square';
+}
+
 /**
  * @typedef {Object} AutosaveEnv
  * @property {() => any[]} getProjects
@@ -136,7 +140,7 @@ function createAutosave(env) {
       projects: await Promise.all(projects.map(async P => ({
         name: P.name || 'Canvas', w: P.w, h: P.h, cur: P.cur || 0, fps: P.fps || 12,
         paper: P.paper || '#fff0f3',
-        canvasShape: P.canvasShape === 'circle' ? 'circle' : 'square',
+        canvasShape: normalizeCanvasShape(P.canvasShape),
         holds: (P.holds || P.frames.map(() => 1)).slice(),
         frames: await Promise.all(P.frames.map(async fr => {
           const F = env.upgradeFrame(fr, P.w, P.h);
@@ -190,7 +194,7 @@ function createAutosave(env) {
         undo: [], redo: [],
         w, h, fps: P.fps || 12, name: P.name || 'Canvas',
         paper: P.paper || '#fff0f3',
-        canvasShape: P.canvasShape === 'circle' ? 'circle' : 'square',
+        canvasShape: normalizeCanvasShape(P.canvasShape),
       });
     }
     env.replaceProjects(restored);
@@ -249,8 +253,8 @@ function createAutosave(env) {
 
 // UMD-lite: expose on window for the WebView, module.exports for Node tests.
 if (typeof window !== 'undefined') {
-  window.InkFrameAutosave = { createAutosave };
+  window.InkFrameAutosave = { createAutosave, normalizeCanvasShape };
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { createAutosave };
+  module.exports = { createAutosave, normalizeCanvasShape };
 }
