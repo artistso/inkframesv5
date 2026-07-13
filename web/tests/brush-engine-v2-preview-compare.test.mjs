@@ -76,7 +76,7 @@ function load(stubs={}){
 {
   const appended=[];
   const document={
-    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach)||(selector==='script[data-inkframe-coach-session]'&&node.dataset.inkframeCoachSession)||(selector==='script[data-inkframe-calibration-report]'&&node.dataset.inkframeCalibrationReport)||(selector==='script[data-inkframe-profile-recovery]'&&node.dataset.inkframeProfileRecovery)||(selector==='script[data-inkframe-profile-recovery-observer]'&&node.dataset.inkframeProfileRecoveryObserver)||(selector==='script[data-inkframe-profile-identities]'&&node.dataset.inkframeProfileIdentities))||null,
+    querySelector:selector=>appended.find(node=>(selector==='script[data-inkframe-reference-replay]'&&node.dataset.inkframeReferenceReplay)||(selector==='script[data-inkframe-brush-coach]'&&node.dataset.inkframeBrushCoach)||(selector==='script[data-inkframe-coach-session]'&&node.dataset.inkframeCoachSession)||(selector==='script[data-inkframe-calibration-report]'&&node.dataset.inkframeCalibrationReport)||(selector==='script[data-inkframe-profile-recovery]'&&node.dataset.inkframeProfileRecovery)||(selector==='script[data-inkframe-profile-recovery-observer]'&&node.dataset.inkframeProfileRecoveryObserver)||(selector==='script[data-inkframe-profile-identities]'&&node.dataset.inkframeProfileIdentities)||(selector==='script[data-inkframe-identity-mixer]'&&node.dataset.inkframeIdentityMixer))||null,
     createElement:tag=>({tag,dataset:{},src:'',async:true,listeners:{},addEventListener(type,handler){this.listeners[type]=handler;}}),
     head:{appendChild:node=>appended.push(node)},
   };
@@ -108,6 +108,10 @@ function load(stubs={}){
   assert.equal(appended.length,7);
   assert.equal(appended[6].src,'brush-engine-v2/profile-identities.js');
   assert.equal(appended[6].async,false);
+  appended[6].listeners.load();
+  assert.equal(appended.length,8);
+  assert.equal(appended[7].src,'brush-engine-v2/identity-mixer.js');
+  assert.equal(appended[7].async,false);
   assert.equal(sandbox.InkFrameBrushV2.loadReferenceReplay(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadBrushCoach(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadCoachSession(),true);
@@ -115,7 +119,8 @@ function load(stubs={}){
   assert.equal(sandbox.InkFrameBrushV2.loadProfileRecovery(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadProfileRecoveryObserver(),true);
   assert.equal(sandbox.InkFrameBrushV2.loadProfileIdentities(),true);
-  assert.equal(appended.length,7,'loader chain must not append duplicate scripts');
+  assert.equal(sandbox.InkFrameBrushV2.loadIdentityMixer(),true);
+  assert.equal(appended.length,8,'loader chain must not append duplicate scripts');
 }
 
-console.log('✅ Brush Engine V2 deterministic A/B preview, profile recovery, and creative identity loader chain passed');
+console.log('✅ Brush Engine V2 deterministic A/B preview, profile recovery, creative identity, and mixer loader chain passed');
