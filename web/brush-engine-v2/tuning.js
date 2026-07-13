@@ -3,7 +3,8 @@
 
 (function(root){
   const ns = root.InkFrameBrushV2 || (root.InkFrameBrushV2 = {});
-  const STORAGE_KEY = 'inkframe.brushEngine.v2Tuning.v2';
+  const STORAGE_KEY = 'inkframe.brushEngine.v2Tuning.v3';
+  const PREVIOUS_STORAGE_KEY = 'inkframe.brushEngine.v2Tuning.v2';
   const LEGACY_STORAGE_KEY = 'inkframe.brushEngine.v2Tuning.v1';
   const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value)));
 
@@ -12,6 +13,8 @@
       name: 'Direct',
       stabilizerMode: 'adaptive',
       stabilizerStrength: 25,
+      cornerMode: 'preserve',
+      cornerStrength: 80,
       positionTimeConstantMs: 4,
       pressureTimeConstantMs: 8,
       spacingScale: 0.90,
@@ -25,6 +28,8 @@
       name: 'Balanced',
       stabilizerMode: 'adaptive',
       stabilizerStrength: 55,
+      cornerMode: 'preserve',
+      cornerStrength: 70,
       positionTimeConstantMs: 8,
       pressureTimeConstantMs: 12,
       spacingScale: 1,
@@ -38,6 +43,8 @@
       name: 'Smooth',
       stabilizerMode: 'adaptive',
       stabilizerStrength: 80,
+      cornerMode: 'preserve',
+      cornerStrength: 55,
       positionTimeConstantMs: 15,
       pressureTimeConstantMs: 18,
       spacingScale: 0.82,
@@ -65,16 +72,22 @@
     return value === 'adaptive' ? 'adaptive' : 'fixed';
   }
 
+  function normalizeCornerMode(value) {
+    return value === 'preserve' ? 'preserve' : 'smooth';
+  }
+
   function normalizeTuning(value) {
     const input = value || {};
     const base = PRESETS.balanced;
     const hasStabilizerMode = Object.prototype.hasOwnProperty.call(input, 'stabilizerMode');
+    const hasCornerMode = Object.prototype.hasOwnProperty.call(input, 'cornerMode');
     return Object.freeze({
       preset: ['direct', 'balanced', 'smooth', 'custom'].includes(input.preset) ? input.preset : 'balanced',
-      // Missing stabilizerMode means a pre-v0.3 trace or saved tuning object.
-      // Preserve its historical fixed-EMA behavior instead of silently changing replay.
+      // Missing fields identify older traces/settings. Preserve their exact filter behavior.
       stabilizerMode: normalizeStabilizerMode(hasStabilizerMode ? input.stabilizerMode : 'fixed'),
       stabilizerStrength: clamp(input.stabilizerStrength ?? base.stabilizerStrength, 0, 100),
+      cornerMode: normalizeCornerMode(hasCornerMode ? input.cornerMode : 'smooth'),
+      cornerStrength: clamp(input.cornerStrength ?? base.cornerStrength, 0, 100),
       positionTimeConstantMs: clamp(input.positionTimeConstantMs ?? base.positionTimeConstantMs, 0.5, 40),
       pressureTimeConstantMs: clamp(input.pressureTimeConstantMs ?? base.pressureTimeConstantMs, 0.5, 50),
       spacingScale: clamp(input.spacingScale ?? base.spacingScale, 0.35, 1.75),
@@ -102,6 +115,17 @@
     };
   }
 
+  function cornerPositionOptions(tuning) {
+    return {
+      cornerMode: tuning.cornerMode,
+      cornerStrength: clamp(tuning.cornerStrength, 0, 100) / 100,
+      cornerStartRadians: Math.PI / 10,
+      cornerEndRadians: Math.PI * 0.72,
+      cornerTimeConstantMs: 1.75,
+      cornerMinimumSegmentPx: 0.75,
+    };
+  }
+
   function tuningFilterOptions(value) {
     const tuning = normalizeTuning(value);
     return Object.assign({
@@ -111,7 +135,7 @@
       tiltTimeConstantMs: 18,
       angleTimeConstantMs: 18,
       resetGapMs: 80,
-    }, adaptivePositionOptions(tuning));
+    }, adaptivePositionOptions(tuning), cornerPositionOptions(tuning));
   }
 
   function tuningValidatorOptions(value) {
@@ -135,19 +159,29 @@
   function createTuningStore(storage) {
     let current = presetValue('balanced');
     const listeners = new Set();
-    let migratedLegacy = false;
+    let migrated = false;
 
     try {
       const raw = storage && storage.getItem(STORAGE_KEY);
       if (raw) current = normalizeTuning(JSON.parse(raw));
       else {
-        const legacy = storage && storage.getItem(LEGACY_STORAGE_KEY);
-        if (legacy) {
-          current = normalizeTuning(Object.assign({}, JSON.parse(legacy), {
+        const previous = storage && storage.getItem(PREVIOUS_STORAGE_KEY);
+        if (previous) {
+          current = normalizeTuning(Object.assign({}, JSON.parse(previous), {
             preset:'custom',
-            stabilizerMode:'fixed',
+            cornerMode:'smooth',
           }));
-          migratedLegacy = true;
+          migrated = true;
+        } else {
+          const legacy = storage && storage.getItem(LEGACY_STORAGE_KEY);
+          if (legacy) {
+            current = normalizeTuning(Object.assign({}, JSON.parse(legacy), {
+              preset:'custom',
+              stabilizerMode:'fixed',
+              cornerMode:'smooth',
+            }));
+            migrated = true;
+          }
         }
       }
     } catch (_) {}
@@ -157,7 +191,7 @@
       catch (_) {}
     }
 
-    if (migratedLegacy) persist();
+    if (migrated) persist();
 
     function notify() {
       for (const listener of listeners) {
@@ -204,15 +238,18 @@
 
   const api = {
     STORAGE_KEY,
+    PREVIOUS_STORAGE_KEY,
     LEGACY_STORAGE_KEY,
     PRESETS,
     normalizeCoverageMode,
     normalizeRadiusMode,
     normalizeContactMode,
     normalizeStabilizerMode,
+    normalizeCornerMode,
     normalizeTuning,
     presetValue,
     adaptivePositionOptions,
+    cornerPositionOptions,
     tuningFilterOptions,
     tuningValidatorOptions,
     applyTuningToProfile,
