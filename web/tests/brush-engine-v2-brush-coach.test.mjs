@@ -8,9 +8,10 @@ const here=dirname(fileURLToPath(import.meta.url));
 const source=readFileSync(resolve(here,'..','brush-engine-v2','brush-coach.js'),'utf8');
 const sessionSource=readFileSync(resolve(here,'..','brush-engine-v2','coach-session.js'),'utf8');
 const reportSource=readFileSync(resolve(here,'..','brush-engine-v2','calibration-report.js'),'utf8');
+const recoverySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-recovery.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -78,5 +79,23 @@ assert.ok(quickDiff.some(row=>row.key==='stabilizerStrength'));assert.ok(quickDi
 assert.equal(JSON.stringify(ns.differenceRows(report.profiles.current,report.profiles.session)),JSON.stringify(ns.differenceRows(report.profiles.current,report.profiles.session)),'report differences must be deterministic');
 const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false});assert.equal(incomplete.ready,1);assert.equal(incomplete.profiles.quick.valid,false);assert.equal(incomplete.profiles.session.valid,false);
 
+{
+  const memory=new Map(),storage={getItem:key=>memory.get(key)||null,setItem:(key,value)=>memory.set(key,value)};let clock=1000;
+  const history=ns.createProfileHistory({storage,limit:3,coalesceMs:500,now:()=>clock});
+  const first={...baseline,stabilizerStrength:100},second={...baseline,stabilizerStrength:150},third={...second,ghostMode:'echo'},fourth={...third,cornerStrength:90},fifth={...fourth,ghostIntensity:82};
+  assert.equal(history.lock(baseline).stabilizerStrength,55);assert.equal(history.snapshot().locked.ghostMode,'comet');
+  assert.equal(history.capture(baseline,{...baseline,preset:'custom'},'Preset label only'),false,'preset labels must not create functional history');
+  assert.equal(history.capture(baseline,first,'Adjust Stabilizer'),true);clock+=100;
+  assert.equal(history.capture(first,second,'Adjust Stabilizer'),true);assert.equal(history.snapshot().entries.length,1,'rapid slider changes must coalesce');
+  assert.equal(history.snapshot().entries[0].before.stabilizerStrength,55);assert.equal(history.snapshot().entries[0].after.stabilizerStrength,150);
+  clock+=700;history.capture(second,third,'Adjust Trail');clock+=700;history.capture(third,fourth,'Adjust Corners');clock+=700;history.capture(fourth,fifth,'Adjust Trail intensity');
+  assert.equal(history.snapshot().entries.length,3,'history must remain bounded');assert.equal(history.snapshot().entries[0].after.ghostIntensity,82);
+  assert.ok(history.snapshot().entries[0].summary.some(value=>value.includes('Trail intensity')));
+  const restored=ns.createProfileHistory({storage,limit:3,now:()=>clock});assert.equal(restored.snapshot().entries.length,3);assert.equal(restored.snapshot().locked.stabilizerStrength,55);
+  const removed=restored.removeLatest();assert.equal(removed.after.ghostIntensity,82);assert.equal(restored.snapshot().entries.length,2);
+  assert.equal(restored.unlock(),true);assert.equal(restored.snapshot().locked,null);assert.equal(restored.clear(),true);assert.equal(restored.snapshot().entries.length,0);
+  assert.equal(ns.PROFILE_RECOVERY_LIMIT,24);assert.ok(ns.changeSummary(baseline,third).length>=2);
+}
+
 session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach, guided session, and calibration report are deterministic and bounded');
+console.log('✅ Brush Coach, guided session, calibration report, profile lock, and recent changes are deterministic');
