@@ -56,7 +56,7 @@ try {
     'brush-engine-v2/tuning.js','brush-engine-v2/user-presets.js','brush-engine-v2/adapter.js',
     'brush-engine-v2/session.js','brush-engine-v2/ghost-runtime.js','brush-engine-v2/input.js',
     'brush-engine-v2/coverage-ui.js','brush-engine-v2/stabilizer-ui.js','brush-engine-v2/ghost-ui.js',
-    'brush-engine-v2/lab-ui.js','brush-engine-v2/preset-ui.js',
+    'brush-engine-v2/lab-ui.js','brush-engine-v2/preset-ui.js','brush-engine-v2/preview-pad.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
@@ -77,6 +77,7 @@ try {
   assert.ok(html.indexOf('brush-engine-v2/stabilizer-ui.js') < html.indexOf('brush-engine-v2/ghost-ui.js'));
   assert.ok(html.indexOf('brush-engine-v2/ghost-ui.js') < html.indexOf('brush-engine-v2/lab-ui.js'));
   assert.ok(html.indexOf('brush-engine-v2/lab-ui.js') < html.indexOf('brush-engine-v2/preset-ui.js'));
+  assert.ok(html.indexOf('brush-engine-v2/preset-ui.js') < html.indexOf('brush-engine-v2/preview-pad.js'));
 
   const sandbox = {
     module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, Blob, URL,
@@ -166,7 +167,7 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ Brush Engine V2 debug custom-preset integration tests passed');
+  console.log('✅ Brush Engine V2 debug preview-pad integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
