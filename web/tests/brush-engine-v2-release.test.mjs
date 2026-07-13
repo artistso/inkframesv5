@@ -28,6 +28,13 @@ try {
   assert.ok(html.includes('"diagnostics":false'));
   assert.ok(html.includes('"traceTools":false'));
   assert.ok(html.includes('"defaultBrushEngine":"v2"'));
+  assert.ok(html.includes('<script src="canvas-shape.js"></script>'),'release index must load Circular Canvas');
+  assert.ok(existsSync(resolve(root,'web/canvas-shape.js')),'missing Circular Canvas runtime');
+  assert.ok(html.includes('InkFrameCanvasShapeEnvironment'),'release index must expose the per-project shape bridge');
+  assert.ok(html.includes('InkFrameCanvasShape.acceptsPointerDown'),'release index must reject circle-corner starts');
+  assert.ok(html.includes('InkFrameCanvasShape.boundaryEvent'),'release index must finish strokes at the circle rim');
+  assert.ok(html.includes('InkFrameCanvasShape.maskComposite'),'release index must mask frame composites');
+  assert.ok(html.includes("canvasShape:P.canvasShape==='circle'?'circle':'square'"),'release archives must preserve canvas shape');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -81,7 +88,11 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, identity, mixer, Brush Match, and Brush Signature policy passed');
+  console.log('✅ generated Brush V2 production recovery, signature, and Circular Canvas policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
+
+await import('./canvas-shape.test.mjs');
+await import('./canvas-shape-autosave.test.mjs');
+await import('./canvas-shape-boot.test.mjs');
