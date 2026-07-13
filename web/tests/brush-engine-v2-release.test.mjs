@@ -94,3 +94,4 @@ try {
 }
 
 await import('./canvas-shape.test.mjs');
+await import('./canvas-shape-autosave.test.mjs');
