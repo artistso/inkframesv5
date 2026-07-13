@@ -6,7 +6,8 @@
   const adapter = root.InkFrameBrushV2Adapter;
   if (!adapter || !ns.createInputBatchNormalizer) return;
 
-  const MAX_TRACE_EVENTS = 8192;
+  const DIAGNOSTICS = !!(root.InkFrameBuild && root.InkFrameBuild.diagnostics);
+  const MAX_TRACE_EVENTS = DIAGNOSTICS ? 8192 : 0;
   let active = null;
   let lastStats = null;
   let lastTraceEvents = [];
@@ -36,7 +37,7 @@
   }
 
   function appendTraceEvent(kind, event) {
-    if (!active) return;
+    if (!DIAGNOSTICS || !active) return;
     active.events.push(eventSnapshot(kind, event));
     if (active.events.length > MAX_TRACE_EVENTS) {
       active.events.splice(0, active.events.length - MAX_TRACE_EVENTS);
@@ -45,6 +46,7 @@
   }
 
   function markNative(phase, event) {
+    if (!DIAGNOSTICS) return;
     const bridge = root.InkFrameNativePenBridge;
     if (!bridge || typeof bridge.markWebPhase !== 'function') return;
     try {
@@ -61,10 +63,11 @@
     lastStats = Object.assign({
       reason: reason || 'finished',
       pointerId: active.pointerId,
-      traceEvents: active.events.length,
-      traceEventsTruncated: active.traceEventsTruncated,
+      diagnostics:DIAGNOSTICS,
+      traceEvents: DIAGNOSTICS ? active.events.length : 0,
+      traceEventsTruncated: DIAGNOSTICS ? active.traceEventsTruncated : 0,
     }, active.normalizer.stats());
-    lastTraceEvents = active.events.slice();
+    lastTraceEvents = DIAGNOSTICS ? active.events.slice() : [];
     active = null;
   }
 
@@ -79,13 +82,13 @@
       active = {
         pointerId: event.pointerId,
         normalizer,
-        events:[],
+        events:DIAGNOSTICS ? [] : null,
         traceEventsTruncated:0,
       };
       appendTraceEvent('begin', event);
       markNative('begin', event);
     } else {
-      lastStats = Object.assign({ reason:'begin-not-active' }, normalizer.stats());
+      lastStats = Object.assign({ reason:'begin-not-active', diagnostics:DIAGNOSTICS }, normalizer.stats());
       lastTraceEvents = [];
       active = null;
     }
@@ -117,8 +120,8 @@
       appendTraceEvent(event && event.type || 'end', event);
       markNative(event && event.type || 'end', event);
     }
-    // The adapter snapshots the V2 trace inside end(). Keep active populated
-    // until that snapshot completes so native.js can attach this exact stream.
+    // Debug keeps active populated until adapter.end() snapshots the synchronized
+    // native/WebView trace. Production stores no raw event objects.
     const handled = adapter.end(event);
     rememberStats(event && event.type || 'pointer-end');
     return handled;
@@ -129,8 +132,18 @@
   }
 
   function traceSnapshot() {
+    if (!DIAGNOSTICS) {
+      return {
+        available:false,
+        reason:'diagnostics-disabled',
+        active:!!active,
+        events:[],
+        stats:Object.assign({}, active ? active.normalizer.stats() : lastStats || {}),
+      };
+    }
     if (active) {
       return {
+        available:true,
         active:true,
         pointerId:active.pointerId,
         events:active.events.slice(),
@@ -139,6 +152,7 @@
       };
     }
     return {
+      available:true,
       active:false,
       events:lastTraceEvents.slice(),
       stats:Object.assign({}, lastStats || {}),
@@ -159,8 +173,8 @@
     end,
     traceSnapshot,
     stats: () => active
-      ? Object.assign({ active:true, pointerId:active.pointerId }, active.normalizer.stats())
-      : Object.assign({ active:false }, lastStats || {}),
+      ? Object.assign({ active:true, pointerId:active.pointerId, diagnostics:DIAGNOSTICS }, active.normalizer.stats())
+      : Object.assign({ active:false, diagnostics:DIAGNOSTICS }, lastStats || {}),
   });
 
   if (typeof module !== 'undefined' && module.exports) module.exports = root.InkFrameBrushV2InputBridge;
