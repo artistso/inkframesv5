@@ -10,7 +10,7 @@ const fakeCanvas=(w=64,h=64)=>({width:w,height:h,getContext:()=>({drawImage(){}}
 const fakeLayer=(w=64,h=64,name='Layer 1')=>({id:1,name,visible:true,opacity:1,blend:'source-over',canvas:fakeCanvas(w,h)});
 const fakeFrame=(w=64,h=64)=>({layers:[fakeLayer(w,h)],active:0,_comp:null,_compV:-1,_v:0});
 
-globalThis.document={createElement:tag=>tag==='canvas'?fakeCanvas():{}};
+globalThis.document={createElement:tag=>tag==='canvas'?fakeCanvas():{},addEventListener(){}};
 globalThis.URL={createObjectURL:()=> 'blob:test',revokeObjectURL:()=>{}};
 globalThis.Image=class{};
 let stored=null;
