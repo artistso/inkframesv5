@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
-import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import vm from 'node:vm';
 
-const require=createRequire(import.meta.url),here=dirname(fileURLToPath(import.meta.url));
+const here=dirname(fileURLToPath(import.meta.url));
 const autosavePath=resolve(here,'..','autosave.js');
 const autosaveSource=readFileSync(autosavePath,'utf8');
-const {normalizeCanvasShape}=require(autosavePath);
+const sandbox={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,Promise,setTimeout,clearTimeout,module:{exports:{}}};
+sandbox.globalThis=sandbox;vm.createContext(sandbox);vm.runInContext(autosaveSource,sandbox,{filename:'autosave.js'});
+const {normalizeCanvasShape}=sandbox.module.exports;
 
 assert.equal(normalizeCanvasShape('circle'),'circle');
 assert.equal(normalizeCanvasShape('square'),'square');
