@@ -16,9 +16,13 @@ try{
   assert.ok(html.includes('<script src="radial-timeline.js"></script>'));
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'));
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'));
+  assert.ok(html.includes('InkFrameRadialTimeline.syncPlayback({'));
   assert.ok(html.includes('project:projects[pi]'));
+  assert.ok(html.includes('playbackFraction:frameCenterFrac(cur)'));
   assert.ok(html.includes('canNavigate:()=>'));
   assert.ok(html.includes('seek:i=>'));
+  assert.ok(html.includes('seekFraction:f=>'));
+  assert.ok(html.includes('togglePlayback:()=>'));
   html=html.replace(/<script src="([^"]+)"><\/script>/g,(tag,src)=>{const file=resolve(webDir,src);assert.ok(existsSync(file),`missing ${src}`);return `<script>${readFileSync(file,'utf8')}</script>`;});
   const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.detail?.stack||e.message));vc.on('error',(...a)=>errors.push(a.join(' ')));
   const contexts=new WeakMap();
@@ -67,7 +71,10 @@ try{
   assert.ok(board.querySelector('.inkframe-radial-orbits'),'orbit SVG missing');
   assert.ok(board.querySelector('.inkframe-radial-hit'),'orbit drag target missing');
   assert.ok(board.querySelector('.inkframe-radial-nav'),'navigation controls missing');
-  assert.equal(board.querySelectorAll('.inkframe-radial-nav button').length,2);
+  assert.equal(board.querySelectorAll('.inkframe-radial-nav button').length,4);
+  assert.ok(board.querySelector('.inkframe-radial-play'));
+  assert.ok(board.querySelector('.inkframe-radial-scrub'));
+  assert.ok(board.querySelector('.inkframe-radial-playhead'));
   assert.equal(board.querySelectorAll('.frameSlot').length,12);
   assert.equal(board.querySelectorAll('.frameSlot.filled').length,1);
   assert.equal(board.querySelectorAll('.frameSlot.next').length,1);
@@ -97,9 +104,18 @@ try{
   key('ArrowRight');await new Promise(r=>setTimeout(r,35));
   assert.equal(board.querySelector('.frameSlot.cur').dataset.frame,'1','ArrowRight must step forward');
 
+  let play=board.querySelector('.inkframe-radial-play');play.click();await new Promise(r=>setTimeout(r,35));
+  assert.equal(board.dataset.timelinePlaying,'true');
+  assert.equal(board.querySelector('.inkframe-radial-play').textContent,'Pause');
+  assert.equal(board.querySelector('.inkframe-radial-playhead').getAttribute('visibility'),'visible');
+  board.querySelector('.inkframe-radial-play').click();await new Promise(r=>setTimeout(r,35));
+  assert.equal(board.dataset.timelinePlaying,'false');
+  assert.equal(board.querySelector('.inkframe-radial-play').textContent,'Play');
+
   board.querySelector('.inkframe-radial-center').click();await new Promise(r=>setTimeout(r,25));
-  const focusedPoint=radial.lastLayout.slots[1];
-  assert.ok(Math.abs(radial.normalizeAngle(focusedPoint.angle+Math.PI/2))<1e-6,'Center current must place frame 2 at twelve o’clock');
+  const currentIndex=Number(board.querySelector('.frameSlot.cur').dataset.frame);
+  const focusedPoint=radial.lastLayout.slots[currentIndex];
+  assert.ok(Math.abs(radial.normalizeAngle(focusedPoint.angle+Math.PI/2))<1e-6,'Center current must place the active frame at twelve o’clock');
 
   const beforeRotation=radial.lastLayout.rotation,beforeFrames=project.frames.length,dragPlan=radial.lastLayout;
   hit=board.querySelector('.inkframe-radial-hit');d.elementFromPoint=()=>hit;
@@ -110,6 +126,19 @@ try{
   assert.ok(Math.abs(radial.normalizeAngle(radial.lastLayout.rotation-beforeRotation)-Math.PI/2)<1e-6,'orbit drag must rotate by the pen angle delta');
   assert.equal(project.frames.length,beforeFrames,'orbit rotation must not mutate timeline data');
 
+  key('End');await new Promise(r=>setTimeout(r,25));
+  board.querySelector('.inkframe-radial-scrub').click();await new Promise(r=>setTimeout(r,20));
+  assert.equal(radial.viewSnapshot(project).scrubMode,true);
+  assert.equal(board.dataset.scrubMode,'true');
+  const scrubRotation=radial.lastLayout.rotation,scrubPlan=radial.lastLayout,target=scrubPlan.slots[0];
+  hit=board.querySelector('.inkframe-radial-hit');d.elementFromPoint=()=>hit;
+  pointer('pointerdown',hit,{pointerId:93,pointerType:'pen',clientX:target.x,clientY:target.y,buttons:1,button:0});
+  pointer('pointerup',board,{pointerId:93,pointerType:'pen',clientX:target.x,clientY:target.y,buttons:0,button:0});
+  await new Promise(r=>setTimeout(r,45));
+  assert.equal(board.querySelector('.frameSlot.cur').dataset.frame,'0','Scrub mode must seek the nearest orbital frame');
+  assert.equal(radial.lastLayout.rotation,scrubRotation,'Scrub mode must not rotate the orbit');
+  assert.equal(project.frames.length,beforeFrames,'Orbit scrubbing must not mutate frame data');
+
   assert.equal(radial.refreshThumbnail(0,'data:image/png;base64,updated'),true);
   assert.ok(board.querySelector('.frameSlot[data-frame="0"] .inkframe-radial-thumb').style.backgroundImage.includes('updated'));
 
@@ -119,23 +148,43 @@ try{
   assert.notEqual(elliptical.rings[0].rx,elliptical.rings[0].ry);
   assert.equal(project.frames.length,2,'shape relayout must not mutate timeline data');
 
-  const fakeProject={},fakeEnv={frameGlass,canvas,slotCount:120,framesLength:120,current:90,selectedFrames:new Set(),holdAt:()=>1,maxFrames:120,shape:'square',project:fakeProject,canNavigate:()=>true,seek:()=>true,thumbAt:()=>''};
+  let fakePlayToggles=0,fakeSeekFraction=null;
+  const fakeProject={},fakeEnv={frameGlass,canvas,slotCount:120,framesLength:120,current:90,selectedFrames:new Set(),holdAt:i=>i%3+1,maxFrames:120,shape:'square',project:fakeProject,playing:false,fps:12,loopOn:true,loopIn:40,loopOut:105,canNavigate:()=>true,seek:()=>true,seekFraction:f=>fakeSeekFraction=f,togglePlayback:()=>{fakePlayToggles++;},thumbAt:()=>''};
   assert.equal(radial.render(board,fakeEnv),true);assert.ok(radial.lastLayout.rings.length>=2,'120 frames must expand beyond one ring at tablet dimensions');
+  assert.equal(radial.viewSnapshot(fakeProject).scrubMode,false,'scrub mode must remain per-project and memory-only');
+  assert.ok(board.querySelectorAll('.inkframe-radial-loop').length>=2,'loop range crossing rings must render multiple orbital arcs');
+  radial.syncPlayback({fraction:.5,current:60,playing:true,loopOn:true,loopIn:40,loopOut:105,fps:12});
+  assert.equal(board.dataset.timelinePlaying,'true');
+  assert.equal(board.querySelector('.frameSlot.cur').dataset.frame,'60');
+  const marker=board.querySelector('.inkframe-radial-playhead');
+  assert.equal(marker.getAttribute('visibility'),'visible');
+  assert.ok(Number.isFinite(Number(marker.getAttribute('cx')))&&Number.isFinite(Number(marker.getAttribute('cy'))));
+  assert.ok(Number.isFinite(Number(marker.dataset.local)));
+  assert.equal(board.querySelector('.inkframe-radial-play').textContent,'Pause');
+  board.querySelector('.inkframe-radial-play').click();assert.equal(fakePlayToggles,1,'radial play must delegate to the established playback control');
+
   board.querySelector('.inkframe-radial-ring').click();await new Promise(r=>setTimeout(r,20));
   assert.ok(board.dataset.focusRing!=null,'ring focus must identify the current ring');
   assert.ok(board.querySelectorAll('.frameSlot.inkframe-radial-muted').length>0,'ring focus must dim other rings');
   assert.equal(board.querySelector('.inkframe-radial-ring').getAttribute('aria-pressed'),'true');
+  radial.syncPlayback({fraction:.95,current:115,playing:true,loopOn:true,loopIn:40,loopOut:119,fps:12});
+  assert.equal(Number(board.dataset.focusRing),radial.ringForIndex(radial.lastLayout,115),'focused ring must follow playback across concentric rings');
   board.querySelector('.inkframe-radial-ring').click();await new Promise(r=>setTimeout(r,20));
   assert.equal(board.dataset.focusRing,undefined);assert.equal(board.querySelectorAll('.frameSlot.inkframe-radial-muted').length,0);
 
-  let blockedSeek=null;const blockedProject={};
-  radial.render(board,{...fakeEnv,project:blockedProject,current:10,canNavigate:()=>false,seek:i=>blockedSeek=i});
+  let blockedSeek=null,blockedFraction=null,blockedPlay=0;const blockedProject={};
+  radial.render(board,{...fakeEnv,project:blockedProject,current:10,playing:false,canNavigate:()=>false,seek:i=>blockedSeek=i,seekFraction:f=>blockedFraction=f,togglePlayback:()=>blockedPlay++});
   const blockedRotation=radial.lastLayout.rotation;
   board.querySelector('.inkframe-radial-center').click();
-  key('End');await new Promise(r=>setTimeout(r,20));
+  board.querySelector('.inkframe-radial-play').click();
+  board.querySelector('.inkframe-radial-scrub').click();
+  key('End');key(' ');await new Promise(r=>setTimeout(r,20));
   assert.equal(radial.lastLayout.rotation,blockedRotation,'active-stroke guard must block centering');
   assert.equal(blockedSeek,null,'active-stroke guard must block keyboard seek');
+  assert.equal(blockedFraction,null,'active-stroke guard must block orbit scrubbing');
+  assert.equal(blockedPlay,0,'active-stroke guard must block playback changes');
+  assert.equal(radial.viewSnapshot(blockedProject).scrubMode,false);
 
   assert.equal(radial.projectCanvasWrites,0);assert.equal(radial.undoWrites,0);
-  dom.window.close();console.log('✅ generated Android radial navigation rotates, focuses, seeks, guards strokes, and preserves project data');
+  dom.window.close();console.log('✅ generated Android radial playback, hold timing, loop arcs, scrubbing, navigation, stroke guards, and project isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
