@@ -109,6 +109,19 @@
     });
   }
 
+  // Arc-length sampling normally keeps adjacent commands only a few pixels apart.
+  // This bound is intentionally generous for large nibs and delayed frames, but it
+  // makes a canvas-crossing line impossible even if upstream state is corrupted.
+  function ribbonGapLimit(from, to) {
+    const radius = Math.max(0.05, Number(from && from.radius) || 0, Number(to && to.radius) || 0);
+    const fromTime = Number(from && from.time);
+    const toTime = Number(to && to.time);
+    const elapsed = Number.isFinite(fromTime) && Number.isFinite(toTime)
+      ? clamp(toTime - fromTime, 0, 250)
+      : 0;
+    return Math.max(24, radius * 6, elapsed * 2);
+  }
+
   function paintRoundLine(context, from, to, width, alpha, composite, color) {
     if (!(width > 0) || !(alpha > 0)) return;
     context.save();
@@ -140,6 +153,7 @@
     const previous = state.previous;
     const reset = dab.strokeStart
       || !previous
+      || previous.strokeId !== dab.strokeId
       || previous.brushId !== dab.brushId
       || previous.composite !== dab.composite
       || dab.strokeIndex === 0;
@@ -152,6 +166,12 @@
 
     const geometry = ribbonGeometry(previous, dab);
     if (geometry.distance <= 1e-7) {
+      paintIsolatedRoundDab(context, dab, color);
+      state.previous = dab;
+      return true;
+    }
+
+    if (geometry.distance > ribbonGapLimit(previous, dab)) {
       paintIsolatedRoundDab(context, dab, color);
       state.previous = dab;
       return true;
@@ -198,6 +218,7 @@
     resolveProfile,
     dabFromSample,
     ribbonGeometry,
+    ribbonGapLimit,
     resetRoundCoverage,
     paintIsolatedRoundDab,
     paintRoundRibbonDab,
