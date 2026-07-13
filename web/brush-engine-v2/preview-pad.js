@@ -5,7 +5,6 @@
   const ns=root.InkFrameBrushV2||(root.InkFrameBrushV2={});
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,Number(value)));
   let installed=false;
-  let publicApi=null;
 
   function previewTransform(rect,width,height){
     const source=rect||{};
@@ -24,7 +23,7 @@
     const map=transform||previewTransform(null,1,1);
     const pointerType=String(value.pointerType||'pen');
     let pressure=Number(value.pressure);
-    if(!Number.isFinite(pressure)||pressure<=0)pressure=pointerType==='mouse'?(value.buttons?0.5:0):0.35;
+    if(!Number.isFinite(pressure))pressure=pointerType==='mouse'?(value.buttons?0.5:0):0.35;
     return Object.freeze({
       x:(Number(value.clientX)-map.left)*map.scaleX,
       y:(Number(value.clientY)-map.top)*map.scaleY,
@@ -101,7 +100,6 @@
     const lab=root.document.getElementById('inkframe-v2-tuning');
     const stabilizer=lab&&lab.querySelector('[data-lab-section="stabilizer"] .inkframe-v2-lab-primary');
     if(!adapter||!stabilizer)return false;
-    installed=true;
 
     const style=root.document.createElement('style');
     style.textContent=`
@@ -134,10 +132,12 @@
     if(presets)presets.insertAdjacentElement('afterend',card);else stabilizer.prepend(card);
 
     const context=canvas.getContext('2d');
+    if(!context){card.remove();return false;}
+    installed=true;
     let active=null;
     let transform=null;
     let normalizer=null;
-    let lastEvent=null;
+    let pointerId=null;
     let strokes=0;
     let dabs=0;
 
@@ -149,12 +149,16 @@
       return `${source.brushId==='eraser'?'Eraser':'Ink'} · ${strength}% · ${trail}`;
     }
     function refreshStatus(){status.textContent=currentLabel();}
-    function clear(){
+    function releaseActive(clearGhost){
       if(active){active.abort();active=null;}
+      normalizer=null;transform=null;pointerId=null;
+      if(clearGhost){const manager=ns.ghostTrailManagerFor&&ns.ghostTrailManagerFor(canvas);if(manager)manager.clear();}
+    }
+    function clear(){
+      releaseActive(true);
       if(ns.resetRoundCoverage)ns.resetRoundCoverage(context);
-      if(context)context.clearRect(0,0,canvas.width,canvas.height);
-      const manager=ns.ghostTrailManagerFor&&ns.ghostTrailManagerFor(canvas);if(manager)manager.clear();
-      strokes=0;dabs=0;refreshStatus();return true;
+      context.clearRect(0,0,canvas.width,canvas.height);
+      hint.style.display='';strokes=0;dabs=0;refreshStatus();return true;
     }
     function eventSamples(event){
       if(!normalizer)return [event];
@@ -162,41 +166,44 @@
     }
     function begin(event){
       if(active||!event)return false;
-      event.preventDefault();
+      if(typeof event.preventDefault==='function')event.preventDefault();
       const rect=canvas.getBoundingClientRect();transform=previewTransform(rect,canvas.width,canvas.height);
       const tuning=adapter.currentTuning();
       active=createPreviewSession({canvas,context,tuning,source:resolvePreviewSource()});
-      normalizer=ns.createInputBatchNormalizer?ns.createInputBatchNormalizer({pointerId:event.pointerId,pointerType:event.pointerType||'pen'}):null;
+      pointerId=event.pointerId;
+      normalizer=ns.createInputBatchNormalizer?ns.createInputBatchNormalizer({pointerId,pointerType:event.pointerType||'pen'}):null;
       if(normalizer&&normalizer.seed)normalizer.seed(event);
-      lastEvent=event;strokes++;
-      dabs+=active.begin(previewSampleFromEvent(event,transform));
-      try{canvas.setPointerCapture(event.pointerId);}catch(_){}
+      strokes++;dabs+=active.begin(previewSampleFromEvent(event,transform));
+      try{canvas.setPointerCapture(pointerId);}catch(_){}
       hint.style.display='none';refreshStatus();return true;
     }
     function move(event){
-      if(!active||!event||lastEvent&&event.pointerId!==lastEvent.pointerId)return false;
-      event.preventDefault();lastEvent=event;
+      if(!active||!event||event.pointerId!==pointerId)return false;
+      if(typeof event.preventDefault==='function')event.preventDefault();
       for(const value of eventSamples(event))dabs+=active.move(previewSampleFromEvent(value,transform));
       return true;
     }
     function end(event){
-      if(!active||!event||lastEvent&&event.pointerId!==lastEvent.pointerId)return false;
-      event.preventDefault();lastEvent=event;
-      dabs+=active.end(previewSampleFromEvent(event,transform));active=null;normalizer=null;transform=null;refreshStatus();return true;
+      if(!active||!event||event.pointerId!==pointerId)return false;
+      if(typeof event.preventDefault==='function')event.preventDefault();
+      dabs+=active.end(previewSampleFromEvent(event,transform));active=null;normalizer=null;transform=null;pointerId=null;refreshStatus();return true;
     }
 
     canvas.addEventListener('pointerdown',begin);
     canvas.addEventListener('pointermove',move);
     canvas.addEventListener('pointerup',end);
     canvas.addEventListener('pointercancel',end);
+    canvas.addEventListener('lostpointercapture',()=>releaseActive(false));
     clearButton.addEventListener('click',clear);
     lab.addEventListener('input',()=>root.setTimeout(refreshStatus,0),true);
     lab.addEventListener('change',()=>root.setTimeout(refreshStatus,0),true);
     lab.addEventListener('click',()=>root.setTimeout(refreshStatus,0),true);
+    if(root.addEventListener)root.addEventListener('blur',()=>releaseActive(false));
+    root.document.addEventListener('visibilitychange',()=>{if(root.document.hidden)releaseActive(false);});
     refreshStatus();
 
-    publicApi={installed:true,canvas,card,clear,begin,move,end,refreshStatus,stats:()=>Object.freeze({strokes,dabs,active:!!active,projectCanvasWrites:0,undoWrites:0})};
-    root.InkFrameBrushV2PreviewPad=publicApi;
+    const runtimeApi={installed:true,canvas,card,clear,begin,move,end,refreshStatus,previewTransform,previewSampleFromEvent,createPreviewSession,stats:()=>Object.freeze({strokes,dabs,active:!!active,projectCanvasWrites:0,undoWrites:0})};
+    root.InkFrameBrushV2PreviewPad=runtimeApi;
     return true;
   }
 
