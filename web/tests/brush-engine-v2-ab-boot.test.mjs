@@ -75,6 +75,8 @@ try {
       w.cancelAnimationFrame = id => clearTimeout(id);
       w.URL.createObjectURL = () => 'blob:test';
       w.URL.revokeObjectURL = () => {};
+      w.alert = () => {};
+      w.confirm = () => true;
     },
   });
 
@@ -95,6 +97,8 @@ try {
   const ghostDuration=d.getElementById('inkframe-v2-ghost-duration');
   const ghostWidth=d.getElementById('inkframe-v2-ghost-width');
   const labTabs=d.getElementById('inkframe-v2-lab-tabs');
+  const userPresets=d.querySelector('.inkframe-v2-user-presets');
+  const quick=d.querySelector('.inkframe-v2-preset-quick');
   assert.ok(panel, 'V2 panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
   assert.ok(coverage, 'V2 coverage selector did not install');
@@ -109,6 +113,10 @@ try {
   assert.ok(ghostDuration,'Ghost Trail length did not install');
   assert.ok(ghostWidth,'Ghost Trail width did not install');
   assert.ok(labTabs,'Brush Lab tabs did not install');
+  assert.ok(userPresets,'custom preset card did not install');
+  assert.ok(quick,'Quick Access strip did not install');
+  assert.equal(quick.querySelectorAll('button').length,4);
+  assert.equal(userPresets.querySelector('.inkframe-v2-preset-library').open,false,'preset management must begin collapsed');
   assert.equal(labTabs.querySelectorAll('button').length,5);
   assert.deepEqual(
     Array.from(labTabs.querySelectorAll('button')).map(button=>button.lastElementChild.textContent),
@@ -151,6 +159,8 @@ try {
   assert.equal(typeof dom.window.InkFrameBrushV2.buildGhostSegments,'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createInputBatchNormalizer, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createPositionStabilizer, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.createUserPresetStore,'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2PresetUI.store.save,'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.segmentTurnRadians, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.begin, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.move, 'function');
@@ -197,6 +207,25 @@ try {
   assert.equal(changed.ghostDurationMs,760);
   assert.equal(changed.ghostWidthPercent,175);
 
+  const presetName=userPresets.querySelector('input[type="text"]');
+  const saveCurrent=Array.from(userPresets.querySelectorAll('button')).find(button=>button.textContent==='Save Current');
+  presetName.value='Studio Favorite';
+  saveCurrent.click();
+  assert.equal(dom.window.InkFrameBrushV2PresetUI.store.snapshot().presets.length,1);
+  assert.equal(dom.window.InkFrameBrushV2PresetUI.store.snapshot().pinned.length,1);
+  assert.equal(quick.querySelectorAll('button')[0].textContent,'Studio Favorite');
+  assert.equal(quick.querySelectorAll('button')[0].classList.contains('active'),true);
+  assert.ok(dom.window.localStorage.getItem(dom.window.InkFrameBrushV2.USER_PRESET_STORAGE_KEY));
+
+  stabilizerStrength.value='25';stabilizerStrength.dispatchEvent(new dom.window.Event('input',{bubbles:true}));
+  ghostMode.value='off';ghostMode.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
+  await new Promise(resolveWait=>setTimeout(resolveWait,0));
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength,25);
+  quick.querySelectorAll('button')[0].click();
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength,200);
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().ghostMode,'echo');
+  assert.equal(quick.querySelectorAll('button')[0].classList.contains('active'),true);
+
   dom.window.InkFrameBrushV2LabUI.openTab('trail');
   assert.equal(d.querySelector('[data-lab-section="trail"]').hidden,false);
   assert.equal(d.querySelector('[data-lab-section="stabilizer"]').hidden,true);
@@ -233,7 +262,7 @@ try {
   assert.equal(converted.x, 512);
   assert.equal(converted.y, 384);
 
-  console.log('✅ generated Brush V2 debug APK index booted with tablet-first Brush Lab');
+  console.log('✅ generated Brush V2 debug APK index booted with tablet-first custom presets');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
