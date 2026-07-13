@@ -52,6 +52,7 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/runtime.js"></script>
 ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/tuning.js"></script>
+<script src="brush-engine-v2/user-presets.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="brush-engine-v2/session.js"></script>
 <script src="brush-engine-v2/ghost-runtime.js"></script>
@@ -60,6 +61,7 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
 <script src="brush-engine-v2/ghost-ui.js"></script>
 <script src="brush-engine-v2/lab-ui.js"></script>
+<script src="brush-engine-v2/preset-ui.js"></script>
 <script src="flood-fill.js"></script>`;
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
 
@@ -178,7 +180,9 @@ const requiredMarkers = [
   'brush-engine-v2/coverage-ui.js',
   'brush-engine-v2/stabilizer-ui.js',
   'brush-engine-v2/ghost-ui.js',
+  'brush-engine-v2/user-presets.js',
   'brush-engine-v2/lab-ui.js',
+  'brush-engine-v2/preset-ui.js',
 ];
 if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js');
 for (const marker of requiredMarkers) {
