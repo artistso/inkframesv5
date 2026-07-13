@@ -63,6 +63,8 @@ jobs:
         run: node web/tests/brush-engine-v2-corner.test.mjs
       - name: Brush V2 Ghost Trail
         run: node web/tests/brush-engine-v2-ghost.test.mjs
+      - name: Brush V2 tablet-first Brush Lab
+        run: node web/tests/brush-engine-v2-lab-layout.test.mjs
       - name: Brush V2 continuous ribbon coverage
         run: node web/tests/brush-engine-v2-coverage.test.mjs
       - name: Brush V2 radius continuity
