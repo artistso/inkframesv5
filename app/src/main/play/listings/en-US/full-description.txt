@@ -1,0 +1,25 @@
+InkFrame Studio is a free, offline-first 2D drawing and frame-by-frame animation workspace designed for stylus, touch, and mouse input.
+
+DRAW NATURALLY
+• Stylus-focused Ink and Eraser powered by Brush Engine V2
+• Pressure-aware strokes with continuous ribbon coverage
+• Pencil, marker, watercolor, glow, neon, frost, smudge, and specialty brushes
+• Adjustable size, opacity, hardness, spacing, response, taper, texture, and more
+• Palm rejection, stylus-only mode, zoom gestures, undo, and redo
+
+ANIMATE FRAME BY FRAME
+• Multi-frame timeline with adjustable frame holds
+• Per-frame layers with visibility, opacity, and blend modes
+• Onion-skin controls for previous and upcoming frames
+• Loop controls, motion effects, and playback from 1 to 24 fps
+
+CREATE AND EXPORT
+• Import reference images
+• Export PNG, GIF, MP4, and WebM
+• Save and reopen InkFrame project archives
+• Local autosave and a multi-project gallery
+
+PRIVATE BY DESIGN
+InkFrame Studio runs locally and does not require an account. The current release includes no advertising, analytics, remote artwork processing, or cloud upload. Artwork, preferences, and autosaves remain on the device unless you explicitly export a file.
+
+The Glass Horizon interface keeps tools in floating radial controls around the canvas so the artwork remains the focus.

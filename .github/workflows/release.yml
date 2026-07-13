@@ -1,33 +1,45 @@
-name: Release (debug APK)
+name: Signed Android Release
 
-# Push a version tag (e.g. v0.1.1) to build the debug APK and publish it as a
-# GitHub Release. The debug build is the canonical release for InkFrame Studio;
-# the WebView shell serves the same web/index.html in every variant, and the
-# release variant is kept only for optional future Play Store signing.
-#
-#   git tag v0.1.1 && git push origin v0.1.1
-#
-# Produces:
-#   - InkFrame-v0.1.1-debug.apk  (sideload-ready, debug-signed, fully offline)
-#
-# No repository secrets are required. The release notes are pulled from
-# RELEASE_NOTES.md, which is generated from CHANGELOG.md [Unreleased] and
-# web/metadata.json by tools/update-release-notes.mjs.
+# A matching v* tag builds and publishes release APK/AAB artifacts with the
+# long-lived InkFrame upload key. Manual runs are private signing dry runs only.
+# Missing or incomplete credentials fail before Gradle packages a release.
 
 on:
   push:
     tags: [ 'v*' ]
   workflow_dispatch:
+    inputs:
+      expected_version:
+        description: Version expected in web/metadata.json, for example 0.2.0
+        required: true
+        type: string
 
 permissions:
-  contents: write   # create the Release and upload assets
+  contents: write
+
+concurrency:
+  group: signed-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Build & publish debug APK release
+    name: Test, sign, verify, and stage or publish
     runs-on: ubuntu-latest
+    env:
+      INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
+      INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
+      INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
+      INKFRAME_VERSION_CODE: ${{ github.run_number }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -41,33 +53,167 @@ jobs:
       - name: Install Android platform 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Set up Gradle (with cache)
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
-
-      - name: Collect artifact
+      - name: Resolve release mode and validate version
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
-          mkdir -p release
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             "release/InkFrame-${GITHUB_REF_NAME}-debug.apk"
-          ls -la release
+          set -euo pipefail
+          VERSION="$(node -p "require('./web/metadata.json').version")"
+          test -n "$VERSION"
 
-      - name: Upload artifact to the run
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test -n "$EXPECTED_VERSION" || {
+              echo "Manual signing requires expected_version." >&2
+              exit 1
+            }
+            if [[ "$EXPECTED_VERSION" != "$VERSION" ]]; then
+              echo "Expected version $EXPECTED_VERSION does not match metadata version $VERSION" >&2
+              exit 1
+            fi
+            RELEASE_MODE="dry-run"
+            RELEASE_LABEL="v${VERSION}-dry-run"
+          else
+            if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+              echo "Non-manual release runs must originate from a v* tag." >&2
+              exit 1
+            fi
+            if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match metadata version v$VERSION" >&2
+              exit 1
+            fi
+            RELEASE_MODE="tag-release"
+            RELEASE_LABEL="v${VERSION}"
+          fi
+
+          echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "INKFRAME_RELEASE_MODE=$RELEASE_MODE" >> "$GITHUB_ENV"
+          echo "INKFRAME_RELEASE_LABEL=$RELEASE_LABEL" >> "$GITHUB_ENV"
+
+      - name: Decode release keystore
+        shell: bash
+        env:
+          INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$INKFRAME_KEYSTORE_BASE64" || { echo "Missing INKFRAME_KEYSTORE_BASE64" >&2; exit 1; }
+          test -n "$INKFRAME_KEYSTORE_PASSWORD" || { echo "Missing INKFRAME_KEYSTORE_PASSWORD" >&2; exit 1; }
+          test -n "$INKFRAME_KEY_ALIAS" || { echo "Missing INKFRAME_KEY_ALIAS" >&2; exit 1; }
+          test -n "$INKFRAME_KEY_PASSWORD" || { echo "Missing INKFRAME_KEY_PASSWORD" >&2; exit 1; }
+          KEYSTORE_PATH="$RUNNER_TEMP/inkframe-release.jks"
+          printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Verify release and Play metadata
+        run: |
+          node tools/update-release-notes.mjs --check
+          node tools/validate-play-release.mjs
+          node web/tests/version-smoke.mjs
+          node --check tools/inject-brush-v2-index.mjs
+          node --check web/brush-engine-v2/runtime.js
+          node --check web/brush-engine-v2/input.js
+          node web/tests/brush-engine-v2-runtime.test.mjs
+          node web/tests/brush-engine-v2-release.test.mjs
+
+      - name: Run JVM and brush regression tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --stacktrace
+          node web/tests/brush-engine-v2.test.mjs
+          node web/tests/brush-engine-v2-coverage.test.mjs
+          node web/tests/brush-engine-v2-radius.test.mjs
+          node web/tests/brush-engine-v2-contact.test.mjs
+          node web/tests/brush-engine-v2-session.test.mjs
+          node web/tests/brush-engine-v2-discontinuity.test.mjs
+          node web/tests/brush-engine-v2-batch.test.mjs
+
+      - name: Assemble signed APK and AAB
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
+
+      - name: Verify Android signatures and production assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          jarsigner -verify -certs "$AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
+          unzip -p "$APK" assets/index.html > "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
+            echo "Production index unexpectedly loads native diagnostics" >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -F 'assets/brush-engine-v2/native.js'; then
+            echo "Production APK unexpectedly packages native diagnostics" >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'InkFrameApplication'; then
+            echo "Production manifest unexpectedly registers the debug telemetry application" >&2
+            exit 1
+          fi
+          BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK")"
+          grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
+          grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
+
+      - name: Collect signed artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk \
+             "release/InkFrame-${INKFRAME_RELEASE_LABEL}-signed.apk"
+          cp app/build/outputs/bundle/release/app-release.aab \
+             "release/InkFrame-${INKFRAME_RELEASE_LABEL}-signed.aab"
+          (
+            cd release
+            sha256sum *.apk *.aab > SHA256SUMS.txt
+          )
+          ls -lh release
+
+      - name: Write release summary
+        shell: bash
+        run: |
+          {
+            echo "## InkFrame ${INKFRAME_VERSION} signed Android ${INKFRAME_RELEASE_MODE}"
+            echo
+            echo "- Package: \`com.inkframe.studio\`"
+            echo "- Version code: \`${INKFRAME_VERSION_CODE}\`"
+            echo "- APK and AAB signatures: verified"
+            echo "- Production assets: verified"
+            echo "- Brush Engine V2: production default"
+            echo "- Debug telemetry: excluded"
+            echo
+            if [[ "$INKFRAME_RELEASE_MODE" == "dry-run" ]]; then
+              echo "This manual run creates private verification artifacts only. It does not publish a GitHub Release or upload to Google Play."
+            else
+              echo "This tag run is eligible to publish the GitHub Release after all preceding checks pass."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload signed artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: inkframe-release-${{ github.ref_name }}
+          name: inkframe-signed-${{ env.INKFRAME_RELEASE_LABEL }}
           path: release/*
           if-no-files-found: error
-          retention-days: 90
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 14 }}
 
       - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
           body_path: RELEASE_NOTES.md
-          name: InkFrame ${{ github.ref_name }}
+          name: InkFrame ${{ env.INKFRAME_RELEASE_LABEL }}
+          fail_on_unmatched_files: true

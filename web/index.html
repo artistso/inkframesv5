@@ -703,7 +703,6 @@
   <div class="row"><span class="lbl">Size</span><input type="range" id="blabSize" min="1" max="120" step="1"><span class="val" id="blabSizeV">0</span></div>
   <div class="row"><span class="lbl">Min size</span><input type="range" id="blabMin" min="0" max="100" step="1"><span class="val" id="blabMinV">0</span></div>
   <div class="row"><span class="lbl">Stabilize</span><input type="range" id="blabStab" min="0" max="100" step="1"><span class="val" id="blabStabV">0</span></div>
-  <div class="row"><span class="lbl">Predict</span><input type="range" id="blabPred" min="0" max="100" step="1"><span class="val" id="blabPredV">0</span></div>
   <div class="row"><span class="lbl">Opacity</span><input type="range" id="blabOp" min="1" max="100" step="1"><span class="val" id="blabOpV">0</span></div>
   <div class="row"><span class="lbl">Hardness</span><input type="range" id="blabHard" min="0" max="100" step="1"><span class="val" id="blabHardV">0</span></div>
   <div class="row"><span class="lbl">Spacing</span><input type="range" id="blabSp" min="2" max="50" step="1"><span class="val" id="blabSpV">0</span></div>
@@ -945,34 +944,28 @@
   // and only light stabilization so the stroke stays 1:1 under a tablet pen.
   // Response is the pressure->width shaper: -1 exponential (hairline-friendly),
   // 0 linear, +1 S-curve.
-  //
-  // predict controls how visible the predicted-stroke overlay is (0 = off,
-  // 1 = full). Brushes that need precise placement (ink, pencil, eraser)
-  // ship with a hint of prediction; heavy media (water, frost) can afford
-  // more because the stroke itself is forgiving.
   const DEFAULT_PROFILE={
-    pencil:  { minSize:0.18, stabilize:0.22, predict:0.55, spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0, exitPool:0, texture:0.65, response:-0.3 },
-    ink:     { minSize:0.08, stabilize:0.05, predict:0.60, spacing:0.055,jitter:0,    taperIn:12, taperOut:16, entryPool:0, exitPool:0, texture:0.10, response:-0.20},
-    marker:  { minSize:0.50, stabilize:0.28, predict:0.45, spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0, exitPool:0, texture:0.35, response: 0    },
-    water:   { minSize:0.35, stabilize:0.45, predict:0.35, spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0, exitPool:0, texture:0.50, response:-0.5 },
-    frost:   { minSize:0.40, stabilize:0.32, predict:0.35, spacing:0.11, jitter:0.06, taperIn:10, taperOut:10, entryPool:0, exitPool:0, texture:0.70, response: 0    },
-    smudge:  { minSize:0.45, stabilize:0.16, predict:0.30, spacing:0.07, jitter:0,    taperIn:4,  taperOut:4,  entryPool:0, exitPool:0, texture:0.35, response: 0    },
-    glow:    { minSize:0.70, stabilize:0.22, predict:0.25, spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
+    pencil:  { minSize:0.18, stabilize:0.25, spacing:0.10, jitter:0.05, taperIn:8,  taperOut:6,  entryPool:0, exitPool:0, texture:0.65, response:-0.3 },
+    ink:     { minSize:0.08, stabilize:0.08, spacing:0.055,jitter:0,    taperIn:12, taperOut:16, entryPool:0, exitPool:0, texture:0.10, response:-0.20},
+    marker:  { minSize:0.50, stabilize:0.32, spacing:0.14, jitter:0.02, taperIn:6,  taperOut:6,  entryPool:0, exitPool:0, texture:0.35, response: 0    },
+    water:   { minSize:0.35, stabilize:0.38, spacing:0.18, jitter:0.03, taperIn:12, taperOut:8,  entryPool:0, exitPool:0, texture:0.50, response:-0.5 },
+    frost:   { minSize:0.40, stabilize:0.30, spacing:0.11, jitter:0.06, taperIn:10, taperOut:10, entryPool:0, exitPool:0, texture:0.70, response: 0    },
+    smudge:  { minSize:0.45, stabilize:0.18, spacing:0.07, jitter:0,    taperIn:4,  taperOut:4,  entryPool:0, exitPool:0, texture:0.35, response: 0    },
+    glow:    { minSize:0.70, stabilize:0.32, spacing:0.10, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
     // Neon paints a bright core over a wide halo, so tighter spacing +
     // slight taper make the line read as one continuous glowing wire. Zero
     // jitter (jitter breaks the coherent halo).
-    neon:    { minSize:0.55, stabilize:0.18, predict:0.40, spacing:0.06, jitter:0,    taperIn:8,  taperOut:8,  entryPool:0, exitPool:0, texture:0,    response: 0.1 },
+    neon:    { minSize:0.55, stabilize:0.16, spacing:0.06, jitter:0,    taperIn:8,  taperOut:8,  entryPool:0, exitPool:0, texture:0,    response: 0.1 },
     // Star wants wide spacing so a stroke drops a trail of stars instead of
     // a smear. Small jitter so the stars don't line up in a rigid row.
-    star:    { minSize:1.00, stabilize:0.10, predict:0.30, spacing:1.40, jitter:0.15, taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
-    eraser:  { minSize:1.00, stabilize:0.12, predict:0.25, spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
+    star:    { minSize:1.00, stabilize:0.08, spacing:1.40, jitter:0.15, taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
+    eraser:  { minSize:1.00, stabilize:0.10, spacing:0.12, jitter:0,    taperIn:0,  taperOut:0,  entryPool:0, exitPool:0, texture:0,    response: 0    },
   };
   brushes.forEach(b=>{ const d=DEFAULT_PROFILE[b.id]||{};
     brushPrefs[b.id]={
       size:b.size, op:b.op, hard:b.hard,
       minSize:  (typeof d.minSize==='number')  ? d.minSize  : 0.4,
       stabilize:(typeof d.stabilize==='number')? d.stabilize: 0.45,
-      predict:  (typeof d.predict==='number')  ? d.predict  : 0.5,
       spacing:  (typeof d.spacing==='number')  ? d.spacing  : 0.14,
       jitter:   (typeof d.jitter==='number')   ? d.jitter   : 0,
       taperIn:  (typeof d.taperIn==='number')  ? d.taperIn  : 6,
@@ -985,12 +978,11 @@
   });
   // Current-brush accessors used by the paint engine. Cheaper than reading
   // brushPrefs[brush.id].x every dab, and safe against `brush` swaps.
-  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpTex=0, _bpR=0, _bpMin=0.4, _bpStabilize=0.45, _bpPredict=0.5;
+  let _bpH=1, _bpS=0.14, _bpJ=0, _bpTin=6, _bpTout=6, _bpEP=0, _bpXP=0, _bpTex=0, _bpR=0, _bpMin=0.4, _bpStabilize=0.45;
   function refreshBp(){ const p=brushPrefs[brush.id]||{}, d=DEFAULT_PROFILE[brush.id]||{};
     _bpH   = (typeof p.hard==='number')      ? p.hard      : (brush.hard!=null?brush.hard:0.9);
     _bpMin = (typeof p.minSize==='number')   ? p.minSize   : ((typeof d.minSize==='number') ? d.minSize : 0.4);
     _bpStabilize = (typeof p.stabilize==='number') ? p.stabilize : ((typeof d.stabilize==='number') ? d.stabilize : streamline);
-    _bpPredict = (typeof p.predict==='number') ? p.predict : ((typeof d.predict==='number') ? d.predict : 0.5);
     _bpS   = (typeof p.spacing==='number')   ? p.spacing   : 0.14;
     _bpJ   = (typeof p.jitter==='number')    ? p.jitter    : 0;
     _bpTin = (typeof p.taperIn==='number')   ? p.taperIn   : 6;
@@ -1870,20 +1862,10 @@
   // StreamLine (Procreate-style): an adjustable smoothing amount drives the position lag.
   let streamline=0.45;          // 0 = raw, ~0.9 = heavy smoothing
   let stab=0.55, PSTAB=0.3;     // global fallback; ink/pencil can override via Brush Lab Stabilize
-  function stabFromAmount(v){ return Math.max(0.02, 1-Math.max(0,Math.min(1,v))*0.94); }
+  function stabFromAmount(v){ return Math.max(0.08, 1-Math.max(0,Math.min(1,v))*0.92); }
   function applyStream(){ stab=stabFromAmount(streamline); }
   function brushStab(){ return stabFromAmount((typeof _bpStabilize==='number') ? _bpStabilize : streamline); }
   applyStream();
-
-  // Advanced stabilizer constants. These tune the "rope + directional bias"
-  // smoother that replaced the simple EMA. Higher velocity reduces smoothing
-  // so fast strokes stay 1:1; perpendicular jitter is suppressed more than
-  // forward progress; sub-pixel noise is ignored.
-  const VEL_SMOOTH_THRESHOLD = 0.75;   // px/ms above which smoothing tapers off
-  const VEL_SMOOTH_REDUCTION = 0.55;   // max smoothing reduction at high speed
-  const JITTER_GATE = 0.22;            // raw movement below this is treated as noise
-  const PERP_BIAS = 0.38;              // extra perpendicular-error suppression
-  const PREDICT_FADE = 0.55;           // predicted-stroke overlay fades along its length
   // QuickShape: hold the pen still at the end of a stroke and it snaps to a clean line/ellipse.
   let qsEnabled=true, qsActive=false, qsShape=null, qsTimer=0, qsLastMove=0, qsAnchor={x:0,y:0};
   const QS_HOLD=420;            // ms of stillness before a shape snaps
@@ -2069,56 +2051,26 @@
     for(const ev of evs){const c=toC(ev);
       // Pressure smoothing. During the seat-in window we ease FAST toward the
       // real reading so seat_seed (a hairline) becomes true pressure over ~4
-      // samples. After that we use a stabilizer-aware damping: heavier smoothing
-      // also smooths pressure, but never so much that the line feels late.
-      const pressureK = pSeat < PSEAT_N
-        ? 0.35 + 0.6 * ((pSeat + 1) / PSEAT_N)
-        : 0.10 + 0.40 * ((typeof _bpStabilize==='number') ? _bpStabilize : streamline);
-      smoothP += (c.p - smoothP) * Math.max(0.10, Math.min(0.55, pressureK));
-      if(pSeat < PSEAT_N) pSeat++;
-
-      const ox=penX,oy=penY;
-      const now=(ev.timeStamp||performance.now()); const dtMs=Math.max(1, now-lastMoveT); lastMoveT=now;
-
-      // ---- Advanced stabilizer: velocity-adaptive rope + directional bias ----
-      // Base smoothing amount from the brush profile (0..1). Fast strokes
-      // reduce it so the line can keep up; slow strokes use the full amount.
-      const baseStab = (typeof _bpStabilize==='number') ? _bpStabilize : streamline;
-      const rawDx = c.x - lastP.x, rawDy = c.y - lastP.y;
-      const rawVel = Math.hypot(rawDx, rawDy) / Math.max(1, dtMs);
-      const velRatio = Math.min(1, rawVel / VEL_SMOOTH_THRESHOLD);
-      const effectiveStab = baseStab * (1 - velRatio * VEL_SMOOTH_REDUCTION);
-      // EMA coefficient: 1 = raw/1:1, 0 = frozen. Keep a tiny minimum so
-      // the smoothed point can always catch the raw input.
-      const posFactor = Math.max(0.03, 1 - effectiveStab * 0.94);
-
-      // Jitter gate: ignore sub-pixel noise so the stroke doesn't "breathe"
-      // while the artist is holding still. Use raw travel for the gate.
-      const rawTravel = Math.hypot(c.x - lx, c.y - ly);
-      if(rawTravel > JITTER_GATE){
-        penX += (c.x - penX) * posFactor;
-        penY += (c.y - penY) * posFactor;
-        // Directional bias: suppress perpendicular jitter more than forward
-        // progress. This is the Clip-Studio-style "correction" feel.
-        if(rawVel > 0.004){
-          const inv = 1 / (rawVel * dtMs);
-          const dirX = rawDx * inv, dirY = rawDy * inv;
-          const errX = c.x - penX, errY = c.y - penY;
-          const errAlong = errX * dirX + errY * dirY;
-          const errPerpX = errX - errAlong * dirX;
-          const errPerpY = errY - errAlong * dirY;
-          penX += errPerpX * PERP_BIAS * effectiveStab;
-          penY += errPerpY * PERP_BIAS * effectiveStab;
-        }
+      // samples. After that we use the normal PSTAB damping (kills jitter).
+      if(pSeat < PSEAT_N){
+        pSeat++;
+        // Blend factor climbs 0.35 -> ~0.95 across the window.
+        const k = 0.35 + 0.6 * (pSeat / PSEAT_N);
+        smoothP += (c.p - smoothP) * k;
+      } else {
+        smoothP += (c.p - smoothP) * PSTAB;
       }
-
+      const ox=penX,oy=penY;
+      const posStab=brushStab();
+      penX+=(c.x-penX)*posStab; penY+=(c.y-penY)*posStab;   // per-brush StreamLine: ink stays near 1:1
       const step=Math.hypot(penX-ox,penY-oy);
       // Time-based velocity in px/ms — stable across devices with wildly different
       // pointer report rates (60 Hz phone vs 240 Hz active pen). Multiplied by 16 to
       // preserve the "per-frame" number brush math was tuned against.
+      const now=(ev.timeStamp||performance.now()); const dtMs=Math.max(1, now-lastMoveT); lastMoveT=now;
       const instVel = (step/dtMs)*16;
       drawVel += (instVel-drawVel)*0.35;
-      if(step>0.01) lastAng=Math.atan2(penY-ox,penX-ox);
+      if(step>0.01) lastAng=Math.atan2(penY-oy,penX-ox);
       lastP={x:c.x,y:c.y};
       // Feed the spline: paint a smooth curve through the trailing 4 samples
       // instead of a straight seg from the previous point.
@@ -2134,45 +2086,24 @@
     // transparent overlay so the artist sees ink AT the tip. Cleared on
     // pen-up; the real dab() cascade already committed the correct pixels.
     if(pctx && !brush.erase){
-      const predictAmt = (typeof _bpPredict==='number') ? _bpPredict : 0.5;
-      if(predictAmt > 0.05){
-        const c = toC(e);   // raw current pointer position
-        // Also try the browser's own predicted samples (Pointer Events extension).
-        const preds = (e.getPredictedEvents && e.getPredictedEvents()) || [];
-        pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
-        pctx.save();
-        pctx.lineCap = 'round'; pctx.lineJoin = 'round';
-        // Build a polyline of predicted points so we can fade it from the
-        // confirmed sample toward the predicted tip.
-        const pts = [{x:penX, y:penY}, {x:c.x, y:c.y}];
-        for(const pv of preds){
-          const pc = toC(pv);
-          // Avoid duplicate / backtracking predicted samples.
-          const last = pts[pts.length-1];
-          if(Math.hypot(pc.x-last.x, pc.y-last.y) > 0.5) pts.push(pc);
-        }
-        // Use a gradient stroke: opaque near the confirmed ink, fading toward
-        // the speculative tip. This reads as "future ink" rather than a full
-        // stroke, and respects the brush's Predict slider.
-        const baseAlpha = opacity * predictAmt;
-        const lw = Math.max(1, (nibW || size) * 0.45);
-        for(let i=1; i<pts.length; i++){
-          const a = pts[i-1], b = pts[i];
-          const t0 = (i-1)/(pts.length-1), t1 = i/(pts.length-1);
-          const gr = pctx.createLinearGradient(a.x, a.y, b.x, b.y);
-          gr.addColorStop(0, hexA(color, baseAlpha * (1 - t0 * PREDICT_FADE)));
-          gr.addColorStop(1, hexA(color, baseAlpha * (1 - t1 * PREDICT_FADE)));
-          pctx.strokeStyle = gr;
-          pctx.lineWidth = lw * (1 - (t0+t1)/2 * 0.35);
-          pctx.beginPath();
-          pctx.moveTo(a.x, a.y);
-          pctx.lineTo(b.x, b.y);
-          pctx.stroke();
-        }
-        pctx.restore();
-      } else {
-        pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
+      const c = toC(e);   // raw current pointer position
+      // Also try the browser's own predicted samples (Pointer Events extension).
+      const preds = (e.getPredictedEvents && e.getPredictedEvents()) || [];
+      pctx.clearRect(0, 0, pcanvas.width, pcanvas.height);
+      pctx.save();
+      pctx.strokeStyle = brush.erase ? paper() : color;
+      pctx.globalAlpha = opacity * 0.7;   // slightly translucent -- reads as "predicted"
+      pctx.lineWidth = Math.max(1, (nibW || size) * 0.5);
+      pctx.lineCap = 'round'; pctx.lineJoin = 'round';
+      pctx.beginPath();
+      pctx.moveTo(penX, penY);
+      pctx.lineTo(c.x, c.y);
+      for(const pv of preds){
+        const pc = toC(pv);
+        pctx.lineTo(pc.x, pc.y);
       }
+      pctx.stroke();
+      pctx.restore();
     }
     // QuickShape: if the pen goes still mid/late-stroke, try to snap to a clean shape
     if(qsEnabled && !brush.erase){ const now=performance.now();
@@ -2782,7 +2713,6 @@
     const sSize  = document.getElementById('blabSize'), vSize=document.getElementById('blabSizeV');
     const sMin   = document.getElementById('blabMin'),  vMin =document.getElementById('blabMinV');
     const sStab  = document.getElementById('blabStab'), vStab=document.getElementById('blabStabV');
-    const sPred  = document.getElementById('blabPred'), vPred=document.getElementById('blabPredV');
     const sOp    = document.getElementById('blabOp'),   vOp  =document.getElementById('blabOpV');
     const sHard  = document.getElementById('blabHard'), vHard=document.getElementById('blabHardV');
     const sSp    = document.getElementById('blabSp'),   vSp  =document.getElementById('blabSpV');
@@ -2861,7 +2791,6 @@
       sSize.value = Math.round(bp.size || size);
       sMin.value  = Math.round(((typeof bp.minSize==='number')?bp.minSize:((DEFAULT_PROFILE[b.id]||{}).minSize||0.4))*100);
       sStab.value = Math.round(((typeof bp.stabilize==='number')?bp.stabilize:((DEFAULT_PROFILE[b.id]||{}).stabilize||streamline))*100);
-      sPred.value = Math.round(((typeof bp.predict==='number')?bp.predict:((DEFAULT_PROFILE[b.id]||{}).predict||0.5))*100);
       sOp.value   = Math.round((typeof bp.op==='number'?bp.op:opacity)*100);
       sHard.value = Math.round(((typeof bp.hard==='number')?bp.hard:(b.hard||0.9))*100);
       sSp.value   = Math.round(((typeof bp.spacing==='number')?bp.spacing:0.14)*100);
@@ -2897,7 +2826,6 @@
       vSize.textContent = sSize.value;
       vMin.textContent  = sMin.value;
       vStab.textContent = sStab.value;
-      vPred.textContent = sPred.value;
       vOp.textContent   = sOp.value;
       vHard.textContent = sHard.value;
       vSp.textContent   = sSp.value;
@@ -2917,7 +2845,6 @@
       bp.op      = opacity;
       bp.minSize = (+sMin.value)/100;
       bp.stabilize = (+sStab.value)/100;
-      bp.predict = (+sPred.value)/100;
       bp.hard    = (+sHard.value)/100;
       bp.spacing = Math.max(0.02, (+sSp.value)/100);
       bp.jitter  = (+sJit.value)/100;
@@ -2936,12 +2863,12 @@
       syncLabels();
       paintPreview();
     }
-    [sSize,sMin,sStab,sPred,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sTex,sResp].forEach(s=>{
+    [sSize,sMin,sStab,sOp,sHard,sSp,sJit,sTin,sTout,sEP,sXP,sTex,sResp].forEach(s=>{
       s.addEventListener('input', commit);
       // Slider drags shouldn't propagate to the canvas' pointer listeners.
       s.addEventListener('pointerdown', e=>e.stopPropagation());
     });
-    const brushProfileKeys=['size','op','minSize','stabilize','predict','hard','spacing','jitter','taperIn','taperOut','entryPool','exitPool','texture','response'];
+    const brushProfileKeys=['size','op','minSize','stabilize','hard','spacing','jitter','taperIn','taperOut','entryPool','exitPool','texture','response'];
     function profileDownload(blob,name){
       const url=URL.createObjectURL(blob); const a=document.createElement('a');
       a.href=url; a.download=name; document.body.appendChild(a); a.click();
@@ -2956,7 +2883,7 @@
       if(out.hard!=null) out.hard=Math.max(0, Math.min(1, out.hard));
       if(out.op!=null) out.op=Math.max(0.01, Math.min(1, out.op));
       if(out.size!=null) out.size=Math.max(1, Math.min(120, out.size));
-      ['entryPool','exitPool','texture','minSize','stabilize','predict'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(1, out[k])); });
+      ['entryPool','exitPool','texture','minSize','stabilize'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(1, out[k])); });
       if(out.response!=null) out.response=Math.max(-1, Math.min(1, out.response));
       ['taperIn','taperOut'].forEach(k=>{ if(out[k]!=null) out[k]=Math.max(0, Math.min(60, out[k])); });
       return out;
@@ -3049,7 +2976,6 @@
         size:def.size, op:def.op, hard:def.hard,
         minSize:  (typeof shipped.minSize==='number')  ? shipped.minSize  : 0.4,
         stabilize:(typeof shipped.stabilize==='number')? shipped.stabilize: streamline,
-        predict:  (typeof shipped.predict==='number')  ? shipped.predict  : 0.5,
         spacing:  (typeof shipped.spacing==='number')  ? shipped.spacing  : 0.14,
         jitter:   (typeof shipped.jitter==='number')   ? shipped.jitter   : 0,
         taperIn:  (typeof shipped.taperIn==='number')  ? shipped.taperIn  : 6,
