@@ -177,10 +177,21 @@
       if(!mode)return;const view=viewFor(lastEnvironment);let handled=true;
       if(event.key.toLowerCase()==='r')view.open=!view.open;
       else if(event.key.toLowerCase()==='p'&&view.open){view.preview=!view.preview;if(!view.preview)view.previewPatternId=null;}
-      else if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'&&view.open){event.shiftKey?redo():undo();return;}
-      else handled=false;
+      else if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'&&view.open){
+        event.preventDefault();event.stopImmediatePropagation();event.shiftKey?redo():undo();scheduleRefresh();return;
+      }else handled=false;
       if(handled){event.preventDefault();event.stopImmediatePropagation();scheduleRefresh();}
     },true);
+    if(typeof root.MutationObserver==='function'){
+      const observer=new root.MutationObserver(()=>{
+        if(rendering||refreshQueued||!lastBoard||board!==lastBoard)return;
+        const timing=root.InkFrameRadialTiming,mode=timing&&timing.viewSnapshot?timing.viewSnapshot(lastEnvironment&&lastEnvironment.project).timingMode:false;
+        const missing=mode&&board.querySelector('.inkframe-timing-tools')&&!board.querySelector('.inkframe-rhythm-toggle');
+        const stale=!mode&&(board.querySelector('.inkframe-rhythm-shelf')||board.querySelector('.inkframe-rhythm-preview-svg'));
+        if(missing||stale)scheduleRefresh();
+      });
+      observer.observe(board,{childList:true});board._inkframeRhythmObserver=observer;
+    }
   }
 
   function render(board,environment){
