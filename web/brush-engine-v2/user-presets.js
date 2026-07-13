@@ -8,10 +8,26 @@
   const MAX_PRESETS=24;
   const MAX_PINNED=4;
   const MAX_NAME=32;
+  const MAX_ID=48;
 
   const clone=value=>JSON.parse(JSON.stringify(value));
   const cleanName=value=>String(value||'').replace(/\s+/g,' ').trim().slice(0,MAX_NAME);
-  const cleanId=value=>String(value||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,48);
+  const cleanId=value=>String(value||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,MAX_ID);
+
+  function uniqueText(base,seen,maxLength,separator,normalizer){
+    const normalize=normalizer||String;
+    let candidate=String(base||'').slice(0,maxLength);
+    if(!seen.has(normalize(candidate)))return candidate;
+    for(let suffix=2;suffix<10000;suffix++){
+      const tail=`${separator}${suffix}`;
+      candidate=`${String(base||'').slice(0,Math.max(1,maxLength-tail.length))}${tail}`;
+      if(!seen.has(normalize(candidate)))return candidate;
+    }
+    throw new Error('Unable to create a unique preset identifier');
+  }
+
+  const uniqueId=(base,seen)=>uniqueText(base,seen,MAX_ID,'-',String);
+  const uniqueName=(base,seen)=>uniqueText(base,seen,MAX_NAME,' ',value=>String(value).toLowerCase());
 
   function tuningPayload(value){
     const normalized=ns.normalizeTuning?ns.normalizeTuning(value||{}):Object.assign({},value||{});
@@ -43,14 +59,9 @@
     const presets=[];
     for(let index=0;index<source.length&&presets.length<MAX_PRESETS;index++){
       const item=sanitizePreset(source[index],index,now);
-      let id=item.id;
-      let suffix=2;
-      while(seenIds.has(id))id=`${item.id}-${suffix++}`.slice(0,48);
-      let name=item.name;
-      suffix=2;
-      while(seenNames.has(name.toLowerCase()))name=`${item.name} ${suffix++}`.slice(0,MAX_NAME);
-      item.id=id;item.name=name;
-      seenIds.add(id);seenNames.add(name.toLowerCase());presets.push(item);
+      item.id=uniqueId(item.id,seenIds);
+      item.name=uniqueName(item.name,seenNames);
+      seenIds.add(item.id);seenNames.add(item.name.toLowerCase());presets.push(item);
     }
     const validIds=new Set(presets.map(item=>item.id));
     const pinned=[];
@@ -74,9 +85,9 @@
     }catch(_){}
 
     const persist=()=>{try{if(storage)storage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(_){}};
+    const snapshot=()=>clone(state);
     const emit=()=>{for(const listener of listeners){try{listener(snapshot());}catch(_){}}};
     const commit=next=>{state=sanitizeLibrary(next,now());persist();emit();return snapshot();};
-    const snapshot=()=>clone(state);
     const find=id=>state.presets.find(item=>item.id===cleanId(id))||null;
 
     function save(name,tuning,pin){
@@ -91,7 +102,8 @@
         presets=state.presets.map(item=>item.id===id?Object.assign({},item,{name:safeName,updatedAt:timestamp,tuning:tuningPayload(tuning)}):item);
       }else{
         if(state.presets.length>=MAX_PRESETS)throw new Error(`Maximum ${MAX_PRESETS} presets reached`);
-        id=cleanId(makeId())||`preset-${timestamp}`;
+        const usedIds=new Set(state.presets.map(item=>item.id));
+        id=uniqueId(cleanId(makeId())||`preset-${timestamp}`,usedIds);
         presets=state.presets.concat({id,name:safeName,createdAt:timestamp,updatedAt:timestamp,tuning:tuningPayload(tuning)});
       }
       const pinned=state.pinned.slice();
@@ -136,5 +148,5 @@
   }
 
   Object.assign(ns,{USER_PRESET_STORAGE_KEY:STORAGE_KEY,USER_PRESET_SCHEMA:SCHEMA,MAX_USER_PRESETS:MAX_PRESETS,MAX_PINNED_PRESETS:MAX_PINNED,cleanUserPresetName:cleanName,tuningPresetSignature:tuningSignature,sanitizeUserPresetLibrary:sanitizeLibrary,createUserPresetStore});
-  if(typeof module!=='undefined'&&module.exports)module.exports={STORAGE_KEY,SCHEMA,MAX_PRESETS,MAX_PINNED,MAX_NAME,cleanName,tuningPayload,tuningSignature,sanitizeLibrary,createUserPresetStore};
+  if(typeof module!=='undefined'&&module.exports)module.exports={STORAGE_KEY,SCHEMA,MAX_PRESETS,MAX_PINNED,MAX_NAME,MAX_ID,cleanName,cleanId,uniqueText,tuningPayload,tuningSignature,sanitizeLibrary,createUserPresetStore};
 })(typeof globalThis!=='undefined'?globalThis:this);
