@@ -14,11 +14,11 @@ plugins {
 // so Gradle configuration stays fast and works before any app dependencies exist.
 val webMetadataFile = rootProject.file("web/metadata.json")
 fun webMetadataString(key: String): String? =
-    Regex("\"$key\"\s*:\s*\"([^\"]+)\"")
+    Regex("\"$key\"[ ]*:[ ]*\"([^\"]+)\"")
         .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
         ?.groupValues?.getOrNull(1)
 fun webMetadataInt(key: String): Int? =
-    Regex("\"$key\"\s*:\s*(\d+)")
+    Regex("\"$key\"[ ]*:[ ]*([0-9]+)")
         .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
         ?.groupValues?.getOrNull(1)?.toIntOrNull()
 
