@@ -1,4 +1,4 @@
-// InkFrame Brush Engine V2 — Android A/B integration tests
+// InkFrame Brush Engine V2 — Android debug integration tests
 
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -21,12 +21,18 @@ const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
 
 try {
-  execFileSync(process.execPath, [injector, sourceIndex, generated], { cwd: root, stdio: 'pipe' });
+  execFileSync(process.execPath, [
+    injector, sourceIndex, generated,
+    '--variant=debug', '--diagnostics=true', '--default-engine=v2',
+  ], { cwd: root, stdio: 'pipe' });
   const source = readFileSync(sourceIndex, 'utf8');
   const html = readFileSync(generated, 'utf8');
 
-  assert.equal(source.includes('INKFRAME_BRUSH_V2_AB'), false, 'browser fallback must stay uninstrumented');
-  assert.equal((html.match(/INKFRAME_BRUSH_V2_AB/g) || []).length, 1);
+  assert.equal(source.includes('INKFRAME_BRUSH_V2_RUNTIME'), false, 'browser fallback must stay uninstrumented');
+  assert.equal((html.match(/INKFRAME_BRUSH_V2_RUNTIME/g) || []).length, 1);
+  assert.ok(html.includes('"variant":"debug"'));
+  assert.ok(html.includes('"diagnostics":true'));
+  assert.ok(html.includes('"defaultBrushEngine":"v2"'));
   assert.equal((html.match(/InkFrameBrushV2Adapter\.begin/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Adapter\.move/g) || []).length, 1);
   assert.equal((html.match(/InkFrameBrushV2Adapter\.end/g) || []).length, 1);
@@ -49,6 +55,7 @@ try {
     'brush-engine-v2/radius.js',
     'brush-engine-v2/rasterizer.js',
     'brush-engine-v2/trace.js',
+    'brush-engine-v2/runtime.js',
     'brush-engine-v2/native.js',
     'brush-engine-v2/engine.js',
     'brush-engine-v2/tuning.js',
@@ -62,7 +69,8 @@ try {
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
   assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'), 'batch normalizer must load before adapter');
-  assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/native.js'), 'native diagnostics must wrap the trace recorder after trace.js');
+  assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'), 'runtime policy must load after trace.js');
+  assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/native.js'), 'debug native diagnostics must wrap after runtime policy');
   assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'), 'native diagnostics must wrap before adapter creates recorders');
   assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'), 'session guard must load after adapter');
   assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/input.js'), 'input bridge must call the session-wrapped adapter');
@@ -75,6 +83,7 @@ try {
     clearTimeout,
     Blob,
     URL,
+    InkFrameBuild:{ variant:'debug', diagnostics:true, traceTools:true, defaultBrushEngine:'v2' },
   };
   vm.runInNewContext(readFileSync(tuningFile, 'utf8'), sandbox, { filename: 'tuning.js' });
   const tuning = sandbox.module.exports;
@@ -135,7 +144,7 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ brush-engine-v2 A/B native-trace integration tests passed');
+  console.log('✅ Brush Engine V2 debug integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
