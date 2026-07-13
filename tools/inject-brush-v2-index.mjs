@@ -47,15 +47,19 @@ const scripts = `<script src="brush-math.js"></script>
 <script src="brush-engine-v2/arc-sampler.js"></script>
 <script src="brush-engine-v2/radius.js"></script>
 <script src="brush-engine-v2/rasterizer.js"></script>
+<script src="brush-engine-v2/ghost-trail.js"></script>
 <script src="brush-engine-v2/trace.js"></script>
 <script src="brush-engine-v2/runtime.js"></script>
 ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/tuning.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="brush-engine-v2/session.js"></script>
+<script src="brush-engine-v2/ghost-runtime.js"></script>
 <script src="brush-engine-v2/input.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
+<script src="brush-engine-v2/ghost-ui.js"></script>
+<script src="brush-engine-v2/lab-ui.js"></script>
 <script src="flood-fill.js"></script>`;
 html = replaceOnce(html, scriptsNeedle, scripts, 'sibling script list');
 
@@ -150,9 +154,9 @@ html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 const requiredMarkers = [
   'INKFRAME_BRUSH_V2_RUNTIME',
   'window.InkFrameBuild=Object.freeze',
-  `\"variant\":\"${variant}\"`,
-  `\"diagnostics\":${diagnostics}`,
-  `\"defaultBrushEngine\":\"${defaultBrushEngine}\"`,
+  `"variant":"${variant}"`,
+  `"diagnostics":${diagnostics}`,
+  `"defaultBrushEngine":"${defaultBrushEngine}"`,
   'makeBrushV2Env()',
   'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
@@ -166,11 +170,15 @@ const requiredMarkers = [
   'brush-engine-v2/contact.js',
   'brush-engine-v2/stabilizer.js',
   'brush-engine-v2/radius.js',
+  'brush-engine-v2/ghost-trail.js',
+  'brush-engine-v2/ghost-runtime.js',
   'brush-engine-v2/runtime.js',
   'brush-engine-v2/session.js',
   'brush-engine-v2/input.js',
   'brush-engine-v2/coverage-ui.js',
   'brush-engine-v2/stabilizer-ui.js',
+  'brush-engine-v2/ghost-ui.js',
+  'brush-engine-v2/lab-ui.js',
 ];
 if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js');
 for (const marker of requiredMarkers) {
