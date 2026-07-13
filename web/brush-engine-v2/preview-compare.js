@@ -37,10 +37,16 @@
     function abort(){if(ended)return false;ended=true;const left=typeof a.abort==='function'?a.abort():false,right=typeof b.abort==='function'?b.abort():false;return !!(left||right);}
     return Object.freeze({begin:sample=>feed('begin',sample),move:sample=>feed('move',sample),end:sample=>feed('end',sample),abort,stats:()=>Object.freeze({inputSamples,ended,a:a.stats?a.stats():null,b:b.stats?b.stats():null}),a,b});
   }
+  function loadBrushMatch(){
+    if(!root.document||root.InkFrameBrushMatch)return false;
+    if(root.document.querySelector('script[data-inkframe-brush-match]'))return true;
+    const script=root.document.createElement('script');script.src='brush-engine-v2/brush-match.js';script.async=false;script.dataset.inkframeBrushMatch='true';root.document.head.appendChild(script);return true;
+  }
   function loadIdentityMixer(){
-    if(!root.document||root.InkFrameBrushIdentityMixer)return false;
-    if(root.document.querySelector('script[data-inkframe-identity-mixer]'))return true;
-    const script=root.document.createElement('script');script.src='brush-engine-v2/identity-mixer.js';script.async=false;script.dataset.inkframeIdentityMixer='true';root.document.head.appendChild(script);return true;
+    if(!root.document)return false;
+    if(root.InkFrameBrushIdentityMixer){root.setTimeout(loadBrushMatch,0);return true;}
+    const existing=root.document.querySelector('script[data-inkframe-identity-mixer]');if(existing){existing.addEventListener&&existing.addEventListener('load',()=>root.setTimeout(loadBrushMatch,0),{once:true});return true;}
+    const script=root.document.createElement('script');script.src='brush-engine-v2/identity-mixer.js';script.async=false;script.dataset.inkframeIdentityMixer='true';script.addEventListener('load',()=>root.setTimeout(loadBrushMatch,0),{once:true});root.document.head.appendChild(script);return true;
   }
   function loadProfileIdentities(){
     if(!root.document)return false;
@@ -84,6 +90,6 @@
     const existing=root.document.querySelector('script[data-inkframe-reference-replay]');if(existing)return true;
     const script=root.document.createElement('script');script.src='brush-engine-v2/preview-replay.js';script.async=false;script.dataset.inkframeReferenceReplay='true';script.addEventListener('load',()=>root.setTimeout(loadBrushCoach,0),{once:true});root.document.head.appendChild(script);return true;
   }
-  const api={STUDIO_COMPARE_PRESETS:STUDIO_PRESETS,normalizeCompareLibrary:normalizeLibrary,studioCompareChoice:studioChoice,savedCompareChoice:savedChoice,compareChoices,resolveCompareChoice,createPairedPreviewSession,loadReferenceReplay,loadBrushCoach,loadCoachSession,loadCalibrationReport,loadProfileRecovery,loadProfileRecoveryObserver,loadProfileIdentities,loadIdentityMixer};
+  const api={STUDIO_COMPARE_PRESETS:STUDIO_PRESETS,normalizeCompareLibrary:normalizeLibrary,studioCompareChoice:studioChoice,savedCompareChoice:savedChoice,compareChoices,resolveCompareChoice,createPairedPreviewSession,loadReferenceReplay,loadBrushCoach,loadCoachSession,loadCalibrationReport,loadProfileRecovery,loadProfileRecoveryObserver,loadProfileIdentities,loadIdentityMixer,loadBrushMatch};
   Object.assign(ns,api);if(root.document)root.setTimeout(loadReferenceReplay,0);if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
