@@ -13,6 +13,7 @@ const root = resolve(here, '..', '..');
 const sourceIndex = resolve(root, 'web/index.html');
 const injector = resolve(root, 'tools/inject-brush-v2-index.mjs');
 const tuningFile = resolve(root, 'web/brush-engine-v2/tuning.js');
+const userPresetsFile = resolve(root, 'web/brush-engine-v2/user-presets.js');
 const batchFile = resolve(root, 'web/brush-engine-v2/batch.js');
 const ghostTrailFile = resolve(root, 'web/brush-engine-v2/ghost-trail.js');
 const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
@@ -52,9 +53,10 @@ try {
     'brush-engine-v2/path.js','brush-engine-v2/arc-sampler.js','brush-engine-v2/radius.js',
     'brush-engine-v2/rasterizer.js','brush-engine-v2/ghost-trail.js','brush-engine-v2/trace.js',
     'brush-engine-v2/runtime.js','brush-engine-v2/native.js','brush-engine-v2/engine.js',
-    'brush-engine-v2/tuning.js','brush-engine-v2/adapter.js','brush-engine-v2/session.js',
-    'brush-engine-v2/ghost-runtime.js','brush-engine-v2/input.js','brush-engine-v2/coverage-ui.js',
-    'brush-engine-v2/stabilizer-ui.js','brush-engine-v2/ghost-ui.js','brush-engine-v2/lab-ui.js',
+    'brush-engine-v2/tuning.js','brush-engine-v2/user-presets.js','brush-engine-v2/adapter.js',
+    'brush-engine-v2/session.js','brush-engine-v2/ghost-runtime.js','brush-engine-v2/input.js',
+    'brush-engine-v2/coverage-ui.js','brush-engine-v2/stabilizer-ui.js','brush-engine-v2/ghost-ui.js',
+    'brush-engine-v2/lab-ui.js','brush-engine-v2/preset-ui.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
@@ -65,6 +67,8 @@ try {
   assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'));
   assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'));
   assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/native.js'));
+  assert.ok(html.indexOf('brush-engine-v2/tuning.js') < html.indexOf('brush-engine-v2/user-presets.js'));
+  assert.ok(html.indexOf('brush-engine-v2/user-presets.js') < html.indexOf('brush-engine-v2/adapter.js'));
   assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'));
   assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'));
   assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/ghost-runtime.js'));
@@ -72,6 +76,7 @@ try {
   assert.ok(html.indexOf('brush-engine-v2/coverage-ui.js') < html.indexOf('brush-engine-v2/stabilizer-ui.js'));
   assert.ok(html.indexOf('brush-engine-v2/stabilizer-ui.js') < html.indexOf('brush-engine-v2/ghost-ui.js'));
   assert.ok(html.indexOf('brush-engine-v2/ghost-ui.js') < html.indexOf('brush-engine-v2/lab-ui.js'));
+  assert.ok(html.indexOf('brush-engine-v2/lab-ui.js') < html.indexOf('brush-engine-v2/preset-ui.js'));
 
   const sandbox = {
     module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, Blob, URL,
@@ -79,6 +84,10 @@ try {
   };
   vm.runInNewContext(readFileSync(tuningFile, 'utf8'), sandbox, { filename: 'tuning.js' });
   const tuning = sandbox.module.exports;
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
+  vm.runInNewContext(readFileSync(userPresetsFile, 'utf8'), sandbox, { filename: 'user-presets.js' });
+  assert.equal(typeof sandbox.InkFrameBrushV2.createUserPresetStore,'function');
+  assert.equal(sandbox.InkFrameBrushV2.MAX_PINNED_PRESETS,4);
   sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(batchFile, 'utf8'), sandbox, { filename: 'batch.js' });
   assert.equal(typeof sandbox.InkFrameBrushV2.createInputBatchNormalizer, 'function');
@@ -157,7 +166,7 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ Brush Engine V2 debug Ghost Trail integration tests passed');
+  console.log('✅ Brush Engine V2 debug custom-preset integration tests passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
