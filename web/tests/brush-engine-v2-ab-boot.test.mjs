@@ -110,8 +110,14 @@ try {
   assert.ok(ghostWidth,'Ghost Trail width did not install');
   assert.ok(labTabs,'Brush Lab tabs did not install');
   assert.equal(labTabs.querySelectorAll('button').length,5);
-  assert.deepEqual(Array.from(labTabs.querySelectorAll('button')).map(button=>button.textContent),['Stabilizer','Ghost Trail','Stroke','Safety','Diagnostics']);
+  assert.deepEqual(
+    Array.from(labTabs.querySelectorAll('button')).map(button=>button.lastElementChild.textContent),
+    ['Stabilizer','Ghost Trail','Stroke','Safety','Diagnostics']
+  );
+  assert.equal(labTabs.querySelectorAll('.inkframe-v2-tab-icon').length,5);
   assert.equal(d.querySelectorAll('.inkframe-v2-lab-section').length,5);
+  assert.equal(d.querySelectorAll('.inkframe-v2-lab-advanced').length,3);
+  assert.equal(d.querySelectorAll('.inkframe-v2-lab-advanced[open]').length,0,'advanced groups must begin collapsed');
   assert.equal(dom.window.InkFrameBuild.variant, 'debug');
   assert.equal(dom.window.InkFrameBuild.diagnostics, true);
   assert.equal(dom.window.InkFrameBuild.defaultBrushEngine, 'v2');
@@ -119,7 +125,8 @@ try {
   const topButtons = panel.querySelectorAll('button');
   assert.equal(topButtons.length, 2,'trace controls should live in the Diagnostics category');
   assert.match(topButtons[0].textContent, /V2/);
-  assert.match(topButtons[1].textContent, /Tune/);
+  assert.equal(topButtons[1].textContent, 'Brush Lab');
+  assert.equal(topButtons[1].getAttribute('aria-label'),'Open Brush Lab');
   const diagButtons=d.querySelectorAll('[data-lab-section="diagnostics"] .inkframe-v2-diag-tools button');
   assert.deepEqual(Array.from(diagButtons).map(button=>button.textContent),['Import trace','Replay','Export trace']);
 
@@ -226,7 +233,7 @@ try {
   assert.equal(converted.x, 512);
   assert.equal(converted.y, 384);
 
-  console.log('✅ generated Brush V2 debug APK index booted with 200% Ghost Trail Brush Lab');
+  console.log('✅ generated Brush V2 debug APK index booted with tablet-first Brush Lab');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
