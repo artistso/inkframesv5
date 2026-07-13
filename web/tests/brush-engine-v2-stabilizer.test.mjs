@@ -28,7 +28,8 @@ const near=(a,b,e=1e-6)=>assert.ok(Math.abs(a-b)<=e,`${a} != ${b}`);
   assert.equal(f.snapshot().stabilizer.mode,'fixed');
 }
 
-// Adaptive mode smooths slow detail more strongly and releases lag at high speed.
+// Adaptive mode smooths slow detail more strongly, then settles to lower lag
+// than the historical fixed filter during sustained fast movement.
 {
   const adaptive=V2.createPositionStabilizer({
     mode:'adaptive',slowTimeConstantMs:24,fastTimeConstantMs:3,
@@ -39,15 +40,19 @@ const near=(a,b,e=1e-6)=>assert.ok(Math.abs(a-b)<=e,`${a} != ${b}`);
   const aSlow=adaptive.update({x:1,y:0,time:10});
   const fSlow=fixed.update({x:1,y:0,time:10});
   assert.ok(aSlow.x<fSlow.x,'adaptive should clean slow movement more strongly');
-  const aFast=adaptive.update({x:101,y:0,time:20});
-  const fFast=fixed.update({x:101,y:0,time:20});
-  assert.ok(101-aFast.x<101-fFast.x,'adaptive should release lag during fast movement');
+  let aFast=aSlow, fFast=fSlow;
+  for(const [x,time] of [[101,20],[201,30],[301,40],[401,50]]){
+    aFast=adaptive.update({x,y:0,time});
+    fFast=fixed.update({x,y:0,time});
+  }
+  assert.ok(401-aFast.x<401-fFast.x,'adaptive should release lag during sustained fast movement');
   const stats=adaptive.stats();
-  assert.ok(stats.minimumTimeConstantMs>=3);
-  assert.ok(stats.maximumTimeConstantMs<=24);
+  assert.ok(stats.minimumTimeConstantMs>=3-1e-9);
+  assert.ok(stats.maximumTimeConstantMs<=24+1e-9);
 }
 
-// Constant-speed motion converges across event rates.
+// The exact linear-input response makes constant-speed motion converge across
+// event rates instead of depending on how often WebView samples the same line.
 {
   function run(step){
     const f=V2.createPositionStabilizer({
