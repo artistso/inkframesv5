@@ -86,11 +86,15 @@ try {
   const coverage = d.getElementById('inkframe-v2-coverage-mode');
   const radius = d.getElementById('inkframe-v2-radius-mode');
   const contact = d.getElementById('inkframe-v2-contact-mode');
+  const stabilizerMode = d.getElementById('inkframe-v2-stabilizer-mode');
+  const stabilizerStrength = d.getElementById('inkframe-v2-stabilizer-strength');
   assert.ok(panel, 'V2 panel did not install');
   assert.ok(tuningPanel, 'V2 tuning panel did not install');
   assert.ok(coverage, 'V2 coverage selector did not install');
   assert.ok(radius, 'V2 radius selector did not install');
   assert.ok(contact, 'V2 contact selector did not install');
+  assert.ok(stabilizerMode, 'V2 stabilizer selector did not install');
+  assert.ok(stabilizerStrength, 'V2 stabilizer strength did not install');
   assert.equal(dom.window.InkFrameBuild.variant, 'debug');
   assert.equal(dom.window.InkFrameBuild.diagnostics, true);
   assert.equal(dom.window.InkFrameBuild.defaultBrushEngine, 'v2');
@@ -103,6 +107,8 @@ try {
   assert.equal(buttons[4].textContent, 'Export trace');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().preset, 'balanced');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'adaptive');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 55);
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().contactMode, 'strict');
@@ -110,12 +116,16 @@ try {
   assert.equal(typeof dom.window.InkFrameBrushV2Adapter.sessionStats, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2Adapter.finishStaleSession, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2.createInputBatchNormalizer, 'function');
+  assert.equal(typeof dom.window.InkFrameBrushV2.createPositionStabilizer, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.begin, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.move, 'function');
   assert.equal(typeof dom.window.InkFrameBrushV2InputBridge.end, 'function');
   assert.equal(coverage.value, 'ribbon');
   assert.equal(radius.value, 'guarded');
   assert.equal(contact.value, 'strict');
+  assert.equal(stabilizerMode.value, 'adaptive');
+  assert.equal(stabilizerStrength.value, '55');
+  assert.equal(stabilizerStrength.disabled, false);
   assert.equal(tuningPanel.hidden, true);
   buttons[0].click();
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'original');
@@ -124,7 +134,17 @@ try {
   assert.equal(dom.window.InkFrameBrushV2Adapter.currentMode(), 'v2');
   buttons[1].click();
   assert.equal(tuningPanel.hidden, false);
-  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 4);
+  assert.equal(tuningPanel.querySelectorAll('input[type="range"]').length, 5);
+  stabilizerMode.value = 'fixed';
+  stabilizerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'fixed');
+  assert.equal(stabilizerStrength.disabled, true);
+  stabilizerMode.value = 'adaptive';
+  stabilizerMode.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
+  stabilizerStrength.value = '72';
+  stabilizerStrength.dispatchEvent(new dom.window.Event('input', { bubbles:true }));
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerMode, 'adaptive');
+  assert.equal(dom.window.InkFrameBrushV2Adapter.currentTuning().stabilizerStrength, 72);
   coverage.value = 'dabs';
   coverage.dispatchEvent(new dom.window.Event('change', { bubbles:true }));
   radius.value = 'raw';
@@ -156,7 +176,7 @@ try {
   assert.equal(converted.x, 512);
   assert.equal(converted.y, 384);
 
-  console.log('✅ generated Brush V2 debug APK index booted with V2 default');
+  console.log('✅ generated Brush V2 debug APK index booted with adaptive stabilizer');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
