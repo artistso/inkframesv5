@@ -15,8 +15,10 @@ Play-ready Android App Bundle from the same release variant.
 
 ## One-time signing setup
 
-Create one long-lived keystore and protect it permanently. Android updates must
-be signed by the same key as the installed release.
+Create one long-lived **upload keystore** and protect it permanently. The upload
+key signs the APK/AAB produced by this repository. For a new Google Play app,
+Play App Signing then manages the separate app-signing key used on APKs delivered
+to users.
 
 ```bash
 keytool -genkeypair -v \
@@ -49,7 +51,7 @@ Add these repository secrets under **Settings → Secrets and variables → Acti
 | `INKFRAME_KEY_PASSWORD` | key-entry password |
 
 Store the original `.jks`, alias, and passwords in at least two secure offline
-locations. Losing them prevents future updates to the same Android application.
+locations. Do not commit the keystore, its base64 form, or passwords.
 
 ## Local signed build
 
@@ -69,7 +71,7 @@ Then build and verify:
 ./gradlew :app:assembleRelease :app:bundleRelease
 $ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose --print-certs \
   app/build/outputs/apk/release/app-release.apk
-jarsigner -verify -strict -certs \
+jarsigner -verify -certs \
   app/build/outputs/bundle/release/app-release.aab
 ```
 
@@ -81,19 +83,20 @@ back to Android's debug certificate.
 
 1. Confirm `CHANGELOG.md` or `release-notes/<version>.md` describes the release.
 2. Align `web/metadata.json` and `web/package.json`.
-3. Regenerate and verify notes:
+3. Regenerate and verify notes and Play listing metadata:
 
 ```bash
 node tools/update-release-notes.mjs
 node tools/update-release-notes.mjs --check
 node web/tests/version-smoke.mjs
+node tools/validate-play-release.mjs
 ```
 
 4. Run the full PR CI and install its debug RC APK on the target Samsung tablet.
 5. Complete `RELEASE_CHECKLIST.md`, including the Brush Engine V2 bridge tests.
 6. Merge the release candidate only after explicit approval.
 
-## Publish a signed release
+## Publish a signed GitHub release
 
 From an approved, green commit on `main`:
 
@@ -106,7 +109,7 @@ The tag must exactly match `web/metadata.json` (`0.2.0` → `v0.2.0`). The
 **Signed Android Release** workflow then:
 
 1. validates the tag and metadata version;
-2. decodes the keystore from Actions secrets;
+2. decodes the upload keystore from Actions secrets;
 3. runs metadata, JVM, and Brush Engine V2 regression tests;
 4. builds the release-specific production web assets;
 5. assembles the signed APK and AAB;
@@ -138,9 +141,55 @@ The two Android variants use separate generated asset directories:
 This separation is enforced by generated-index tests and by the Gradle variant
 asset pipeline.
 
-## Google Play
+## First Google Play release
 
-Upload the generated `.aab` to Play Console, or configure the existing Gradle
-Play Publisher integration with `PLAY_SERVICE_ACCOUNT_JSON_FILE`. Keep Play App
-Signing and upload-key ownership documented before the first production-track
-release.
+The first bundle for `com.inkframe.studio` must be uploaded manually because the
+Google Play Publishing API cannot create a new app/package registration.
+
+1. Create **InkFrame Studio** in Play Console.
+2. Select English (United States) as the default language.
+3. Complete the app-access, ads, content-rating, target-audience, Data safety,
+   privacy-policy, and store-listing forms.
+4. Create an **Internal testing** release.
+5. Enroll the app in **Play App Signing**.
+6. Upload `InkFrame-v0.2.0-signed.aab`, signed with the permanent upload key.
+7. Confirm Play Console shows the expected package, version name, version code,
+   target SDK, and upload certificate.
+8. Resolve all blocking errors before adding testers.
+
+Do not upload an artifact from the CI disposable-key verification job. Those
+artifacts prove the release path but are intentionally not retained for
+production use.
+
+Version-controlled Play listing text is stored under:
+
+```text
+app/src/main/play/
+```
+
+The public privacy statement is currently maintained in `PRIVACY.md`. Publish
+that content at a stable HTTPS URL and enter the URL in Play Console before
+submission.
+
+## Later internal-track automation
+
+After the first manual AAB has registered the package:
+
+1. enable the Google Play Android Developer API in a Google Cloud project;
+2. create a service account and JSON key;
+3. invite the service-account email in Play Console;
+4. grant only the permissions needed for testing tracks and listing management;
+5. store the JSON key outside the repository;
+6. point `PLAY_SERVICE_ACCOUNT_JSON_FILE` to the protected JSON file;
+7. publish subsequent AABs through Gradle Play Publisher.
+
+The existing Gradle configuration defaults to the `internal` track. A typical
+subsequent upload is:
+
+```bash
+PLAY_SERVICE_ACCOUNT_JSON_FILE=/secure/path/play-service-account.json \
+./gradlew :app:publishReleaseBundle --track internal --release-status draft
+```
+
+Promote only after Internal testing passes. Keep production rollout a separate,
+explicit decision.
