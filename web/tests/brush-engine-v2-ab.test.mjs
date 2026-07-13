@@ -49,6 +49,7 @@ try {
     'brush-engine-v2/batch.js',
     'brush-engine-v2/validator.js',
     'brush-engine-v2/contact.js',
+    'brush-engine-v2/stabilizer.js',
     'brush-engine-v2/filters.js',
     'brush-engine-v2/path.js',
     'brush-engine-v2/arc-sampler.js',
@@ -63,47 +64,42 @@ try {
     'brush-engine-v2/session.js',
     'brush-engine-v2/input.js',
     'brush-engine-v2/coverage-ui.js',
+    'brush-engine-v2/stabilizer-ui.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
     assert.ok(existsSync(resolve(root, 'web', src)), `missing runtime file: ${src}`);
   }
+  assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'), 'stabilizer must load before filters');
   assert.ok(html.indexOf('brush-engine-v2/batch.js') < html.indexOf('brush-engine-v2/adapter.js'), 'batch normalizer must load before adapter');
   assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'), 'runtime policy must load after trace.js');
   assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/native.js'), 'debug native diagnostics must wrap after runtime policy');
   assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'), 'native diagnostics must wrap before adapter creates recorders');
   assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'), 'session guard must load after adapter');
   assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/input.js'), 'input bridge must call the session-wrapped adapter');
+  assert.ok(html.indexOf('brush-engine-v2/coverage-ui.js') < html.indexOf('brush-engine-v2/stabilizer-ui.js'), 'stabilizer controls must load after the tuning panel extensions');
 
   const sandbox = {
-    module: { exports: {} },
-    exports: {},
-    console,
-    setTimeout,
-    clearTimeout,
-    Blob,
-    URL,
+    module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, Blob, URL,
     InkFrameBuild:{ variant:'debug', diagnostics:true, traceTools:true, defaultBrushEngine:'v2' },
   };
   vm.runInNewContext(readFileSync(tuningFile, 'utf8'), sandbox, { filename: 'tuning.js' });
   const tuning = sandbox.module.exports;
-  sandbox.module = { exports: {} };
-  sandbox.exports = sandbox.module.exports;
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(batchFile, 'utf8'), sandbox, { filename: 'batch.js' });
   assert.equal(typeof sandbox.InkFrameBrushV2.createInputBatchNormalizer, 'function');
-  sandbox.module = { exports: {} };
-  sandbox.exports = sandbox.module.exports;
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(adapterFile, 'utf8'), sandbox, { filename: 'adapter.js' });
   const adapter = sandbox.module.exports;
-  sandbox.module = { exports: {} };
-  sandbox.exports = sandbox.module.exports;
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(sessionFile, 'utf8'), sandbox, { filename: 'session.js' });
-  sandbox.module = { exports: {} };
-  sandbox.exports = sandbox.module.exports;
+  sandbox.module = { exports: {} }; sandbox.exports = sandbox.module.exports;
   vm.runInNewContext(readFileSync(inputFile, 'utf8'), sandbox, { filename: 'input.js' });
 
   assert.equal(adapter.currentMode(), 'original');
   assert.equal(adapter.currentTuning().preset, 'balanced');
+  assert.equal(adapter.currentTuning().stabilizerMode, 'adaptive');
+  assert.equal(adapter.currentTuning().stabilizerStrength, 55);
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
@@ -114,12 +110,15 @@ try {
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'pen' }), true);
   assert.equal(adapter.shouldHandle('ink', { pointerType: 'touch' }), false);
   assert.equal(adapter.shouldHandle('pencil', { pointerType: 'pen' }), false);
-  assert.equal(adapter.setTuning({ coverageMode:'dabs', radiusMode:'raw', contactMode:'raw' }), true);
+  assert.equal(adapter.setTuning({ stabilizerMode:'fixed', coverageMode:'dabs', radiusMode:'raw', contactMode:'raw' }), true);
+  assert.equal(adapter.currentTuning().stabilizerMode, 'fixed');
   assert.equal(adapter.currentTuning().coverageMode, 'dabs');
   assert.equal(adapter.currentTuning().radiusMode, 'raw');
   assert.equal(adapter.currentTuning().contactMode, 'raw');
   assert.equal(adapter.setTuningPreset('smooth'), true);
   assert.equal(adapter.currentTuning().preset, 'smooth');
+  assert.equal(adapter.currentTuning().stabilizerMode, 'adaptive');
+  assert.equal(adapter.currentTuning().stabilizerStrength, 80);
   assert.equal(adapter.currentTuning().coverageMode, 'ribbon');
   assert.equal(adapter.currentTuning().radiusMode, 'guarded');
   assert.equal(adapter.currentTuning().contactMode, 'strict');
@@ -140,6 +139,7 @@ try {
   assert.equal(profile.composite, 'source-over');
   assert.equal(adapter.makeProfile({ brushId:'eraser', profile:{} }).composite, 'destination-out');
   assert.equal(tuning.presetValue('direct').positionTimeConstantMs, 4);
+  assert.equal(tuning.presetValue('direct').stabilizerMode, 'adaptive');
   assert.equal(tuning.presetValue('direct').coverageMode, 'ribbon');
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
