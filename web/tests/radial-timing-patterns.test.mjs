@@ -44,3 +44,7 @@ assert.deepEqual({...patterns.viewSnapshot(project)},{open:false,preview:false,p
 assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);
 assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);
 console.log('✅ radial timing built-ins, custom definitions, scopes, deterministic assignments, inversion, and isolation passed');
+
+await import('./radial-rhythm-composer.test.mjs');
+await import('./radial-rhythm-composer-policy.test.mjs');
+await import('./radial-rhythm-composer-boot.test.mjs');
