@@ -62,7 +62,7 @@ val generatedBrandingResDir = layout.buildDirectory.dir("generated/brandingRes")
 val brandingAssets = listOf(
     listOf(
         "glass_horizon_icon.webp.b64",
-        "mipmap-xxxhdpi/ic_launcher.webp",
+        "mipmap-xxxhdpi/ic_launcher_glass_horizon.webp",
         "265ec40a596d912a4372c75690e1d2911fa5513c916022119569f4986c789ad4",
     ),
     listOf(
