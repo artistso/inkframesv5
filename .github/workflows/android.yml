@@ -1,7 +1,7 @@
 name: Android CI
 
-# Builds the debug APK and runs the JVM/unit/web brush suites on every PR.
-# Signed release artifacts are produced only by release.yml with repository secrets.
+# Builds the tablet debug APK, runs all brush/JVM suites, and verifies the
+# production APK/AAB path with a disposable CI-only signing key.
 
 on:
   push:
@@ -142,3 +142,75 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+  verify-release:
+    name: Verify signed production APK and AAB
+    runs-on: ubuntu-latest
+    needs: [web-smoke, test]
+    env:
+      INKFRAME_KEYSTORE_PASSWORD: inkframe-ci-verification-only
+      INKFRAME_KEY_ALIAS: inkframe-ci
+      INKFRAME_KEY_PASSWORD: inkframe-ci-verification-only
+      INKFRAME_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Create disposable verification keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/inkframe-ci-verification.jks"
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$INKFRAME_KEYSTORE_PASSWORD" \
+            -alias "$INKFRAME_KEY_ALIAS" \
+            -keypass "$INKFRAME_KEY_PASSWORD" \
+            -dname "CN=InkFrame CI Verification, OU=CI, O=InkFrame, L=Aberdeen, ST=Washington, C=US" \
+            -keyalg RSA -keysize 2048 -validity 2
+          chmod 600 "$KEYSTORE_PATH"
+          echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+      - name: Assemble production APK and AAB
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
+      - name: Verify signatures and production assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          jarsigner -verify -strict -certs "$AAB"
+          unzip -p "$APK" assets/index.html > "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
+            echo "Production index unexpectedly loads native diagnostics" >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -F 'assets/brush-engine-v2/native.js'; then
+            echo "Production APK unexpectedly packages native diagnostics" >&2
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
+      - name: Explain verification key scope
+        run: |
+          echo "The APK/AAB produced in this job use a disposable CI key and are intentionally not uploaded."
+          echo "Distribution artifacts are produced only by Signed Android Release with the protected long-lived key."
