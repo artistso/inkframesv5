@@ -1,0 +1,49 @@
+name: Android Branding Diagnostic
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-branding-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gradle-diagnostic:
+    name: Capture Gradle failure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Capture test output
+        id: gradle
+        shell: bash
+        run: |
+          set +e
+          chmod +x ./gradlew
+          mkdir -p diagnostics
+          ./gradlew test --stacktrace --console=plain > diagnostics/gradle-test.log 2>&1
+          STATUS=$?
+          tail -n 240 diagnostics/gradle-test.log
+          exit "$STATUS"
+      - name: Upload Gradle diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-branding-gradle-diagnostic
+          path: diagnostics/gradle-test.log
+          if-no-files-found: error
+          retention-days: 2
