@@ -27,16 +27,21 @@ try {
   assert.ok(html.includes('"diagnostics":false'));
   assert.ok(html.includes('"traceTools":false'));
   assert.ok(html.includes('"defaultBrushEngine":"v2"'));
-  assert.ok(html.includes('<script src="brush-engine-v2/stabilizer.js"></script>'));
-  assert.ok(html.includes('<script src="brush-engine-v2/stabilizer-ui.js"></script>'));
-  assert.ok(html.includes('<script src="brush-engine-v2/runtime.js"></script>'));
+  for(const script of [
+    'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
+    'stabilizer-ui.js','ghost-ui.js','lab-ui.js',
+  ]){
+    assert.ok(html.includes(`<script src="brush-engine-v2/${script}"></script>`),`missing release script ${script}`);
+    assert.ok(existsSync(resolve(root,`web/brush-engine-v2/${script}`)),`missing runtime file ${script}`);
+  }
   assert.equal(html.includes('<script src="brush-engine-v2/native.js"></script>'), false);
-  assert.ok(existsSync(resolve(root, 'web/brush-engine-v2/stabilizer.js')));
-  assert.ok(existsSync(resolve(root, 'web/brush-engine-v2/stabilizer-ui.js')));
-  assert.ok(existsSync(resolve(root, 'web/brush-engine-v2/runtime.js')));
   assert.ok(html.indexOf('brush-engine-v2/stabilizer.js') < html.indexOf('brush-engine-v2/filters.js'));
+  assert.ok(html.indexOf('brush-engine-v2/rasterizer.js') < html.indexOf('brush-engine-v2/ghost-trail.js'));
   assert.ok(html.indexOf('brush-engine-v2/trace.js') < html.indexOf('brush-engine-v2/runtime.js'));
   assert.ok(html.indexOf('brush-engine-v2/runtime.js') < html.indexOf('brush-engine-v2/adapter.js'));
+  assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/ghost-runtime.js'));
+  assert.ok(html.indexOf('brush-engine-v2/ghost-runtime.js') < html.indexOf('brush-engine-v2/input.js'));
+  assert.ok(html.indexOf('brush-engine-v2/ghost-ui.js') < html.indexOf('brush-engine-v2/lab-ui.js'));
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
