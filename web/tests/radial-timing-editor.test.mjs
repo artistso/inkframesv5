@@ -45,7 +45,9 @@ assert.deepEqual({...timing.clampLoopRange(8,2,12)},{loopIn:2,loopOut:8});
 assert.deepEqual({...timing.clampLoopRange(-5,99,12)},{loopIn:0,loopOut:11});
 assert.deepEqual({...timing.clampLoopRange(2,4,0)},{loopIn:0,loopOut:0});
 assert.equal(timing.nearestFilledIndex(circle,circle.slots[6].x,circle.slots[6].y,12),6);
-assert.equal(timing.nearestFilledIndex(circle,circle.slots[11].x,circle.slots[11].y,5),4,'nearest search must stay inside filled frame count');
+const boundedNearest=timing.nearestFilledIndex(circle,circle.slots[11].x,circle.slots[11].y,5);
+assert.ok(boundedNearest>=0&&boundedNearest<5,'nearest search must stay inside filled frame count');
+assert.equal(boundedNearest,0,'closed-orbit adjacency should choose frame 1 near the final empty slot');
 
 const projectA={},projectB={};
 assert.deepEqual({...timing.viewSnapshot(projectA)},{timingMode:false});
