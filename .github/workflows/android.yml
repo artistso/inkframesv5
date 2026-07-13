@@ -1,16 +1,14 @@
 name: Android CI
 
-# Builds the debug APK and runs the JVM unit tests on every push / PR.
-# The APK is uploaded as a downloadable artifact, so you can install InkFrame
-# without a local Android SDK — grab it from the run's "Artifacts" section.
+# Builds the debug APK and runs the JVM/unit/web brush suites on every PR.
+# Signed release artifacts are produced only by release.yml with repository secrets.
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
-  workflow_dispatch:   # lets you trigger a build manually from the Actions tab
+  workflow_dispatch:
 
-# Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -20,9 +18,7 @@ permissions:
 
 jobs:
   web-smoke:
-    # Boots both the checked-in fallback and generated Android A/B index in jsdom.
-    # Each brush suite is a separate step so failures identify the exact layer.
-    name: Web boot smoke (jsdom)
+    name: Web and Brush Engine V2
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +26,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install jsdom (transient)
+      - name: Install jsdom
         run: npm install --no-save --prefix /tmp/jsdom jsdom
       - name: Syntax and release metadata
         run: |
@@ -47,6 +43,7 @@ jobs:
           node --check web/brush-engine-v2/adapter.js
           node --check web/brush-engine-v2/session.js
           node --check web/brush-engine-v2/input.js
+          node --check web/brush-engine-v2/runtime.js
           node --check web/brush-engine-v2/native.js
           node --check web/brush-engine-v2/coverage-ui.js
           node tools/update-release-notes.mjs --check
@@ -67,15 +64,19 @@ jobs:
         run: node web/tests/brush-engine-v2-batch.test.mjs
       - name: Brush V2 native input diagnostics
         run: node web/tests/brush-engine-v2-native.test.mjs
-      - name: Brush V2 generated-index structure
+      - name: Brush V2 runtime policy
+        run: node web/tests/brush-engine-v2-runtime.test.mjs
+      - name: Brush V2 debug asset structure
         run: node web/tests/brush-engine-v2-ab.test.mjs
+      - name: Brush V2 release asset structure
+        run: node web/tests/brush-engine-v2-release.test.mjs
       - name: Brush V2 tuning and replay
         run: node web/tests/brush-engine-v2-tuning.test.mjs
       - name: Original engine browser boot
         env:
           NODE_PATH: /tmp/jsdom/node_modules
         run: node web/tests/boot-smoke.mjs
-      - name: Generated Android V2 boot
+      - name: Generated Android debug boot
         env:
           NODE_PATH: /tmp/jsdom/node_modules
         run: node web/tests/brush-engine-v2-ab-boot.test.mjs
@@ -85,28 +86,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-
       - name: Install Android platform 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Set up Gradle (with cache)
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
-
       - name: Run unit tests
         run: ./gradlew test --stacktrace
-
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -122,33 +116,25 @@ jobs:
     needs: [web-smoke, test]
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-
       - name: Install Android platform 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Set up Gradle (with cache)
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
       - name: Make gradlew executable
         run: chmod +x ./gradlew
-
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
-
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
