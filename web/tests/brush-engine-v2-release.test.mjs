@@ -24,6 +24,7 @@ try {
   const html = readFileSync(generated, 'utf8');
   const compareSource=readFileSync(resolve(root,'web/brush-engine-v2/preview-compare.js'),'utf8');
   const radialSource=readFileSync(resolve(root,'web/radial-timeline.js'),'utf8');
+  const timingSource=readFileSync(resolve(root,'web/radial-timing-editor.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -38,6 +39,9 @@ try {
   assert.ok(html.includes("canvasShape:P.canvasShape==='circle'?'circle':'square'"),'release archives must preserve canvas shape');
   assert.ok(html.includes('<script src="radial-timeline.js"></script>'),'release index must load Radial Timeline');
   assert.ok(existsSync(resolve(root,'web/radial-timeline.js')),'missing Radial Timeline runtime');
+  assert.ok(html.includes('<script src="radial-timing-editor.js"></script>'),'release index must load Radial Timing Editor');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-editor.js')),'missing Radial Timing Editor runtime');
+  assert.ok(html.indexOf('radial-timeline.js')<html.indexOf('radial-timing-editor.js'),'Radial Timing Editor must load after Radial Timeline');
   assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
@@ -46,9 +50,14 @@ try {
   assert.ok(html.includes('playing,fps,loopOn,loopIn,loopOut'),'release bridge must expose established playback state');
   assert.ok(html.includes('playbackFraction:frameCenterFrac(cur)'),'release bridge must seed hold-aware orbital playback position');
   assert.ok(html.includes('canNavigate:()=>'),'release bridge must block navigation during active strokes');
+  assert.ok(html.includes('canEditTiming:()=>'),'release bridge must block timing edits during active strokes');
   assert.ok(html.includes('seek:i=>'),'release bridge must expose bounded frame seeking');
   assert.ok(html.includes('seekFraction:f=>'),'release bridge must delegate orbital scrubbing to hold-weighted rail seeking');
   assert.ok(html.includes('togglePlayback:()=>'),'release bridge must delegate play/pause to the established animation engine');
+  assert.ok(html.includes('setHold:(i,v)=>'),'release bridge must delegate radial hold edits to the established hold array');
+  assert.ok(html.includes('setLoopRange:(a,b)=>'),'release bridge must delegate loop handles to established loop bounds');
+  assert.ok(html.includes('toggleLoop:()=>'),'release bridge must delegate loop enablement to the existing loop control');
+  assert.ok(html.includes("AUTOSAVE.schedule)AUTOSAVE.schedule()"),'timing mutations must schedule existing project recovery');
   assert.ok(html.includes('fraction:activeFraction,current:cur,playing,loopOn,loopIn,loopOut,fps'),'release rail must publish continuous playback progress');
   assert.ok(radialSource.includes('inkframe-radial-hit'),'Radial Timeline must expose orbit-only drag targets');
   assert.ok(radialSource.includes('inkframe-radial-playhead'),'Radial Timeline must expose the continuous orbital playhead');
@@ -67,6 +76,17 @@ try {
   assert.ok(radialSource.includes('const projectViews=new WeakMap()'),'Radial Timeline view state must remain non-persistent and per-project');
   assert.ok(radialSource.includes('projectCanvasWrites:0'),'Radial Timeline must declare project-canvas isolation');
   assert.ok(radialSource.includes('undoWrites:0'),'Radial Timeline must declare artwork-undo isolation');
+  assert.ok(timingSource.includes('inkframe-hold-arc'),'Radial Timing Editor must visualize every established frame hold');
+  assert.ok(timingSource.includes('inkframe-radial-timing-toggle'),'Radial Timing Editor must expose explicit timing mode');
+  assert.ok(timingSource.includes('inkframe-timing-loop-handle'),'Radial Timing Editor must expose direct loop in/out handles');
+  assert.ok(timingSource.includes('function holdFromRadialDrag'),'Radial Timing Editor must quantize outward/inward hold gestures');
+  assert.ok(timingSource.includes('function holdArcGeometry'),'Radial Timing Editor must derive deterministic hold arcs');
+  assert.ok(timingSource.includes('function clampLoopRange'),'Radial Timing Editor must keep loop bounds ordered and bounded');
+  assert.ok(timingSource.includes('const projectViews=new WeakMap()'),'Radial timing mode must remain memory-only and isolated by project');
+  assert.ok(timingSource.includes('canEditTiming'),'Radial Timing Editor must honor active-stroke guards');
+  assert.ok(timingSource.includes('projectCanvasWrites:0'),'Radial Timing Editor must declare project-canvas isolation');
+  assert.ok(timingSource.includes('artworkUndoWrites:0'),'Radial Timing Editor must declare artwork-undo isolation');
+  assert.ok(timingSource.includes('timelineTimingWrites:true'),'Radial Timing Editor must explicitly declare its bounded timeline mutation scope');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -120,7 +140,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, signature, Circular Canvas, radial navigation, and hold-aware playback policy passed');
+  console.log('✅ generated Brush V2 production recovery, signature, Circular Canvas, radial playback, and direct timing-edit policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
@@ -130,4 +150,6 @@ await import('./canvas-shape-autosave.test.mjs');
 await import('./canvas-shape-boot.test.mjs');
 await import('./radial-timeline.test.mjs');
 await import('./radial-timeline-boot.test.mjs');
+await import('./radial-timing-editor.test.mjs');
+await import('./radial-timing-editor-boot.test.mjs');
 await import('./android-branding.test.mjs');
