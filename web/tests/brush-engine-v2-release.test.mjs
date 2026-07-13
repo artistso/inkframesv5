@@ -99,7 +99,7 @@ try {
   assert.ok(patternsSource.includes('inkframe-rhythm-preview-svg'),'Radial Timing Patterns must expose non-destructive preview arcs');
   assert.ok(patternsSource.includes('inkframe-rhythm-undo'),'Radial Timing Patterns must expose timing-only undo');
   assert.ok(patternsSource.includes('inkframe-rhythm-redo'),'Radial Timing Patterns must expose timing-only redo');
-  assert.ok(patternsSource.includes("typeof lastEnvironment.setHolds==='function'"),'Radial Timing Patterns must use the batched hold bridge');
+  assert.ok(patternsSource.includes('lastEnvironment.setHolds(entries)'),'Radial Timing Patterns must use the batched hold bridge');
   assert.ok(patternsSource.includes('const projectViews=new WeakMap(),projectHistories=new WeakMap()'),'rhythm view and history must remain memory-only per project');
   assert.ok(patternsSource.includes('canEditTiming'),'Radial Timing Patterns must honor active-stroke guards');
   assert.ok(patternsSource.includes('projectCanvasWrites:0'),'Radial Timing Patterns must declare project-canvas isolation');
