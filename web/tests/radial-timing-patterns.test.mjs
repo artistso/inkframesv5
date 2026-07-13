@@ -16,6 +16,9 @@ assert.equal(radial.__radialTimingPatched,true);assert.equal(radial.__radialPatt
 assert.deepEqual(Array.from(patterns.patterns,pattern=>pattern.id),['ones','twos','threes','snap','ease-in','ease-out']);
 assert.deepEqual(Array.from(patterns.patternById('snap').values),[1,1,2,1]);
 assert.equal(patterns.patternById('missing'),null);
+const custom=patterns.normalizeDefinition({id:' custom rhythm ','label':'  My   Rhythm  ',values:[0,9,2.4,3,4,5,6,7,8,1,2,3,4]});
+assert.equal(custom.id,'custom-rhythm');assert.equal(custom.label,'My Rhythm');assert.deepEqual(Array.from(custom.values),[1,8,2,3,4,5,6,7,8,1,2,3]);
+assert.equal(patterns.normalizeDefinition({values:[]}),null);
 
 let scope=patterns.resolveTargetIndices({framesLength:6,selectedFrames:new Set([4,2,99]),loopOn:true,loopIn:1,loopOut:5});
 assert.equal(scope.kind,'selection');assert.deepEqual(Array.from(scope.indices),[2,4]);
@@ -29,6 +32,8 @@ const assignments=patterns.assignmentsForPattern(patterns.patternById('snap'),[2
 assert.deepEqual(Array.from(assignments,entry=>[entry.index,entry.before,entry.after]),[[2,8,1],[4,8,1],[7,8,2],[9,8,1],[10,8,1]]);
 const phased=patterns.assignmentsForPattern(patterns.patternById('snap'),[0,1,2,3],()=>1,2);
 assert.deepEqual(Array.from(phased,entry=>entry.after),[2,1,1,1]);
+const customAssignments=patterns.assignmentsForPattern(custom,[0,1,2,3],()=>4);
+assert.deepEqual(Array.from(customAssignments,entry=>entry.after),[1,8,2,3]);
 const changed=patterns.changedAssignments([{index:0,before:1,after:1},{index:1,before:1,after:2}]);
 assert.deepEqual(Array.from(changed,entry=>entry.index),[1]);
 const inverted=patterns.invertAssignments(assignments.slice(0,2));
@@ -38,4 +43,4 @@ const project={};
 assert.deepEqual({...patterns.viewSnapshot(project)},{open:false,preview:false,previewPatternId:null,undoDepth:0,redoDepth:0});
 assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);
 assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);
-console.log('✅ radial timing patterns, automatic scopes, deterministic assignments, inversion, and isolation policy passed');
+console.log('✅ radial timing built-ins, custom definitions, scopes, deterministic assignments, inversion, and isolation passed');
