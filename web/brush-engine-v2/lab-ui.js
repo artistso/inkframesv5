@@ -19,6 +19,7 @@
   const adapter=()=>root.InkFrameBrushV2Adapter||null;
   const traceToolsEnabled=()=>!(root.InkFrameBuild&&root.InkFrameBuild.traceTools===false);
   const visibleGroups=()=>GROUPS.filter(group=>group[0]!=='diagnostics'||traceToolsEnabled());
+  const capitalize=value=>String(value||'').replace(/^./,letter=>letter.toUpperCase());
 
   function storedTab(groups){
     try{
@@ -27,6 +28,28 @@
     }catch(_){return 'stabilizer';}
   }
   function rememberTab(value){try{if(root.localStorage)root.localStorage.setItem(TAB_KEY,value);}catch(_){} }
+
+  function groupSummary(key,tuning){
+    const value=tuning||{};
+    if(key==='stabilizer'){
+      const mode=value.stabilizerMode==='fixed'?'Fixed':'Adaptive';
+      const strength=Math.round(Number(value.stabilizerStrength)||0);
+      return `${mode} · ${strength}%`;
+    }
+    if(key==='trail'){
+      const mode=value.ghostMode==='comet'||value.ghostMode==='echo'?capitalize(value.ghostMode):'Off';
+      return mode==='Off'?mode:`${mode} · ${Math.round(Number(value.ghostIntensity)||0)}%`;
+    }
+    if(key==='stroke'){
+      const coverage=value.coverageMode==='dabs'?'Dabs':'Ribbon';
+      const width=value.radiusMode==='raw'?'Raw width':'Guarded width';
+      return `${coverage} · ${width}`;
+    }
+    if(key==='safety'){
+      return value.contactMode==='raw'?'Raw contact':'Strict contact · Protected';
+    }
+    return traceToolsEnabled()?'Debug trace tools':'Unavailable';
+  }
 
   function install(){
     if(!root.document)return false;
@@ -44,23 +67,35 @@
       #inkframe-v2-ab>button{min-height:42px!important;padding:9px 15px!important;border-radius:13px!important;font-size:12px!important;letter-spacing:.025em!important}
       #inkframe-v2-ab>button:nth-of-type(2){background:linear-gradient(145deg,rgba(187,0,55,.78),rgba(86,0,78,.88))!important;border-color:rgba(255,208,220,.68)!important;min-width:112px}
       #inkframe-v2-status{display:none!important}
-      #inkframe-v2-tuning{top:68px!important;width:min(94vw,820px)!important;max-height:calc(100vh - 88px)!important;overflow:auto;padding:18px!important;border-radius:24px!important;background:rgba(20,7,18,.965)!important;box-shadow:0 22px 70px rgba(0,0,0,.48)!important}
+      #inkframe-v2-tuning{top:68px!important;width:min(94vw,940px)!important;max-height:calc(100vh - 88px)!important;overflow:auto;padding:18px!important;border-radius:24px!important;background:rgba(20,7,18,.965)!important;box-shadow:0 22px 70px rgba(0,0,0,.48)!important}
       #inkframe-v2-tuning .inkframe-v2-tune-head{position:sticky;top:-18px;z-index:5;margin:-18px -18px 16px!important;padding:14px 16px!important;background:rgba(20,7,18,.985);border-bottom:1px solid rgba(255,255,255,.13)}
       #inkframe-v2-tuning .inkframe-v2-tune-head strong{font-size:17px;letter-spacing:.04em}
       #inkframe-v2-tuning .inkframe-v2-tune-head select,#inkframe-v2-tuning .inkframe-v2-tune-head button:not(#inkframe-v2-lab-close){display:none!important}
-      #inkframe-v2-lab-tabs{display:grid;grid-template-columns:repeat(var(--inkframe-lab-columns,5),minmax(0,1fr));gap:10px;margin:0 0 18px}
-      #inkframe-v2-lab-tabs button{min-height:72px;border:1px solid rgba(255,255,255,.16);border-radius:17px;background:rgba(255,255,255,.055);color:#fff;font:760 12px/1.15 system-ui,sans-serif;padding:10px 7px;letter-spacing:.015em;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px}
-      #inkframe-v2-lab-tabs button .inkframe-v2-tab-icon{font-size:21px;line-height:1;opacity:.88}
+      #inkframe-v2-lab-shell{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;align-items:start}
+      #inkframe-v2-lab-tabs{display:flex;flex-direction:column;gap:9px;position:sticky;top:58px;align-self:start}
+      #inkframe-v2-lab-tabs button{min-height:68px;border:1px solid rgba(255,255,255,.14);border-radius:16px;background:rgba(255,255,255,.045);color:#fff;padding:10px 11px;display:grid;grid-template-columns:34px minmax(0,1fr);grid-template-rows:auto auto;column-gap:9px;text-align:left;align-items:center}
+      #inkframe-v2-lab-tabs button .inkframe-v2-tab-icon{grid-row:1/3;font-size:21px;line-height:1;opacity:.82;text-align:center}
+      #inkframe-v2-lab-tabs button .inkframe-v2-tab-label{font:770 12px/1.15 system-ui,sans-serif;letter-spacing:.015em}
+      #inkframe-v2-lab-tabs button .inkframe-v2-tab-summary{font:580 10px/1.2 system-ui,sans-serif;opacity:.56;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       #inkframe-v2-lab-tabs button.on{background:linear-gradient(145deg,#bb0037,#69004e);border-color:#ffd0dc;box-shadow:0 0 0 1px rgba(255,255,255,.12) inset,0 8px 24px rgba(187,0,55,.28)}
+      #inkframe-v2-lab-tabs button.on .inkframe-v2-tab-summary{opacity:.82}
+      #inkframe-v2-lab-workspace{min-width:0}
       .inkframe-v2-lab-section[hidden]{display:none}
       .inkframe-v2-lab-section{padding:0 2px 8px}
       .inkframe-v2-lab-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 0 14px;padding:13px 15px;border-radius:15px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10)}
       .inkframe-v2-lab-section-head strong{font-size:17px;letter-spacing:.025em}
       .inkframe-v2-lab-section-head small{display:block;margin-top:5px;opacity:.67;font-weight:500;font-size:12px}
       .inkframe-v2-lab-primary{display:grid;gap:7px}
-      .inkframe-v2-lab-presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 16px}
+      .inkframe-v2-lab-presets{margin:0 0 16px}
+      .inkframe-v2-lab-preset-primary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
       .inkframe-v2-lab-presets button,.inkframe-v2-diag-tools button{min-height:46px;border:1px solid rgba(255,255,255,.17);border-radius:13px;background:rgba(255,255,255,.075);color:#fff;padding:9px 10px;font:720 11px/1.15 system-ui,sans-serif}
-      .inkframe-v2-lab-presets button.studio{background:linear-gradient(145deg,rgba(187,0,55,.72),rgba(87,0,92,.78));border-color:rgba(255,208,220,.45)}
+      .inkframe-v2-studio-presets{margin-top:9px;border:1px solid rgba(255,208,220,.14);border-radius:13px;background:rgba(187,0,55,.055);overflow:hidden}
+      .inkframe-v2-studio-presets summary{list-style:none;cursor:pointer;min-height:44px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;font:730 11px/1 system-ui,sans-serif;color:#ffd0dc}
+      .inkframe-v2-studio-presets summary::-webkit-details-marker{display:none}
+      .inkframe-v2-studio-presets summary::after{content:'+';font-size:18px;opacity:.7}
+      .inkframe-v2-studio-presets[open] summary::after{content:'−'}
+      .inkframe-v2-studio-preset-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 8px 8px}
+      .inkframe-v2-studio-preset-body button{background:linear-gradient(145deg,rgba(187,0,55,.72),rgba(87,0,92,.78));border-color:rgba(255,208,220,.45)}
       .inkframe-v2-tune-row{grid-template-columns:150px minmax(180px,1fr) 70px!important;min-height:48px;padding:8px 10px!important;margin:0!important;border-radius:12px;background:rgba(255,255,255,.032)}
       .inkframe-v2-tune-row+ .inkframe-v2-tune-row{margin-top:7px!important}
       .inkframe-v2-tune-row select{width:100%;min-height:38px;border:1px solid rgba(255,255,255,.18);border-radius:11px;background:#2b1325;color:#fff;padding:6px 9px}
@@ -75,9 +110,11 @@
       .inkframe-v2-diag-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 12px}
       .inkframe-v2-diag-card{padding:13px;border-radius:13px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);font:600 11px/1.5 system-ui,sans-serif;opacity:.86}
       #inkframe-v2-lab-close{display:flex!important;align-items:center;justify-content:center;flex:0 0 auto!important;width:42px!important;height:42px!important;margin-left:auto!important;border-radius:12px!important;font-size:22px!important}
-      @media(max-width:720px){
-        #inkframe-v2-lab-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
-        .inkframe-v2-lab-presets{grid-template-columns:repeat(2,minmax(0,1fr))}
+      @media(max-width:760px){
+        #inkframe-v2-lab-shell{display:block}
+        #inkframe-v2-lab-tabs{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0 0 16px}
+        #inkframe-v2-lab-tabs button{min-height:58px;grid-template-columns:28px minmax(0,1fr);padding:8px 9px}
+        .inkframe-v2-lab-preset-primary{grid-template-columns:repeat(2,minmax(0,1fr))}
         .inkframe-v2-tune-row{grid-template-columns:108px minmax(105px,1fr) 58px!important}
       }
     `;
@@ -104,37 +141,47 @@
     close.addEventListener('click',()=>{lab.hidden=true;});
     if(head)head.appendChild(close);
 
-    const tabs=root.document.createElement('div');
-    tabs.id='inkframe-v2-lab-tabs';tabs.setAttribute('role','tablist');
-    tabs.style.setProperty('--inkframe-lab-columns',String(groups.length));
+    const shell=root.document.createElement('div');shell.id='inkframe-v2-lab-shell';shell.dataset.layout='split';
+    const tabs=root.document.createElement('div');tabs.id='inkframe-v2-lab-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-orientation','vertical');
+    const workspace=root.document.createElement('div');workspace.id='inkframe-v2-lab-workspace';
+    shell.append(tabs,workspace);
+    if(head)head.insertAdjacentElement('afterend',shell);else lab.prepend(shell);
+
     const sections=new Map();
     const buttons=new Map();
+    const summaries=new Map();
     const primaryBodies=new Map();
     const advancedBodies=new Map();
     for(const [key,label,description,icon] of groups){
-      const button=root.document.createElement('button');button.type='button';button.dataset.labTab=key;button.setAttribute('role','tab');
+      const sectionId=`inkframe-v2-lab-section-${key}`;
+      const button=root.document.createElement('button');button.type='button';button.dataset.labTab=key;button.setAttribute('role','tab');button.setAttribute('aria-controls',sectionId);
       const iconNode=root.document.createElement('span');iconNode.className='inkframe-v2-tab-icon';iconNode.textContent=icon;
-      const labelNode=root.document.createElement('span');labelNode.textContent=label;button.append(iconNode,labelNode);
-      tabs.appendChild(button);buttons.set(key,button);
-      const section=root.document.createElement('section');section.className='inkframe-v2-lab-section';section.dataset.labSection=key;section.setAttribute('role','tabpanel');
+      const labelNode=root.document.createElement('span');labelNode.className='inkframe-v2-tab-label';labelNode.textContent=label;
+      const summaryNode=root.document.createElement('span');summaryNode.className='inkframe-v2-tab-summary';summaryNode.textContent='—';
+      button.append(iconNode,labelNode,summaryNode);tabs.appendChild(button);buttons.set(key,button);summaries.set(key,summaryNode);
+
+      const section=root.document.createElement('section');section.id=sectionId;section.className='inkframe-v2-lab-section';section.dataset.labSection=key;section.setAttribute('role','tabpanel');
       const sectionHead=root.document.createElement('div');sectionHead.className='inkframe-v2-lab-section-head';
       const copy=root.document.createElement('div');const sectionTitle=root.document.createElement('strong');sectionTitle.textContent=label;const note=root.document.createElement('small');note.textContent=description;copy.append(sectionTitle,note);sectionHead.appendChild(copy);section.appendChild(sectionHead);
       const primary=root.document.createElement('div');primary.className='inkframe-v2-lab-primary';section.appendChild(primary);primaryBodies.set(key,primary);
       const details=root.document.createElement('details');details.className='inkframe-v2-lab-advanced';
       const summary=root.document.createElement('summary');summary.textContent='Advanced controls';
       const advanced=root.document.createElement('div');advanced.className='inkframe-v2-lab-advanced-body';details.append(summary,advanced);section.appendChild(details);advancedBodies.set(key,{details,body:advanced});
-      sections.set(key,section);
+      workspace.appendChild(section);sections.set(key,section);
     }
-    if(head)head.insertAdjacentElement('afterend',tabs);else lab.prepend(tabs);
-    for(const section of sections.values())lab.appendChild(section);
 
     const presets=root.document.createElement('div');presets.className='inkframe-v2-lab-presets';
-    const presetButton=(label,handler,studio)=>{const button=root.document.createElement('button');button.type='button';button.textContent=label;if(studio)button.className='studio';button.addEventListener('click',handler);presets.appendChild(button);};
-    presetButton('Direct',()=>api.setTuningPreset('direct'));
-    presetButton('Balanced',()=>api.setTuningPreset('balanced'));
-    presetButton('Smooth',()=>api.setTuningPreset('smooth'));
-    presetButton('Studio 150%',()=>api.setTuning({stabilizerMode:'adaptive',stabilizerStrength:150,cornerMode:'preserve',cornerStrength:70,ghostMode:'echo',ghostIntensity:82,ghostDurationMs:720,ghostWidthPercent:165}),true);
-    presetButton('Maximum 200%',()=>api.setTuning({stabilizerMode:'adaptive',stabilizerStrength:200,cornerMode:'preserve',cornerStrength:78,ghostMode:'echo',ghostIntensity:90,ghostDurationMs:900,ghostWidthPercent:185}),true);
+    const primaryPresets=root.document.createElement('div');primaryPresets.className='inkframe-v2-lab-preset-primary';presets.appendChild(primaryPresets);
+    const studioDetails=root.document.createElement('details');studioDetails.className='inkframe-v2-studio-presets';
+    const studioSummary=root.document.createElement('summary');studioSummary.textContent='Studio presets';
+    const studioBody=root.document.createElement('div');studioBody.className='inkframe-v2-studio-preset-body';studioDetails.append(studioSummary,studioBody);presets.appendChild(studioDetails);
+    const scheduleSummaryUpdate=()=>root.setTimeout(updateSummaries,0);
+    const presetButton=(target,label,handler)=>{const button=root.document.createElement('button');button.type='button';button.textContent=label;button.addEventListener('click',()=>{handler();scheduleSummaryUpdate();});target.appendChild(button);};
+    presetButton(primaryPresets,'Direct',()=>api.setTuningPreset('direct'));
+    presetButton(primaryPresets,'Balanced',()=>api.setTuningPreset('balanced'));
+    presetButton(primaryPresets,'Smooth',()=>api.setTuningPreset('smooth'));
+    presetButton(studioBody,'Studio 150%',()=>api.setTuning({stabilizerMode:'adaptive',stabilizerStrength:150,cornerMode:'preserve',cornerStrength:70,ghostMode:'echo',ghostIntensity:82,ghostDurationMs:720,ghostWidthPercent:165}));
+    presetButton(studioBody,'Maximum 200%',()=>api.setTuning({stabilizerMode:'adaptive',stabilizerStrength:200,cornerMode:'preserve',cornerStrength:78,ghostMode:'echo',ghostIntensity:90,ghostDurationMs:900,ghostWidthPercent:185}));
     primaryBodies.get('stabilizer').prepend(presets);
 
     for(const row of Array.from(lab.querySelectorAll(':scope > .inkframe-v2-tune-row'))){
@@ -158,19 +205,32 @@
       primaryBodies.get('diagnostics').appendChild(diagCard);
     }
 
+    function updateSummaries(){
+      const tuning=api.currentTuning?api.currentTuning():{};
+      for(const [key,node] of summaries)node.textContent=groupSummary(key,tuning);
+    }
     function openTab(key){
       const resolved=sections.has(key)?key:'stabilizer';
-      for(const [name,section] of sections){const active=name===resolved;section.hidden=!active;buttons.get(name).classList.toggle('on',active);buttons.get(name).setAttribute('aria-selected',String(active));}
-      rememberTab(resolved);return resolved;
+      for(const [name,section] of sections){
+        const active=name===resolved;
+        section.hidden=!active;
+        const button=buttons.get(name);
+        button.classList.toggle('on',active);
+        button.setAttribute('aria-selected',String(active));
+        button.tabIndex=active?0:-1;
+      }
+      rememberTab(resolved);updateSummaries();return resolved;
     }
     for(const [key,button] of buttons)button.addEventListener('click',()=>openTab(key));
+    lab.addEventListener('input',scheduleSummaryUpdate,true);
+    lab.addEventListener('change',scheduleSummaryUpdate,true);
     openTab(storedTab(groups));
 
-    root.InkFrameBrushV2LabUI={openTab,sections,buttons,installed:true,traceTools:traceToolsEnabled()};
+    root.InkFrameBrushV2LabUI={openTab,updateSummaries,sections,buttons,summaries,installed:true,traceTools:traceToolsEnabled(),layout:'split'};
     return true;
   }
 
-  const api={GROUPS,LABEL_GROUP,ADVANCED_LABELS,visibleGroups,traceToolsEnabled,install};
+  const api={GROUPS,LABEL_GROUP,ADVANCED_LABELS,visibleGroups,traceToolsEnabled,groupSummary,install};
   root.InkFrameBrushV2LabUI=api;
   if(root.document){
     const start=()=>{if(!install())root.setTimeout(start,0);};
