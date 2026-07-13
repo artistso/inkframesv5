@@ -6,7 +6,7 @@ const block=(...lines)=>lines.join('\n');
 export function injectRadialTimeline(html,replaceOnce){
   html=replaceOnce(html,
     block('<script src="brush-math.js"></script>','<script src="canvas-shape.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
-    block('<script src="brush-math.js"></script>','<script src="canvas-shape.js"></script>','<script src="radial-timeline.js"></script>','<script src="radial-timing-editor.js"></script>','<script src="radial-timing-patterns.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
+    block('<script src="brush-math.js"></script>','<script src="canvas-shape.js"></script>','<script src="radial-timeline.js"></script>','<script src="radial-timing-editor.js"></script>','<script src="radial-timing-patterns.js"></script>','<script src="radial-rhythm-composer.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
     'Radial Timeline runtime scripts');
 
   html=replaceOnce(html,
@@ -32,6 +32,7 @@ export function injectRadialTimeline(html,replaceOnce){
     'radial-timeline.js',
     'radial-timing-editor.js',
     'radial-timing-patterns.js',
+    'radial-rhythm-composer.js',
     'InkFrameRadialTimeline.render(board',
     'InkFrameRadialTimeline.refreshThumbnail(cur,thumb)',
     'InkFrameRadialTimeline.syncPlayback({',
