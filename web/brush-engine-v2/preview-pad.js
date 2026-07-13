@@ -309,6 +309,13 @@
       selectedCompareId=String(id);compareSelect.value=selectedCompareId;clear();return true;
     }
 
+    function setTransientCompare(label,tuning){
+      if(adapter.isActive&&adapter.isActive())return false;
+      releaseActive(false);
+      transientChoice={label:String(label||'Temporary comparison').slice(0,96),tuning:ns.normalizeTuning?ns.normalizeTuning(tuning||{}):Object.assign({},tuning||{})};
+      selectedCompareId='transient';renderCompareSelect();setCompareEnabled(true);return currentCompareChoice();
+    }
+
     function applyCompare(){
       releaseActive(false);
       const choice=currentCompareChoice();
@@ -367,6 +374,7 @@
       createPreviewSession,
       setCompareEnabled,
       selectCompare,
+      setTransientCompare,
       applyCompare,
       swapCompare,
       compareChoice:currentCompareChoice,
