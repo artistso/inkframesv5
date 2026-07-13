@@ -55,6 +55,7 @@ jobs:
           node --check web/brush-engine-v2/ghost-ui.js
           node --check web/brush-engine-v2/lab-ui.js
           node --check web/brush-engine-v2/preset-ui.js
+          node --check web/brush-engine-v2/preview-compare.js
           node --check web/brush-engine-v2/preview-pad.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
@@ -72,10 +73,16 @@ jobs:
         run: node web/tests/brush-engine-v2-user-presets.test.mjs
       - name: Brush V2 non-destructive preview core
         run: node web/tests/brush-engine-v2-preview-pad.test.mjs
+      - name: Brush V2 deterministic preview comparison
+        run: node web/tests/brush-engine-v2-preview-compare.test.mjs
       - name: Brush V2 generated preview isolation
         env:
           NODE_PATH: /tmp/jsdom/node_modules
         run: node web/tests/brush-engine-v2-preview-boot.test.mjs
+      - name: Brush V2 generated A/B preview isolation
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+        run: node web/tests/brush-engine-v2-preview-compare-boot.test.mjs
       - name: Brush V2 continuous ribbon coverage
         run: node web/tests/brush-engine-v2-coverage.test.mjs
       - name: Brush V2 radius continuity
@@ -233,6 +240,7 @@ jobs:
           grep -F 'brush-engine-v2/user-presets.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/lab-ui.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/preset-ui.js' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'brush-engine-v2/preview-compare.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/preview-pad.js' "$RUNNER_TEMP/inkframe-release-index.html"
           if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
             echo "Production index unexpectedly loads native diagnostics" >&2
