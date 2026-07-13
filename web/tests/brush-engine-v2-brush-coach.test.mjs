@@ -10,9 +10,10 @@ const sessionSource=readFileSync(resolve(here,'..','brush-engine-v2','coach-sess
 const reportSource=readFileSync(resolve(here,'..','brush-engine-v2','calibration-report.js'),'utf8');
 const recoverySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-recovery.js'),'utf8');
 const identitySource=readFileSync(resolve(here,'..','brush-engine-v2','profile-identities.js'),'utf8');
+const mixerSource=readFileSync(resolve(here,'..','brush-engine-v2','identity-mixer.js'),'utf8');
 function load(){
   const box={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,InkFrameBrushV2:{normalizeTuning:value=>Object.freeze({...value})}};
-  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});return box.InkFrameBrushV2;
+  box.globalThis=box;vm.createContext(box);vm.runInContext(source,box,{filename:'brush-coach.js'});vm.runInContext(sessionSource,box,{filename:'coach-session.js'});vm.runInContext(reportSource,box,{filename:'calibration-report.js'});vm.runInContext(recoverySource,box,{filename:'profile-recovery.js'});vm.runInContext(identitySource,box,{filename:'profile-identities.js'});vm.runInContext(mixerSource,box,{filename:'identity-mixer.js'});return box.InkFrameBrushV2;
 }
 function reference(points){
   return {events:points.map((point,index)=>({phase:index===0?'begin':index===points.length-1?'end':'move',sample:{pointerType:'pen',pointerId:1,...point}}))};
@@ -105,7 +106,17 @@ const incomplete=ns.createCalibrationReport(baseline,{valid:false},{valid:false}
   assert.ok(identities.every(identity=>identity.tuning.coverageMode==='ribbon'&&identity.tuning.radiusMode==='guarded'&&identity.tuning.contactMode==='strict'));
   assert.equal(ns.resolveBrushIdentity('lovely-comet').tuning.ghostMode,'comet');assert.equal(ns.resolveBrushIdentity('expressive-echo').tuning.ghostMode,'echo');assert.equal(ns.resolveBrushIdentity('maximum-stabilized').tuning.stabilizerStrength,200);
   assert.equal(ns.resolveBrushIdentity('missing'),null);assert.equal(ns.brushIdentityChips('precision-ink').length,5);
+
+  const lovely=ns.resolveBrushIdentity('lovely-comet'),precision=ns.resolveBrushIdentity('precision-ink'),expressive=ns.resolveBrushIdentity('expressive-echo');
+  assert.deepEqual({...ns.mixBrushTunings(lovely.tuning,precision.tuning,0)},{...lovely.tuning},'zero mix must equal A exactly');
+  assert.deepEqual({...ns.mixBrushTunings(lovely.tuning,precision.tuning,1)},{...precision.tuning},'full mix must equal B exactly');
+  const midpoint=ns.mixBrushIdentities('lovely-comet','precision-ink',50);assert.equal(midpoint.tuning.stabilizerStrength,101);assert.equal(midpoint.tuning.cornerStrength,84);assert.equal(midpoint.tuning.ghostIntensity,43);assert.equal(midpoint.tuning.ghostMode,'comet','non-off trail must fade continuously toward an off endpoint');
+  assert.equal(midpoint.presetName,'Mix 50 · Lovely/Precision');assert.equal(ns.identityMixChips(midpoint).length,5);
+  const trailTie=ns.mixBrushIdentities('lovely-comet','expressive-echo',50);assert.equal(trailTie.tuning.ghostMode,'comet','50/50 non-off mode selection must be order-stable');
+  const reverseTie=ns.mixBrushIdentities('expressive-echo','lovely-comet',50);assert.equal(reverseTie.tuning.ghostMode,'comet');
+  assert.deepEqual({...trailTie.tuning},{...reverseTie.tuning},'swapped 50/50 mixes must remain identical');
+  assert.equal(ns.mixBrushIdentities('lovely-comet','precision-ink',150).percent,100);assert.equal(ns.mixBrushIdentities('lovely-comet','precision-ink',-20).percent,0);assert.equal(ns.mixBrushIdentities('missing','precision-ink',50),null);
 }
 
 session.reset();assert.equal(session.snapshot().completed,0);assert.equal(session.suggestion().valid,false);
-console.log('✅ Brush Coach, guided session, calibration report, profile recovery, and creative identities are deterministic');
+console.log('✅ Brush Coach, calibration, recovery, creative identities, and deterministic Identity Mixer passed');
