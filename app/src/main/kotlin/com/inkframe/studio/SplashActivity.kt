@@ -98,6 +98,6 @@ class SplashActivity : ComponentActivity() {
         const val DISPLAY_MS = 650L
         const val FADE_IN_MS = 140L
         const val FADE_OUT_MS = 180L
-        const val BACKGROUND_COLOR = 0xFF0A0010.toInt()
+        val BACKGROUND_COLOR = 0xFF0A0010.toInt()
     }
 }
