@@ -16,8 +16,8 @@ try{
   assert.ok(html.indexOf('feedback-report.js')<html.indexOf('brush-engine-v2/sample.js'),'Feedback Report must initialize before the modular brush runtime');
   assert.ok(html.includes('window.InkFrameFeedbackEnvironment'),'release index must expose the bounded feedback environment');
   assert.ok(html.includes('feedbackReportSnapshot'),'release index must expose deterministic report facts');
-  assert.ok(html.includes("version:'0.4.0'"),'release feedback bridge must embed metadata version');
-  assert.ok(html.includes("packageName:'com.inkframe.studio'"),'release feedback bridge must embed package name');
+  assert.ok(html.includes('version:"0.4.0"'),'release feedback bridge must embed metadata version');
+  assert.ok(html.includes('packageName:"com.inkframe.studio"'),'release feedback bridge must embed package name');
   assert.ok(source.includes('Nothing is uploaded.'));assert.ok(source.includes('projectNameReads:0'));assert.ok(source.includes('artworkReads:0'));
   assert.ok(source.includes("copyTesterReport==='function'"),'Android copy must reuse the existing bridge');
   assert.ok(source.includes("saveDataUrl==='function'"),'Android save must reuse the existing export bridge');
