@@ -65,11 +65,11 @@ const source120=Array(119).fill(1).concat(2),longRecipes=[{id:'long',name:'Long'
 const capped=score.createScore([{arrangementId:'long-phrase',repeat:4}],longArrangements,longRecipes);
 assert.equal(capped.valid,true);assert.equal(capped.rawLength,480);assert.equal(capped.values.length,120);assert.equal(capped.truncated,true);assert.deepEqual(Array.from(capped.values),source120);
 
-const longArrangements=[
+const verboseArrangements=[
   {id:'a',name:'An exceptionally long opening arrangement',segments:arrangements[0].segments},
   {id:'b',name:'Another exceptionally long closing arrangement',segments:arrangements[1].segments},
 ];
-const longName=score.scoreName([{arrangementId:'a',repeat:1},{arrangementId:'b',repeat:1}],longArrangements);
+const longName=score.scoreName([{arrangementId:'a',repeat:1},{arrangementId:'b',repeat:1}],verboseArrangements);
 assert.ok(longName.length<=32);assert.match(longName,/⇒ \+1$/);
 
 const recipeSnapshot=JSON.stringify(recipes),arrangementSnapshot=JSON.stringify(arrangements);
