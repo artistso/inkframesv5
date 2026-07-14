@@ -9,6 +9,9 @@ plugins {
 }
 
 // --- Shared app metadata ---------------------------------------------------
+// web/metadata.json is the single source for the human version and Android SDK
+// surface that both the Web UI and APK build expose. Keep parsing dependency-free
+// so Gradle configuration stays fast and works before any app dependencies exist.
 val webMetadataFile = rootProject.file("web/metadata.json")
 fun webMetadataString(key: String): String? =
     Regex("\"$key\"[ ]*:[ ]*\"([^\"]+)\"")
@@ -35,6 +38,7 @@ val keystorePropsFile = rootProject.file("keystore.properties")
 val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
+
 fun signingValue(propKey: String, envKey: String): String? =
     (keystoreProps.getProperty(propKey) ?: System.getenv(envKey))?.takeIf { it.isNotBlank() }
 
@@ -50,6 +54,9 @@ val hasReleaseSigning =
         !releaseKeyPassword.isNullOrBlank()
 
 // --- Glass Horizon generated branding ------------------------------------
+// GitHub's text-oriented contents API stores the approved image masters as
+// compact base64 WebP files. This deterministic task reconstructs Android
+// resources in build/ and verifies the exact bytes before resource merging.
 val brandingSourceDir = rootProject.file("app/src/main/branding")
 val generatedBrandingResDir = layout.buildDirectory.dir("generated/brandingRes")
 val brandingAssets = listOf(
@@ -131,12 +138,16 @@ android {
 
     buildTypes {
         release {
+            // The WebView shell has no meaningful Kotlin surface to shrink, and
+            // R8 can break JavaScript bridge reachability. Keep release explicit.
             isMinifyEnabled = false
             isShrinkResources = false
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
+            // Debug keeps the canonical package name so RC APKs replace earlier
+            // test builds cleanly on the tablet.
         }
     }
 
@@ -146,6 +157,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
+    // Debug and release receive independently generated web asset roots. This
+    // prevents a release build from reusing a debug index containing telemetry.
     sourceSets {
         getByName("main") {
             res.srcDir(generatedBrandingResDir)
@@ -251,6 +264,8 @@ registerWebAssetPipeline(
 )
 
 // Never silently produce a release artifact with the Android debug certificate.
+// Debug builds and JVM tests remain secret-free; packaging release APK/AAB files
+// requires a complete keystore configuration.
 gradle.taskGraph.whenReady {
     val releasePackagingRequested = allTasks.any { task ->
         task.project == project && task.name.matches(
