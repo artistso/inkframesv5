@@ -57,7 +57,10 @@ assert.ok(name.length<=32);assert.match(name,/→ \+1$/);
 
 const sourceSnapshot=JSON.stringify(library);phrases.createPhrase(segments,library);phrases.compileSegments(segments,library);
 assert.equal(JSON.stringify(library),sourceSnapshot,'phrase compilation must never mutate source recipes');
+assert.equal(phrases.loadArrangement({segments}),false,'arrangement loading requires an installed composer environment');
 const project={};assert.deepEqual({...phrases.viewSnapshot(project),segments:Array.from(phrases.viewSnapshot(project).segments)}, {open:false,selectedRecipeId:null,segments:[],preview:false,name:'',recipeCount:0,phraseLength:0,truncated:false});
 assert.equal(phrases.projectCanvasWrites,0);assert.equal(phrases.artworkUndoWrites,0);assert.equal(phrases.timelineTimingWrites,true);
 assert.equal(phrases.projectSchemaWrites,0);assert.equal(phrases.deviceLibraryWrites,true);assert.equal(phrases.sourceRecipeWrites,0);assert.equal(phrases.randomWrites,0);
 console.log('✅ deterministic timing phrase ordering, repeats, capping, period reduction, naming, source preservation, and isolation passed');
+
+await import('./radial-timing-phrase-library.test.mjs');
