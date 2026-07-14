@@ -43,4 +43,7 @@ console.log('✅ creator statement testimony label, Studio rename, production pa
 await import('./onion-skin-studio.test.mjs');
 await import('./onion-skin-studio-boot.test.mjs');
 await import('./onion-skin-studio-release.test.mjs');
+await import('./feedback-report.test.mjs');
+await import('./feedback-report-boot.test.mjs');
+await import('./feedback-report-release.test.mjs');
 await import('./brush-engine-v2-profile-history-boot.test.mjs');
