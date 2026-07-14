@@ -38,3 +38,5 @@ try{
   assert.ok(html.indexOf('creator-statement.js')<html.indexOf('brush-engine-v2/sample.js'),'creator statement must load before the modular studio runtime');
 }finally{rmSync(temp,{recursive:true,force:true});}
 console.log('✅ creator statement testimony label, Studio rename, production packaging, and zero-write isolation passed');
+
+await import('./brush-engine-v2-profile-history-boot.test.mjs');
