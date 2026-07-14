@@ -103,7 +103,7 @@ try{
   snapshot=phrases.viewSnapshot(project);assert.equal(snapshot.segments.length,0);assert.equal(snapshot.preview,false);assert.equal(snapshot.phraseLength,0);assert.ok(recipes.store.find(saved.id));
 
   const beforeBlockedTransactions=transactions.length,beforeBlockedLibrary=recipes.store.snapshot().recipes.length;env.canEditTiming=()=>false;radial.render(board,env);await wait(35);
-  assert.equal(phrases.addSelected(),false);assert.equal(phrases.setSegmentRepeat(0,2),false);assert.equal(phrases.moveSegment(0,1),false);assert.equal(phrases.duplicateSegment(0),false);assert.equal(phrases.removeSegment(0),false);assert.equal(phrases.clearSegments(),false);assert.equal(phrases.applyPhrase(),false);assert.equal(phrases.savePhrase(),null);
+  assert.equal(phrases.addSelected(),false);assert.equal(phrases.setSegmentRepeat(0,2),false);assert.equal(phrases.moveSegment(0,1),false);assert.equal(phrases.duplicateSegment(0),false);assert.equal(phrases.removeSegment(0),false);assert.equal(phrases.clearSegments(),false);assert.equal(phrases.loadArrangement({segments:[{recipeId:alpha.id,repeat:1}]}),false);assert.equal(phrases.applyPhrase(),false);assert.equal(phrases.savePhrase(),null);
   assert.equal(transactions.length,beforeBlockedTransactions);assert.equal(recipes.store.snapshot().recipes.length,beforeBlockedLibrary);
   const other=phrases.viewSnapshot({});assert.deepEqual({...other,segments:Array.from(other.segments)},{open:false,selectedRecipeId:null,segments:[],preview:false,name:'',recipeCount:4,phraseLength:0,truncated:false},'phrase view state must remain isolated by project');
   assert.deepEqual(project,{},'phrase composer must not write project schema fields');
@@ -111,3 +111,5 @@ try{
   assert.equal(phrases.projectCanvasWrites,0);assert.equal(phrases.artworkUndoWrites,0);assert.equal(phrases.timelineTimingWrites,true);assert.equal(phrases.projectSchemaWrites,0);assert.equal(phrases.deviceLibraryWrites,true);assert.equal(phrases.sourceRecipeWrites,0);assert.equal(phrases.randomWrites,0);
   dom.window.close();console.log('✅ generated Android timing phrase ordering, repeats, preview, shared apply/undo, saved persistence, guards, and isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
+
+await import('./radial-timing-phrase-library-boot.test.mjs');
