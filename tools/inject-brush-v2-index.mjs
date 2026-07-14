@@ -38,6 +38,7 @@ const nativeScript = diagnostics ? '<script src="brush-engine-v2/native.js"></sc
 const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->
 <script>window.InkFrameBuild=Object.freeze(${JSON.stringify(buildConfig)});</script>
+<script src="creator-statement.js"></script>
 <script src="brush-engine-v2/sample.js"></script>
 <script src="brush-engine-v2/batch.js"></script>
 <script src="brush-engine-v2/validator.js"></script>
@@ -164,6 +165,7 @@ const requiredMarkers = [
   `"variant":"${variant}"`,
   `"diagnostics":${diagnostics}`,
   `"defaultBrushEngine":"${defaultBrushEngine}"`,
+  'creator-statement.js',
   'makeBrushV2Env()',
   'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
