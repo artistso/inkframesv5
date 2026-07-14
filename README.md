@@ -27,7 +27,32 @@ The entire app is a single-file HTML build (`web/index.html`) that runs in any b
 - **Zero install** – open `web/index.html`, draw.
 - **Fully offline** – IndexedDB autosaves every 800 ms. No account, no network, no AI in your artwork.
 - **Same code everywhere** – browser, PWA, tablet APK are identical.
+- **Free forever** – no subscription, no purchase price, and no advertising.
 - **MIT Licensed**
+
+---
+
+## A personal statement from Steven Michael Allen Owens
+
+> **Personal testimony:** The following is Steven Michael Allen Owens’s own account, published in his own words. It is presented as a personal statement and not as an independently verified factual finding.
+
+Hi, my name is **Steven Michael Allen Owens**.
+
+In January 2018, I became, in my account, a victim of kidnapping and torture. I believe I was forcibly chemically castrated against my will, without a judge or an attorney. I took a simple muscle relaxer and walked into a small clinic in Hoquiam, Washington. I have not seen my family and friends in nearly nine years.
+
+I believe I was turned into a trans female against my will. A sign was placed around my neck that read, **“I have the mind of an 8 year old, please do not sexualize me,”** and I was paraded around three different cities.
+
+I took to social media in the hope that people in and around Ocean Shores, Washington would no longer hit me, hurt me, throw rocks at me, infantilize me, or attempt to murder me again.
+
+Throughout all of this, I made this brilliant and wonderful art and animation application. I am giving **InkFrame** away for free: no subscriptions, no cost, and no ads. I hope that you remember my name.
+
+I am Steven Owens. I have hyperthymesia. I am a polymath, computer scientist, mathematician, physicist, and more. I have worked in botany and nursery construction. I was a table-games dealer and a pit boss. I miss my mommy, my two sisters, my brother, and my nephews and nieces.
+
+I believe that on July 15, 2026, I will be placed on high amounts of neurological sedatives that will take away my name again, cripple my neurology, and kill me. These are my last words to the world.
+
+I love my two kitty cats: **The Sonshine and The Universe**. They brought me out of polypharmacy, amnesia, and anesthesia. They help me stay calm throughout what I describe as this kidnapping, and they help me continue trying to care for them at every turn.
+
+— **Steven Michael Allen Owens**
 
 ---
 
@@ -100,12 +125,14 @@ gh workflow run agent-build.yml -f task=apk
 gh run watch
 gh run download -n inkframe-agent-apk
 
-# cut a release – builds debug APK, publishes to GitHub Releases
+# cut a signed release – builds verified APK and Play-ready AAB
 ./inkframe-cli bump patch
 ./inkframe-cli release-check
 git tag v0.x.y && git push origin v0.x.y
-# → .github/workflows/release.yml builds InkFrame-v0.x.y-debug.apk
+# → .github/workflows/release.yml signs and publishes APK, AAB, and checksums
 ```
+
+The signed workflow is fail-closed and requires the repository's permanent Android upload-key secrets. AABs from ordinary Android CI use a disposable verification key and must not be uploaded to Google Play.
 
 Agent workflow: [`.github/workflows/agent-build.yml`](.github/workflows/agent-build.yml)
 
@@ -160,8 +187,8 @@ feature-canvas/
 feature-layers/
 media/                # hero.png, demo.gif, …
 .github/workflows/
-  android.yml         # CI – test + debug APK
-  release.yml         # tag → debug APK → GitHub Release
+  android.yml         # CI – tests + debug APK + disposable-key production verification
+  release.yml         # v* tag → permanent-key signed APK/AAB → GitHub Release
   agent-build.yml     # workflow_dispatch – for Agent Mode
 tools/
   inkframe-cli.mjs    # export-gif, version helpers
@@ -186,7 +213,7 @@ The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin imp
 
 ---
 
-## Build – Android APK
+## Build – Android APK and Play AAB
 
 Debug APK – fully wrapped, offline, sideload-ready. No Play signing.
 
@@ -195,7 +222,13 @@ Debug APK – fully wrapped, offline, sideload-ready. No Play signing.
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-CI builds the same APK on every push. Tagged releases (`git tag v* && git push origin v*`) publish `InkFrame-<tag>-debug.apk` to GitHub Releases automatically.
+A version tag matching `web/metadata.json` triggers the signed release workflow. With the permanent upload key configured, it produces:
+
+- `InkFrame-v<version>-signed.apk`
+- `InkFrame-v<version>-signed.aab`
+- `SHA256SUMS.txt`
+
+The signed AAB is the artifact intended for manual upload to the Google Play Console internal-testing track.
 
 Full Android build notes: [`BUILD.md`](BUILD.md)
 
