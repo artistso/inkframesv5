@@ -18,17 +18,18 @@ w.InkFrameOnionStudioEnvironment=()=>({
 });
 w.eval(source);await new Promise(resolvePromise=>setTimeout(resolvePromise,35));
 const studio=w.InkFrameOnionSkinStudio,toggle=kids.querySelector('.inkframe-onion-studio-toggle'),panel=d.querySelector('.inkframe-onion-studio');
+const near=(actual,expected)=>assert.ok(Math.abs(actual-expected)<1e-9,`${actual} must equal ${expected}`);
 assert.ok(studio&&toggle&&panel,'Onion Skin Studio must install from the Actions node');assert.equal(panel.hidden,true);
 
 toggle.click();assert.equal(panel.hidden,false);assert.equal(toggle.getAttribute('aria-pressed'),'true');assert.match(panel.querySelector('.inkframe-onion-status').textContent,/2 frames each side/);
 const button=text=>Array.from(panel.querySelectorAll('button')).find(item=>item.textContent===text);
-button('Arc').click();assert.equal(settings.enabled,true);assert.equal(settings.depth,6);assert.equal(settings.pastOpacity,.18);assert.equal(settings.futureOpacity,.14);assert.equal(settings.tint,.82);assert.match(notices.at(-1),/Arc/);
+button('Arc').click();assert.equal(settings.enabled,true);assert.equal(settings.depth,6);near(settings.pastOpacity,.18);near(settings.futureOpacity,.14);near(settings.tint,.82);assert.match(notices.at(-1),/Arc/);
 
 let past=panel.querySelector('input[data-key="pastOpacity"]'),future=panel.querySelector('input[data-key="futureOpacity"]');
 past.value='70';past.dispatchEvent(new w.Event('input',{bubbles:true}));past.dispatchEvent(new w.Event('change',{bubbles:true}));
-assert.equal(settings.pastOpacity,.7);assert.equal(settings.futureOpacity,.14,'past opacity must not overwrite future opacity');
+near(settings.pastOpacity,.7);near(settings.futureOpacity,.14);
 future=panel.querySelector('input[data-key="futureOpacity"]');future.value='35';future.dispatchEvent(new w.Event('input',{bubbles:true}));future.dispatchEvent(new w.Event('change',{bubbles:true}));
-assert.equal(settings.futureOpacity,.35);assert.equal(settings.pastOpacity,.7);
+near(settings.futureOpacity,.35);near(settings.pastOpacity,.7);
 
 const pastBefore=settings.pastColor,futureBefore=settings.futureColor;button('Swap colors').click();assert.equal(settings.pastColor,futureBefore);assert.equal(settings.futureColor,pastBefore);
 button('Full frame').click();assert.equal(settings.layerOnly,true);assert.equal(button('Full frame'),undefined,'label must update after switching to active-layer mode');assert.ok(button('Active layer'));
