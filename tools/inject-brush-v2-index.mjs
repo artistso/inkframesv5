@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { injectCanvasShape } from './inject-canvas-shape.mjs';
 import { injectOnionSkinStudio } from './inject-onion-skin-studio.mjs';
+import { injectFeedbackReport } from './inject-feedback-report.mjs';
 
 const input = resolve(process.argv[2] || 'web/index.html');
 const output = resolve(process.argv[3] || 'build/generated/webAssets/debug/index.html');
@@ -160,6 +161,7 @@ html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 
 html = injectCanvasShape(html, replaceOnce);
 html = injectOnionSkinStudio(html, replaceOnce);
+html = injectFeedbackReport(html, replaceOnce);
 
 const requiredMarkers = [
   'INKFRAME_BRUSH_V2_RUNTIME',
@@ -170,6 +172,8 @@ const requiredMarkers = [
   'creator-statement.js',
   'onion-skin-studio.js',
   'InkFrameOnionStudioEnvironment',
+  'feedback-report.js',
+  'InkFrameFeedbackEnvironment',
   'makeBrushV2Env()',
   'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
