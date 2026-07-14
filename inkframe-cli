@@ -57,7 +57,11 @@ resolve_version(){
   case "$arg" in
     major) maj=$((maj+1)); min=0; pat=0 ;;
     minor) min=$((min+1)); pat=0 ;;
-    patch|*) pat=$((pat+1)) ;;
+    patch) pat=$((pat+1)) ;;
+    *)
+      echo "Version must be patch, minor, major, or an explicit semantic version; got: $arg" >&2
+      return 2
+      ;;
   esac
   printf '%s.%s.%s\n' "$maj" "$min" "$pat"
 }
