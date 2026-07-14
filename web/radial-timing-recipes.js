@@ -61,7 +61,7 @@
     const makeId=typeof opts.makeId==='function'?opts.makeId:()=>`recipe-${now()}-${++sequence}`;
     let state=sanitizeLibrary({},now());const listeners=new Set();
     try{const raw=storage&&storage.getItem(STORAGE_KEY);if(raw)state=sanitizeLibrary(JSON.parse(raw),now());}catch(_){}
-    const persist=()=>{try{if(storage)storage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(_){};
+    const persist=()=>{try{if(storage)storage.setItem(STORAGE_KEY,JSON.stringify(state));}catch(_){}};
     const snapshot=()=>clone(state),emit=()=>{for(const listener of listeners){try{listener(snapshot());}catch(_){}}};
     const commit=next=>{state=sanitizeLibrary(next,now());persist();emit();return snapshot();};
     const find=id=>state.recipes.find(item=>item.id===cleanId(id))||null;
