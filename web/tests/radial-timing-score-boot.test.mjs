@@ -99,7 +99,7 @@ try{
   for(const source of recipesBefore.recipes)assert.deepEqual(Array.from(recipes.store.find(source.id).values),Array.from(source.values),'saving a score must preserve source recipes');
 
   const beforeBlockedSections=score.viewSnapshot(project),beforeBlockedTransactions=transactions.length,beforeBlockedRecipes=recipes.store.snapshot().recipes.length;env.canEditTiming=()=>false;radial.render(board,env);await wait(35);
-  assert.equal(score.addSelected(),false);assert.equal(score.setSectionRepeat(0,3),false);assert.equal(score.moveSection(0,1),false);assert.equal(score.duplicateSection(0),false);assert.equal(score.removeSection(0),false);assert.equal(score.clearSections(),false);assert.equal(score.applyScore(),false);assert.equal(score.saveScore(),null);
+  assert.equal(score.addSelected(),false);assert.equal(score.setSectionRepeat(0,3),false);assert.equal(score.moveSection(0,1),false);assert.equal(score.duplicateSection(0),false);assert.equal(score.removeSection(0),false);assert.equal(score.clearSections(),false);assert.equal(score.loadStructure({sections:[{arrangementId:opening.id,repeat:1}]}),false);assert.equal(score.applyScore(),false);assert.equal(score.saveScore(),null);
   assert.deepEqual(Array.from(score.viewSnapshot(project).sections,item=>({...item})),Array.from(beforeBlockedSections.sections,item=>({...item})));assert.equal(transactions.length,beforeBlockedTransactions);assert.equal(recipes.store.snapshot().recipes.length,beforeBlockedRecipes);
   env.canEditTiming=()=>true;
 
@@ -111,3 +111,5 @@ try{
   assert.equal(score.projectCanvasWrites,0);assert.equal(score.artworkUndoWrites,0);assert.equal(score.timelineTimingWrites,true);assert.equal(score.projectSchemaWrites,0);assert.equal(score.deviceLibraryWrites,true);assert.equal(score.sourceArrangementWrites,0);assert.equal(score.sourceRecipeWrites,0);assert.equal(score.randomWrites,0);
   dom.window.close();console.log('✅ generated Android score ordering, repeats, preview, shared apply/undo, saved recipe, provenance warnings, guards, and isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
+
+await import('./radial-timing-score-library-boot.test.mjs');
