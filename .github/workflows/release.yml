@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: signed-release-${{ github.ref }}
@@ -230,3 +231,26 @@ jobs:
           body_path: RELEASE_NOTES.md
           name: InkFrame ${{ env.INKFRAME_RELEASE_LABEL }}
           fail_on_unmatched_files: true
+
+      - name: Report release result
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./web/metadata.json').version")"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TITLE="[release-report] InkFrame v${VERSION} ${JOB_STATUS} run ${GITHUB_RUN_ID}"
+          BODY=$(cat <<EOF
+          Signed Android release result: **${JOB_STATUS}**
+
+          - Version: \`v${VERSION}\`
+          - Source branch: \`${GITHUB_REF_NAME}\`
+          - Source commit: \`${GITHUB_SHA}\`
+          - Workflow run: ${RUN_URL}
+          - Permanent signing credentials are never printed or attached to this report.
+          EOF
+          )
+          gh issue create --title "$TITLE" --body "$BODY"
