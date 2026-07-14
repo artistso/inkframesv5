@@ -102,3 +102,5 @@ assert.ok(themes31.includes('android:windowSplashScreenBackground'),'Android 12 
 
 assert.equal(app.endsWith('/app')||app.endsWith('\\app'),true);
 console.log('✅ Glass Horizon launcher bytes, native splash, manifest routing, and Android 12 policy passed');
+
+await import('./creator-statement.test.mjs');
