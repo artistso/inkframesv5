@@ -13,6 +13,7 @@ const radial=box.InkFrameRadialTimeline,timing=box.InkFrameRadialTiming,patterns
 
 assert.ok(radial&&timing&&patterns,'radial rhythm runtime did not install');
 assert.equal(radial.__radialTimingPatched,true);assert.equal(radial.__radialPatternsPatched,true);
+assert.equal(patterns.HISTORY_LIMIT,25,'timing Undo and Redo must retain exactly 25 transactions');
 assert.deepEqual(Array.from(patterns.patterns,pattern=>pattern.id),['ones','twos','threes','snap','ease-in','ease-out']);
 assert.deepEqual(Array.from(patterns.patternById('snap').values),[1,1,2,1]);
 assert.equal(patterns.patternById('missing'),null);
@@ -38,4 +39,4 @@ const project={};
 assert.deepEqual({...patterns.viewSnapshot(project)},{open:false,preview:false,previewPatternId:null,undoDepth:0,redoDepth:0});
 assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);
 assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);
-console.log('✅ radial timing patterns, automatic scopes, deterministic assignments, inversion, and isolation policy passed');
+console.log('✅ radial timing patterns, 25-step history, automatic scopes, deterministic assignments, inversion, and isolation policy passed');
