@@ -1,1 +1,1 @@
-Offline drawing and frame-by-frame animation built for stylus and touch.
+Free offline drawing and frame animation—no ads, subscriptions, or account.
