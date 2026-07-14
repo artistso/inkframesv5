@@ -1,6 +1,7 @@
 // InkFrame — radial exposure rhythms, preview, and timing-only history
 'use strict';
 (function(root){
+  const HISTORY_LIMIT=25;
   const finite=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
   const clampHold=value=>Math.max(1,Math.min(8,Math.round(finite(value,1))));
   const freezePattern=(id,label,values)=>Object.freeze({id,label,values:Object.freeze(values.map(clampHold))});
@@ -54,6 +55,7 @@
 
   function changedAssignments(assignments){return Object.freeze((assignments||[]).filter(entry=>entry&&entry.before!==entry.after));}
   function invertAssignments(assignments){return Object.freeze((assignments||[]).map(entry=>Object.freeze({index:entry.index,before:entry.after,after:entry.before})));}
+  function trimHistory(stack){while(stack.length>HISTORY_LIMIT)stack.shift();return stack;}
 
   const projectViews=new WeakMap(),projectHistories=new WeakMap();
   const fallbackView={open:false,preview:false,previewPatternId:null};
@@ -122,7 +124,7 @@
       assignments:changed,
     });
     const history=historyFor(lastEnvironment);if(!writeAssignments(changed))return false;
-    history.undo.push(transaction);if(history.undo.length>20)history.undo.shift();history.redo.length=0;
+    history.undo.push(transaction);trimHistory(history.undo);history.redo.length=0;
     const view=viewFor(lastEnvironment);view.previewPatternId=null;return true;
   }
   function applyPattern(patternId){
@@ -134,13 +136,13 @@
     if(!lastEnvironment||!canEdit(lastEnvironment))return false;
     const history=historyFor(lastEnvironment),transaction=history.undo.pop();if(!transaction)return false;
     if(!writeAssignments(invertAssignments(transaction.assignments))){history.undo.push(transaction);return false;}
-    history.redo.push(transaction);return true;
+    history.redo.push(transaction);trimHistory(history.redo);return true;
   }
   function redo(){
     if(!lastEnvironment||!canEdit(lastEnvironment))return false;
     const history=historyFor(lastEnvironment),transaction=history.redo.pop();if(!transaction)return false;
     if(!writeAssignments(transaction.assignments)){history.redo.push(transaction);return false;}
-    history.undo.push(transaction);return true;
+    history.undo.push(transaction);trimHistory(history.undo);return true;
   }
 
   function createPreview(document,board,plan,env,pattern){
@@ -174,8 +176,8 @@
     preview.setAttribute('aria-pressed',view.preview?'true':'false');shelf.appendChild(preview);
     const apply=makeButton(document,'Apply','inkframe-rhythm-apply',()=>{if(view.previewPatternId)applyPattern(view.previewPatternId);});
     apply.disabled=!view.previewPatternId;shelf.appendChild(apply);
-    const history=historyFor(env),undoButton=makeButton(document,'Undo','inkframe-rhythm-undo',undo);undoButton.disabled=!history.undo.length;shelf.appendChild(undoButton);
-    const redoButton=makeButton(document,'Redo','inkframe-rhythm-redo',redo);redoButton.disabled=!history.redo.length;shelf.appendChild(redoButton);
+    const history=historyFor(env),undoButton=makeButton(document,'Undo','inkframe-rhythm-undo',undo);undoButton.disabled=!history.undo.length;undoButton.title=`Timing Undo · ${history.undo.length}/${HISTORY_LIMIT}`;shelf.appendChild(undoButton);
+    const redoButton=makeButton(document,'Redo','inkframe-rhythm-redo',redo);redoButton.disabled=!history.redo.length;redoButton.title=`Timing Redo · ${history.redo.length}/${HISTORY_LIMIT}`;shelf.appendChild(redoButton);
     board.appendChild(shelf);
   }
 
@@ -230,7 +232,7 @@
   }
 
   const api={
-    patterns:PATTERNS,patternById,normalizeIndices,resolveTargetIndices,assignmentsForPattern,changedAssignments,invertAssignments,
+    HISTORY_LIMIT,patterns:PATTERNS,patternById,normalizeIndices,resolveTargetIndices,assignmentsForPattern,changedAssignments,invertAssignments,
     commitAssignments,applyPattern,undo,redo,render,viewSnapshot,installIntoRadial,
     projectCanvasWrites:0,artworkUndoWrites:0,timelineTimingWrites:true,projectSchemaWrites:0,
   };
