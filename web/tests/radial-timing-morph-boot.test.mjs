@@ -97,3 +97,5 @@ try{
   assert.equal(morph.projectCanvasWrites,0);assert.equal(morph.artworkUndoWrites,0);assert.equal(morph.timelineTimingWrites,true);assert.equal(morph.projectSchemaWrites,0);assert.equal(morph.deviceLibraryWrites,true);assert.equal(morph.sourceRecipeWrites,0);assert.equal(morph.randomWrites,0);
   dom.window.close();console.log('✅ generated Android timing morph preview, snap/swap invariance, shared apply/undo, saved blends, collision-free mix keys, guards, and isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
+
+await import('./radial-timing-phrases-boot.test.mjs');
