@@ -53,13 +53,16 @@ try{
     if(!board.querySelector('.inkframe-rhythm-toggle[aria-pressed="true"]')){board.querySelector('.inkframe-rhythm-toggle').click();await wait(55);}
     if(!board.querySelector('.inkframe-recipe-toggle[aria-pressed="true"]')){board.querySelector('.inkframe-recipe-toggle').click();await wait(55);}
   };
+  const openVariations=async()=>{
+    await openStack();const toggle=board.querySelector('.inkframe-variation-toggle');assert.ok(toggle,'variation toggle must follow recipe shelf render');
+    if(toggle.getAttribute('aria-pressed')!=='true'){toggle.click();await wait(55);}
+    assert.equal(variations.viewSnapshot(project).open,true);assert.ok(board.querySelector('.inkframe-variation-shelf'));
+  };
 
   await openStack();
   const name=board.querySelector('.inkframe-recipe-name');name.value='Pulse Three';name.dispatchEvent(new w.Event('input',{bubbles:true}));board.querySelector('.inkframe-recipe-capture').click();await wait(75);
   assert.equal(recipes.store.snapshot().recipes.length,1);assert.deepEqual(Array.from(recipes.store.snapshot().recipes[0].values),[1,2,3]);
-  await openStack();assert.ok(board.querySelector('.inkframe-variation-toggle'),'variation toggle must follow recipe shelf render');
-  board.querySelector('.inkframe-variation-toggle').click();await wait(55);
-  assert.equal(variations.viewSnapshot(project).open,true);assert.equal(board.querySelectorAll('.inkframe-variation-item').length,8);
+  await openVariations();assert.equal(board.querySelectorAll('.inkframe-variation-item').length,8);
 
   board.querySelector('[data-variation="palindrome"]').click();board.querySelector('.inkframe-variation-preview').click();await wait(70);
   assert.deepEqual(Array.from(holds),[1,2,3,1,2,3],'variation preview must not mutate timing');
@@ -72,14 +75,12 @@ try{
   await openStack();board.querySelector('.inkframe-rhythm-undo').click();await wait(75);
   assert.deepEqual(Array.from(holds),[1,2,3,1,2,3]);assert.equal(patterns.viewSnapshot(project).redoDepth,1);
 
-  await openStack();board.querySelector('.inkframe-variation-toggle').click();await wait(50);
-  board.querySelector('[data-variation="pulse"]').click();await wait(35);
+  await openVariations();board.querySelector('[data-variation="pulse"]').click();await wait(35);
   const beforeSave=recipes.store.snapshot().recipes.length;board.querySelector('.inkframe-variation-save').click();await wait(90);
   const library=recipes.store.snapshot();assert.equal(library.recipes.length,beforeSave+1);const saved=library.recipes.find(item=>item.name.includes('Pulse'));
   assert.ok(saved);assert.deepEqual(Array.from(saved.values),[2,1,4]);assert.ok(w.localStorage.getItem(recipes.STORAGE_KEY));
 
-  await openStack();board.querySelector('.inkframe-variation-toggle').click();await wait(45);
-  const beforeKeyboard=variations.viewSnapshot(project).selectedVariationId;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',bubbles:true,cancelable:true}));await wait(40);
+  await openVariations();const beforeKeyboard=variations.viewSnapshot(project).selectedVariationId;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',bubbles:true,cancelable:true}));await wait(40);
   assert.notEqual(variations.viewSnapshot(project).selectedVariationId,beforeKeyboard,'K must cycle forward through generated siblings');
   board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'b',bubbles:true,cancelable:true}));await wait(40);assert.equal(variations.viewSnapshot(project).preview,true);
 
