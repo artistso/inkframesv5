@@ -80,3 +80,5 @@ const project={};assert.deepEqual({...libraryApi.viewSnapshot(project)},{open:fa
 assert.equal(libraryApi.projectCanvasWrites,0);assert.equal(libraryApi.artworkUndoWrites,0);assert.equal(libraryApi.timelineTimingWrites,0);
 assert.equal(libraryApi.projectSchemaWrites,0);assert.equal(libraryApi.deviceLibraryWrites,true);assert.equal(libraryApi.sourceScoreWrites,0);assert.equal(libraryApi.sourceArrangementWrites,0);assert.equal(libraryApi.sourceRecipeWrites,0);assert.equal(libraryApi.randomWrites,0);assert.equal(libraryApi.transientScoreWrites,true);
 console.log('✅ score structure library sanitation, bounds, updates, nested provenance, persistence, and isolation passed');
+
+await import('./radial-timing-score-library-release.test.mjs');
