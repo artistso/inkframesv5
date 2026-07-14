@@ -76,9 +76,9 @@ try{
   assert.deepEqual(Array.from(holds),[1,2,3,1,2,3]);assert.equal(patterns.viewSnapshot(project).redoDepth,1);
 
   await openVariations();board.querySelector('[data-variation="pulse"]').click();await wait(35);
-  const beforeSave=recipes.store.snapshot().recipes.length;board.querySelector('.inkframe-variation-save').click();await wait(90);
-  const library=recipes.store.snapshot();assert.equal(library.recipes.length,beforeSave+1);const saved=library.recipes.find(item=>item.name.includes('Pulse'));
-  assert.ok(saved);assert.deepEqual(Array.from(saved.values),[2,1,4]);assert.ok(w.localStorage.getItem(recipes.STORAGE_KEY));
+  const beforeLibrary=recipes.store.snapshot(),beforeIds=new Set(beforeLibrary.recipes.map(item=>item.id));board.querySelector('.inkframe-variation-save').click();await wait(90);
+  const library=recipes.store.snapshot();assert.equal(library.recipes.length,beforeLibrary.recipes.length+1);const saved=library.recipes.find(item=>!beforeIds.has(item.id));
+  assert.ok(saved);assert.match(saved.name,/· Pulse$/);assert.deepEqual(Array.from(saved.values),[2,1,4]);assert.ok(w.localStorage.getItem(recipes.STORAGE_KEY));
 
   await openVariations();const beforeKeyboard=variations.viewSnapshot(project).selectedVariationId;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',bubbles:true,cancelable:true}));await wait(40);
   assert.notEqual(variations.viewSnapshot(project).selectedVariationId,beforeKeyboard,'K must cycle forward through generated siblings');
