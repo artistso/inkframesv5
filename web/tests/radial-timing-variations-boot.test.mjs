@@ -82,7 +82,7 @@ try{
 
   await openVariations();const beforeKeyboard=variations.viewSnapshot(project).selectedVariationId;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'k',bubbles:true,cancelable:true}));await wait(40);
   assert.notEqual(variations.viewSnapshot(project).selectedVariationId,beforeKeyboard,'K must cycle forward through generated siblings');
-  board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'b',bubbles:true,cancelable:true}));await wait(40);assert.equal(variations.viewSnapshot(project).preview,true);
+  const beforePreview=variations.viewSnapshot(project).preview;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'b',bubbles:true,cancelable:true}));await wait(40);assert.equal(variations.viewSnapshot(project).preview,!beforePreview);
 
   const beforeBlockedTransactions=transactions.length,beforeBlockedLibrary=recipes.store.snapshot().recipes.length;env.canEditTiming=()=>false;radial.render(board,env);await wait(35);
   assert.equal(variations.applySelected(),false);assert.equal(variations.saveSelected(),null);assert.equal(transactions.length,beforeBlockedTransactions);assert.equal(recipes.store.snapshot().recipes.length,beforeBlockedLibrary);
