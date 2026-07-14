@@ -20,6 +20,7 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 ## Brush Engine V2 studio system
 
 - Added Profile Recovery with known-good locking, recent-change inspection, and deterministic restoration.
+- Preserved the bounded Brush Profile History from the public mainline, including tuning Undo/Redo, protected locks, exact-state restoration, A/B comparison, and preset recovery.
 - Added six named creative brush identities, the non-destructive Identity Mixer, Brush Match, and four-stroke Brush Signature.
 - Added transient A/B preview paths, Quick Access pinning, and guarded Apply + Lock workflows without touching artwork history.
 
