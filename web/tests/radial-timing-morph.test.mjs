@@ -46,3 +46,5 @@ const project={};assert.deepEqual({...morph.viewSnapshot(project)},{open:false,s
 assert.equal(morph.projectCanvasWrites,0);assert.equal(morph.artworkUndoWrites,0);assert.equal(morph.timelineTimingWrites,true);
 assert.equal(morph.projectSchemaWrites,0);assert.equal(morph.deviceLibraryWrites,true);assert.equal(morph.sourceRecipeWrites,0);assert.equal(morph.randomWrites,0);
 console.log('✅ deterministic timing morph alignment, interpolation, symmetry, naming, bounds, and isolation policy passed');
+
+await import('./radial-timing-phrases.test.mjs');
