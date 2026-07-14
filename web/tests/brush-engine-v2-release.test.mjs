@@ -27,6 +27,7 @@ try {
   const timingSource=readFileSync(resolve(root,'web/radial-timing-editor.js'),'utf8');
   const patternsSource=readFileSync(resolve(root,'web/radial-timing-patterns.js'),'utf8');
   const recipesSource=readFileSync(resolve(root,'web/radial-timing-recipes.js'),'utf8');
+  const variationsSource=readFileSync(resolve(root,'web/radial-timing-variations.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -47,9 +48,12 @@ try {
   assert.ok(existsSync(resolve(root,'web/radial-timing-patterns.js')),'missing Radial Timing Patterns runtime');
   assert.ok(html.includes('<script src="radial-timing-recipes.js"></script>'),'release index must load Radial Timing Recipes');
   assert.ok(existsSync(resolve(root,'web/radial-timing-recipes.js')),'missing Radial Timing Recipes runtime');
+  assert.ok(html.includes('<script src="radial-timing-variations.js"></script>'),'release index must load Radial Timing Variations');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-variations.js')),'missing Radial Timing Variations runtime');
   assert.ok(html.indexOf('radial-timeline.js')<html.indexOf('radial-timing-editor.js'),'Radial Timing Editor must load after Radial Timeline');
   assert.ok(html.indexOf('radial-timing-editor.js')<html.indexOf('radial-timing-patterns.js'),'Radial Timing Patterns must load after the direct editor');
   assert.ok(html.indexOf('radial-timing-patterns.js')<html.indexOf('radial-timing-recipes.js'),'Radial Timing Recipes must load after built-in rhythms');
+  assert.ok(html.indexOf('radial-timing-recipes.js')<html.indexOf('radial-timing-variations.js'),'Radial Timing Variations must load after reusable recipes');
   assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
@@ -123,6 +127,20 @@ try {
   assert.ok(recipesSource.includes('projectCanvasWrites:0'),'Timing Recipes must declare project-canvas isolation');
   assert.ok(recipesSource.includes('artworkUndoWrites:0'),'Timing Recipes must declare artwork-undo isolation');
   assert.ok(recipesSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true'),'Timing Recipes must isolate device persistence from project schema');
+  assert.ok(variationsSource.includes('const MAX_PHASE_VARIANTS=12'),'Timing Variations must visibly bound phase siblings');
+  assert.ok(variationsSource.includes('function generateVariations'),'Timing Variations must deterministically derive sibling recipes');
+  assert.ok(variationsSource.includes('function palindromeValues'),'Timing Variations must expose palindrome transforms');
+  assert.ok(variationsSource.includes('function pulseValues'),'Timing Variations must expose pulse transforms');
+  assert.ok(variationsSource.includes('function compressValues'),'Timing Variations must expose compressed timing');
+  assert.ok(variationsSource.includes('function expandValues'),'Timing Variations must expose expanded timing');
+  assert.ok(variationsSource.includes('inkframe-variation-preview-svg'),'Timing Variations must expose non-destructive preview arcs');
+  assert.ok(variationsSource.includes('patterns.commitAssignments'),'Timing Variations must share timing-only Undo and Redo');
+  assert.ok(variationsSource.includes('recipes.store.save'),'Timing Variations must save siblings through the established device library');
+  assert.ok(variationsSource.includes('const projectViews=new WeakMap()'),'Timing Variation controls must remain memory-only per project');
+  assert.ok(variationsSource.includes('canEditTiming'),'Timing Variations must honor active-stroke guards');
+  assert.ok(variationsSource.includes('projectCanvasWrites:0'),'Timing Variations must declare project-canvas isolation');
+  assert.ok(variationsSource.includes('artworkUndoWrites:0'),'Timing Variations must declare artwork-undo isolation');
+  assert.ok(variationsSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true,randomWrites:0'),'Timing Variations must declare deterministic isolated persistence');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -176,7 +194,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial timing, exposure rhythms, and custom recipe policy passed');
+  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial timing, recipes, and deterministic variation policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
@@ -192,4 +210,6 @@ await import('./radial-timing-patterns.test.mjs');
 await import('./radial-timing-patterns-boot.test.mjs');
 await import('./radial-timing-recipes.test.mjs');
 await import('./radial-timing-recipes-boot.test.mjs');
+await import('./radial-timing-variations.test.mjs');
+await import('./radial-timing-variations-boot.test.mjs');
 await import('./android-branding.test.mjs');
