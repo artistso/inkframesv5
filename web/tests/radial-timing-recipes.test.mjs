@@ -30,19 +30,19 @@ const dirty={schema:99,recipes:[
 ]};
 const clean=recipes.sanitizeLibrary(dirty,100);
 assert.equal(clean.schema,1);assert.equal(clean.recipes.length,3);
-assert.deepEqual(clean.recipes.map(item=>item.id),['badid','badid-2','third']);
-assert.deepEqual(clean.recipes.map(item=>item.name),['Pulse Loop','pulse loop 2','Recipe 3']);
-assert.deepEqual(clean.recipes.map(item=>item.values),[[1,8,2],[3],[1]]);
+assert.deepEqual(Array.from(clean.recipes,item=>item.id),['badid','badid-2','third']);
+assert.deepEqual(Array.from(clean.recipes,item=>item.name),['Pulse Loop','pulse loop 2','Recipe 3']);
+assert.deepEqual(Array.from(clean.recipes,item=>Array.from(item.values)),[[1,8,2],[3],[1]]);
 
 const writes=[];const storage={getItem:()=>null,setItem:(key,value)=>writes.push([key,value])};let sequence=0;
 const store=recipes.createRecipeStore(storage,{now:()=>1000+sequence,makeId:()=>`custom-${++sequence}`});
-const first=store.save('Bounce',[1,2,1,2]);assert.equal(first.name,'Bounce');assert.deepEqual(first.values,[1,2]);
-const updated=store.save('bounce',[3,3,3]);assert.equal(updated.id,first.id);assert.deepEqual(updated.values,[3]);assert.equal(store.snapshot().recipes.length,1);
+const first=store.save('Bounce',[1,2,1,2]);assert.equal(first.name,'Bounce');assert.deepEqual(Array.from(first.values),[1,2]);
+const updated=store.save('bounce',[3,3,3]);assert.equal(updated.id,first.id);assert.deepEqual(Array.from(updated.values),[3]);assert.equal(store.snapshot().recipes.length,1);
 const second=store.save('Ease',[1,1,2,2,3,3]);assert.equal(store.snapshot().recipes.length,2);assert.equal(store.rename(second.id,'Ease Out'),true);
 assert.equal(store.rename(second.id,'Bounce'),false);assert.equal(store.remove(first.id),true);assert.equal(store.find(first.id),null);
 assert.ok(writes.length>=4);assert.equal(JSON.parse(store.exportJson()).schema,1);
 const imported=store.importJson(JSON.stringify({recipes:[{id:'x',name:'Imported',values:[2,1,2,1]}]}));
-assert.deepEqual(imported.recipes[0].values,[2,1]);
+assert.deepEqual(Array.from(imported.recipes[0].values),[2,1]);
 
 const recipe=store.find('x');const pattern=recipes.recipePattern(recipe,{phase:1,reverse:true});
 assert.equal(pattern.id,'recipe:x');assert.equal(pattern.label,'Imported');assert.deepEqual(Array.from(pattern.values),[2,1]);
