@@ -52,7 +52,7 @@ try{
   assert.deepEqual(errors,[],errors.join('\n'));
   const w=dom.window,d=w.document,shape=w.InkFrameCanvasShape,radial=w.InkFrameRadialTimeline,timing=w.InkFrameRadialTiming,patterns=w.InkFrameRadialPatterns;
   assert.ok(shape&&shape.installed);assert.ok(radial&&timing&&patterns,'radial rhythm stack missing');
-  assert.equal(radial.__radialTimingPatched,true);assert.equal(radial.__radialPatternsPatched,true);
+  assert.equal(radial.__radialTimingPatched,true);assert.equal(radial.__radialPatternsPatched,true);assert.equal(patterns.HISTORY_LIMIT,25);
   const canvas=d.getElementById('c'),frameGlass=d.getElementById('frameGlass'),board=d.getElementById('frameBoard');
   Object.defineProperty(frameGlass,'clientWidth',{configurable:true,value:760});Object.defineProperty(frameGlass,'clientHeight',{configurable:true,value:580});
   Object.defineProperty(canvas,'clientWidth',{configurable:true,value:720});Object.defineProperty(canvas,'clientHeight',{configurable:true,value:540});
@@ -83,6 +83,7 @@ try{
   board.querySelector('.inkframe-rhythm-twos').click();await new Promise(r=>setTimeout(r,85));
   assert.deepEqual(Array.from(project.holds),[2,2,2,2,2],'one-tap Twos must batch the complete default scope');
   assert.equal(patterns.viewSnapshot(project).undoDepth,1);assert.equal(patterns.viewSnapshot(project).redoDepth,0);
+  assert.match(board.querySelector('.inkframe-rhythm-undo').title,/1\/25/);
   board.querySelector('.inkframe-rhythm-undo').click();await new Promise(r=>setTimeout(r,75));
   assert.deepEqual(Array.from(project.holds),[1,1,1,1,1]);assert.equal(patterns.viewSnapshot(project).redoDepth,1);
   board.querySelector('.inkframe-rhythm-redo').click();await new Promise(r=>setTimeout(r,75));
@@ -122,6 +123,25 @@ try{
   assert.equal(transactions.length,beforeBlocked,'active-stroke timing guard must block rhythm writes');
   assert.equal(patterns.viewSnapshot(project).open,true,'rhythm shelf state must remain isolated by project');
 
+  const limitProject={},limitHolds=[1],limitTransactions=[];
+  const limitEnv={...fakeEnv,project:limitProject,framesLength:1,selectedFrames:new Set(),loopOn:false,loopIn:0,loopOut:0,holdAt:index=>limitHolds[index],canEditTiming:()=>true,setHolds:entries=>{limitTransactions.push(entries.map(entry=>({...entry})));for(const entry of entries)limitHolds[entry.index]=entry.value;return entries;}};
+  radial.render(board,limitEnv);await new Promise(r=>setTimeout(r,35));
+  for(let index=0;index<26;index++){
+    const before=limitHolds[0],after=index%2===0?2:3;
+    assert.equal(patterns.commitAssignments({id:`limit-${index}`,label:`Limit ${index}`,scope:'all'},[{index:0,before,after}]),true);
+  }
+  assert.equal(limitHolds[0],3);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,25);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,0);
+  for(let index=0;index<25;index++)assert.equal(patterns.undo(),true);
+  assert.equal(limitHolds[0],2,'the first retained state must remain after the oldest transaction is evicted');
+  assert.equal(patterns.undo(),false,'a 26th Undo must be unavailable');
+  assert.equal(patterns.viewSnapshot(limitProject).undoDepth,0);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,25);
+  for(let index=0;index<25;index++)assert.equal(patterns.redo(),true);
+  assert.equal(limitHolds[0],3);assert.equal(patterns.redo(),false);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,25);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,0);
+  assert.equal(patterns.undo(),true);assert.equal(limitHolds[0],2);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,1);
+  assert.equal(patterns.commitAssignments({id:'divergent',label:'Divergent',scope:'all'},[{index:0,before:2,after:4}]),true);
+  assert.equal(limitHolds[0],4);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,25);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,0,'a divergent edit must clear Redo');
+  assert.ok(limitTransactions.length>=52,'25-step history validation must exercise real batched timing writes');
+
   assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);
-  dom.window.close();console.log('✅ generated Android radial exposure rhythms preview, batch selection/loop scopes, timing history, guards, and artwork isolation passed');
+  dom.window.close();console.log('✅ generated Android radial exposure rhythms preview, batch scopes, 25-step timing Undo/Redo, guards, and artwork isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
