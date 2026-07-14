@@ -54,7 +54,9 @@
 
   function variationName(recipe,variation){
     const base=recipe&&recipe.name?String(recipe.name):'Recipe',label=variation&&variation.label?String(variation.label):'Variation';
-    return `${base} · ${label}`.slice(0,32);
+    const separator=' · ',maximum=32,safeLabel=label.slice(0,Math.max(1,maximum-separator.length-1));
+    const safeBase=base.slice(0,Math.max(1,maximum-separator.length-safeLabel.length));
+    return `${safeBase}${separator}${safeLabel}`.slice(0,maximum);
   }
   function baseRecipe(environment){
     const recipes=root.InkFrameRadialRecipes;if(!recipes||!environment)return null;
