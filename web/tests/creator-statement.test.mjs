@@ -1,3 +1,4 @@
+// InkFrame 0.4.0 creator statement and preserved profile-history release gate
 import assert from 'node:assert/strict';
 import {existsSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
