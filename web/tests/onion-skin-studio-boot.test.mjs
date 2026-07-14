@@ -31,7 +31,7 @@ future=panel.querySelector('input[data-key="futureOpacity"]');future.value='35';
 assert.equal(settings.futureOpacity,.35);assert.equal(settings.pastOpacity,.7);
 
 const pastBefore=settings.pastColor,futureBefore=settings.futureColor;button('Swap colors').click();assert.equal(settings.pastColor,futureBefore);assert.equal(settings.futureColor,pastBefore);
-button('Active layer').click();assert.equal(settings.layerOnly,true);assert.equal(button('Active layer'),undefined,'label must update after switching to active-layer mode');assert.ok(button('Full frame'));
+button('Full frame').click();assert.equal(settings.layerOnly,true);assert.equal(button('Full frame'),undefined,'label must update after switching to active-layer mode');assert.ok(button('Active layer'));
 button('Reset').click();assert.deepEqual(settings,{enabled:true,depth:2,pastOpacity:.34,futureOpacity:.24,tint:.5,layerOnly:false,pastColor:'#880057',futureColor:'#f7cac9'});
 
 projectIndex=1;studio.renderPanel();assert.equal(panel.hidden,true,'a second project must not inherit the first project panel state');toggle.click();assert.equal(panel.hidden,false);
