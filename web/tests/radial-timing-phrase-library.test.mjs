@@ -67,3 +67,5 @@ const project={};assert.deepEqual({...libraryApi.viewSnapshot(project)},{open:fa
 assert.equal(libraryApi.projectCanvasWrites,0);assert.equal(libraryApi.artworkUndoWrites,0);assert.equal(libraryApi.timelineTimingWrites,0);
 assert.equal(libraryApi.projectSchemaWrites,0);assert.equal(libraryApi.deviceLibraryWrites,true);assert.equal(libraryApi.sourceRecipeWrites,0);assert.equal(libraryApi.randomWrites,0);assert.equal(libraryApi.transientPhraseWrites,true);
 console.log('✅ phrase arrangement library sanitation, bounds, updates, provenance, persistence, and isolation passed');
+
+await import('./radial-timing-score.test.mjs');
