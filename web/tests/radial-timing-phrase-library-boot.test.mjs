@@ -108,3 +108,5 @@ try{
   assert.equal(phraseLibrary.projectCanvasWrites,0);assert.equal(phraseLibrary.artworkUndoWrites,0);assert.equal(phraseLibrary.timelineTimingWrites,0);assert.equal(phraseLibrary.projectSchemaWrites,0);assert.equal(phraseLibrary.deviceLibraryWrites,true);assert.equal(phraseLibrary.sourceRecipeWrites,0);assert.equal(phraseLibrary.randomWrites,0);assert.equal(phraseLibrary.transientPhraseWrites,true);
   dom.window.close();console.log('✅ generated Android phrase arrangement save, update, duplicate, rename, load, provenance, persistence, guards, and isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
+
+await import('./radial-timing-score-boot.test.mjs');
