@@ -34,5 +34,5 @@ try{
   selectedButtons[2].click();assert.ok(store.snapshot().presets.some(preset=>preset.name.startsWith('Recovered ·')));
   lockButtons[1].click();await new Promise(resolvePromise=>setTimeout(resolvePromise,20));assert.equal(adapter.currentTuning().stabilizerStrength,locked.stabilizerStrength);
   assert.ok(w.localStorage.getItem('inkframe.brushEngine.profileHistory.v1'));assert.equal(history.projectCanvasWrites,0);assert.equal(history.undoWrites,0);assert.equal(w.__canvasOps.filter(operation=>operation.canvas===main).length,mainBefore);
-  history.destroy();dom.close();console.log('✅ generated Android Profile Lock and tuning recovery are project-isolated');
+  history.destroy();dom.window.close();console.log('✅ generated Android Profile Lock and tuning recovery are project-isolated');
 }finally{rmSync(temp,{recursive:true,force:true});}
