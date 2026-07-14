@@ -190,16 +190,26 @@ jobs:
           echo "INKFRAME_KEY_PASSWORD=$INKFRAME_KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "INKFRAME_SIGNING_SOURCE=$SIGNING_SOURCE" >> "$GITHUB_ENV"
 
-      - name: Verify release and Play metadata
+      - name: Verify generated release notes
+        run: node tools/update-release-notes.mjs --check
+
+      - name: Validate Google Play metadata
+        run: node tools/validate-play-release.mjs
+
+      - name: Verify version synchronization
+        run: node web/tests/version-smoke.mjs
+
+      - name: Verify release script syntax
         run: |
-          node tools/update-release-notes.mjs --check
-          node tools/validate-play-release.mjs
-          node web/tests/version-smoke.mjs
           node --check tools/inject-brush-v2-index.mjs
           node --check web/brush-engine-v2/runtime.js
           node --check web/brush-engine-v2/input.js
-          node web/tests/brush-engine-v2-runtime.test.mjs
-          node web/tests/brush-engine-v2-release.test.mjs
+
+      - name: Verify Brush V2 runtime policy
+        run: node web/tests/brush-engine-v2-runtime.test.mjs
+
+      - name: Verify complete production asset policy
+        run: node web/tests/brush-engine-v2-release.test.mjs
 
       - name: Run JVM and brush regression tests
         run: |
