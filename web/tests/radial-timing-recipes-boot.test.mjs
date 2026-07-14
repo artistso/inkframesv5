@@ -78,7 +78,7 @@ try{
   const selectionRecipe=recipes.store.snapshot().recipes.find(item=>item.name==='Selection');assert.ok(selectionRecipe);assert.deepEqual(Array.from(selectionRecipe.values),[2,4,6]);
   assert.equal(transactions.length,2,'only prior apply and undo should have written timing');
 
-  const restored=recipes.createRecipeStore(w.localStorage).snapshot();assert.equal(restored.recipes.length,2);assert.deepEqual(restored.recipes.map(item=>item.name),['Pulse Three','Selection']);
+  const restored=recipes.createRecipeStore(w.localStorage).snapshot();assert.equal(restored.recipes.length,2);assert.deepEqual(Array.from(restored.recipes,item=>item.name),['Pulse Three','Selection']);
   const beforeBlocked=transactions.length;env.canEditTiming=()=>false;radial.render(board,env);await new Promise(r=>setTimeout(r,40));
   const applyBlocked=board.querySelector('.inkframe-recipe-apply');assert.ok(applyBlocked);applyBlocked.click();await new Promise(r=>setTimeout(r,35));assert.equal(transactions.length,beforeBlocked,'active-stroke guard must block recipe writes');
 
