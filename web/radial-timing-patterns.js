@@ -111,14 +111,24 @@
     if(!entries.length)return false;
     lastEnvironment.setHolds(entries);scheduleRefresh();return true;
   }
+  function commitAssignments(meta,assignments){
+    if(!lastEnvironment||!canEdit(lastEnvironment))return false;
+    const changed=changedAssignments(assignments);if(!changed.length)return false;
+    const input=meta&&typeof meta==='object'?meta:{};
+    const transaction=Object.freeze({
+      patternId:String(input.id||input.patternId||'custom'),
+      label:String(input.label||'Custom rhythm').slice(0,48),
+      scope:String(input.scope||'custom').slice(0,24),
+      assignments:changed,
+    });
+    const history=historyFor(lastEnvironment);if(!writeAssignments(changed))return false;
+    history.undo.push(transaction);if(history.undo.length>20)history.undo.shift();history.redo.length=0;
+    const view=viewFor(lastEnvironment);view.previewPatternId=null;return true;
+  }
   function applyPattern(patternId){
     const pattern=patternById(patternId);if(!pattern||!lastEnvironment||!canEdit(lastEnvironment))return false;
-    const scope=resolveTargetIndices(lastEnvironment),assignments=changedAssignments(assignmentsForPattern(pattern,scope.indices,lastEnvironment.holdAt));
-    if(!assignments.length)return false;
-    const history=historyFor(lastEnvironment);if(!writeAssignments(assignments))return false;
-    history.undo.push(Object.freeze({patternId:pattern.id,label:pattern.label,scope:scope.kind,assignments}));
-    if(history.undo.length>20)history.undo.shift();history.redo.length=0;
-    const view=viewFor(lastEnvironment);view.previewPatternId=null;return true;
+    const scope=resolveTargetIndices(lastEnvironment),assignments=assignmentsForPattern(pattern,scope.indices,lastEnvironment.holdAt);
+    return commitAssignments({id:pattern.id,label:pattern.label,scope:scope.kind},assignments);
   }
   function undo(){
     if(!lastEnvironment||!canEdit(lastEnvironment))return false;
@@ -221,7 +231,7 @@
 
   const api={
     patterns:PATTERNS,patternById,normalizeIndices,resolveTargetIndices,assignmentsForPattern,changedAssignments,invertAssignments,
-    applyPattern,undo,redo,render,viewSnapshot,installIntoRadial,
+    commitAssignments,applyPattern,undo,redo,render,viewSnapshot,installIntoRadial,
     projectCanvasWrites:0,artworkUndoWrites:0,timelineTimingWrites:true,projectSchemaWrites:0,
   };
   root.InkFrameRadialPatterns=api;installIntoRadial();
