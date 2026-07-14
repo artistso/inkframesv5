@@ -2,13 +2,69 @@
 # InkFrame Studio CLI pipeline
 # Agent Mode / GitHub-aware
 set -euo pipefail
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 cmd="${1:-help}"
 shift || true
 
-need_gh(){ command -v gh >/dev/null 2>&1 || { echo "gh (GitHub CLI) is required for '$1'. Install: https://cli.github.com/"; exit 1; }; }
+need_gh(){
+  command -v gh >/dev/null 2>&1 || {
+    echo "gh (GitHub CLI) is required for '$1'. Install: https://cli.github.com/" >&2
+    exit 1
+  }
+}
+
+require_clean_synced_main(){
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    echo "Release preparation must run inside the InkFrame git checkout." >&2
+    exit 1
+  }
+
+  local branch dirty behind ahead
+  branch="$(git branch --show-current)"
+  if [ "$branch" != "main" ]; then
+    echo "Release preparation must start from main; current branch: ${branch:-detached}." >&2
+    exit 1
+  fi
+
+  dirty="$(git status --porcelain)"
+  if [ -n "$dirty" ]; then
+    echo "Release preparation requires a clean working tree." >&2
+    echo "$dirty" >&2
+    exit 1
+  fi
+
+  git fetch origin main --tags
+  behind="$(git rev-list --count HEAD..origin/main)"
+  ahead="$(git rev-list --count origin/main..HEAD)"
+  if [ "$behind" != "0" ] || [ "$ahead" != "0" ]; then
+    echo "main must exactly match origin/main before a version bump (behind=$behind, ahead=$ahead)." >&2
+    exit 1
+  fi
+}
+
+resolve_version(){
+  local arg="${1:-patch}" cur maj min pat
+  if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+    printf '%s\n' "$arg"
+    return
+  fi
+
+  cur="$(node -p "require('./web/metadata.json').version")"
+  IFS=. read -r maj min pat <<<"$cur"
+  case "$arg" in
+    major) maj=$((maj+1)); min=0; pat=0 ;;
+    minor) min=$((min+1)); pat=0 ;;
+    patch) pat=$((pat+1)) ;;
+    *)
+      echo "Version must be patch, minor, major, or an explicit semantic version; got: $arg" >&2
+      return 2
+      ;;
+  esac
+  printf '%s.%s.%s\n' "$maj" "$min" "$pat"
+}
 
 case "$cmd" in
   dev)
@@ -16,146 +72,164 @@ case "$cmd" in
     [ -d node_modules ] || npm install
     npm run dev
     ;;
+
   build-web)
     cd web
     [ -d node_modules ] || npm install
     npm run build
     echo "Built -> web/dist/"
     ;;
+
   serve)
     cd web
     python3 -m http.server 8080
     ;;
+
   build-apk)
     ./gradlew :app:assembleDebug
     echo "APK: app/build/outputs/apk/debug/app-debug.apk"
     ;;
+
   test)
     ./gradlew test
     ;;
+
   bump)
-    arg="${1:-patch}"
-    # tools/bump-version.mjs expects explicit semver, so auto-increment patch/minor/major
-    if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-      ver="$arg"
-    else
-      cur=$(node -p "require('./web/metadata.json').version")
-      IFS=. read -r maj min pat <<<"$cur"
-      case "$arg" in
-        major) maj=$((maj+1)); min=0; pat=0 ;;
-        minor) min=$((min+1)); pat=0 ;;
-        *)     pat=$((pat+1)) ;;
-      esac
-      ver="$maj.$min.$pat"
-    fi
+    ver="$(resolve_version "${1:-patch}")"
     node tools/bump-version.mjs "$ver"
     ;;
+
   release-check)
     node tools/prepare-release.mjs
     ;;
+
   export-gif)
     node tools/inkframe-cli.mjs export-gif "$@"
     ;;
+
   export)
     node tools/inkframe-cli.mjs "$@"
     ;;
 
-  # --- GitHub / Agent Mode ---
+  # --- GitHub / Agent Mode -------------------------------------------------
   gh-clone)
     need_gh gh-clone
     gh repo clone artistso/inkframesv5 "${1:-inkframesv5}"
     ;;
+
   gh-ci)
     need_gh gh-ci
     task="${1:-apk}"
+    case "$task" in
+      apk|web|test|all) ;;
+      *) echo "Task must be one of: apk, web, test, all" >&2; exit 1 ;;
+    esac
     gh workflow run agent-build.yml -f task="$task"
     echo "Triggered. Watch with: gh run watch"
     ;;
+
   gh-ci-get)
     need_gh gh-ci-get
-    # gh run download <run-id> -n inkframe-agent-apk
     run_id="${1:-}"
     if [ -z "$run_id" ]; then
-      echo "Usage: ./inkframe-cli gh-ci-get <run-id>"
-      echo "Find run-id with: gh run list --workflow=agent-build.yml"
+      echo "Usage: ./inkframe-cli gh-ci-get <run-id>" >&2
+      echo "Find run-id with: gh run list --workflow=agent-build.yml" >&2
       exit 1
     fi
     gh run download "$run_id" -n inkframe-agent-apk
     echo "Downloaded APK to ./inkframe-agent-apk/"
     ;;
+
   gh-release)
-    need_gh gh-release
-    # bump, commit, tag, push – triggers release.yml, which builds and
-    # publishes the debug APK (InkFrame-vX.Y.Z-debug.apk) as the canonical
-    # GitHub Release artifact.
-    arg="${1:-patch}"
-    if [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-      ver="$arg"
-    else
-      cur=$(node -p "require('./web/metadata.json').version")
-      IFS=. read -r maj min pat <<<"$cur"
-      case "$arg" in
-        major) maj=$((maj+1)); min=0; pat=0 ;;
-        minor) min=$((min+1)); pat=0 ;;
-        *)     pat=$((pat+1)) ;;
-      esac
-      ver="$maj.$min.$pat"
-    fi
+    # Historical versions of this command staged every local change, committed,
+    # tagged, and pushed main automatically. That bypassed review and could publish
+    # unrelated files. The command now performs preparation only.
+    require_clean_synced_main
+    ver="$(resolve_version "${1:-patch}")"
     node tools/bump-version.mjs "$ver"
-    git add -A
-    git commit -m "v$ver" || true
-    git tag -a "v$ver" -m "InkFrame Studio $ver"
-    git push origin main --tags
-    echo "Pushed v$ver – watch: https://github.com/artistso/inkframesv5/actions/workflows/release.yml"
+    if [ -f tools/validate-play-release.mjs ]; then
+      node tools/validate-play-release.mjs
+    fi
+
+    cat <<EOF
+
+Prepared InkFrame $ver release metadata.
+
+No commit, tag, or push was created.
+
+Required next steps:
+  1. Review: git status --short && git diff
+  2. Confirm CHANGELOG.md, RELEASE_NOTES.md, and Play listing text.
+  3. Commit only reviewed release files and push main.
+  4. Wait for green CI and complete RELEASE_CHECKLIST.md on the target tablet.
+  5. Run: ./inkframe-cli release-check
+  6. Execute the exact tag and push commands printed by release-check.
+
+The matching v$ver tag triggers the permanent-key signed APK/AAB workflow.
+EOF
     ;;
+
   agent)
-    # Agent Mode entry – run a named task end-to-end
-    # ./inkframe-cli agent build   -> test + build-apk
-    # ./inkframe-cli agent release patch -> bump + tag + push
     sub="${1:-help}"
     shift || true
     case "$sub" in
-      build) ./gradlew test && ./gradlew :app:assembleDebug && echo "OK $(ls -lh app/build/outputs/apk/debug/*.apk | awk '{print $9, $5}')" ;;
-      web) cd web && npm ci && npm run build ;;
-      release) "$0" gh-release "${1:-patch}" ;;
-      export-gif) node tools/inkframe-cli.mjs export-gif "$@" ;;
-      *) echo "agent tasks: build | web | release [patch|minor|major] | export-gif <in> <out>"; exit 1 ;;
+      build)
+        ./gradlew test
+        ./gradlew :app:assembleDebug
+        echo "OK $(ls -lh app/build/outputs/apk/debug/*.apk | awk '{print $9, $5}')"
+        ;;
+      web)
+        cd web
+        npm ci
+        npm run build
+        ;;
+      release)
+        "$0" gh-release "${1:-patch}"
+        ;;
+      export-gif)
+        node tools/inkframe-cli.mjs export-gif "$@"
+        ;;
+      *)
+        echo "agent tasks: build | web | release [patch|minor|major|version] | export-gif <in> <out>" >&2
+        exit 1
+        ;;
     esac
     ;;
 
   help|*)
     cat <<'EOF'
-InkFrame Studio CLI – Agent Mode ready
+InkFrame Studio CLI — Agent Mode ready
 
 Local:
   dev              Vite HMR http://localhost:5173
-  build-web        npm run build → web/dist/
+  build-web        npm run build -> web/dist/
   serve            python -m http.server 8080
   build-apk        ./gradlew :app:assembleDebug
   test             ./gradlew test
-  bump <patch|minor|major>
-  release-check    verify + print git tag commands
+  bump <patch|minor|major|version>
+  release-check    verify clean synchronized main and print tag commands
   export-gif in.inkframe out.gif [--fps 12] [--width 1024]
 
 GitHub / Agent Mode:
-  gh-clone [dir]              gh repo clone artistso/inkframesv5
-  gh-ci [apk|web|test|all]    trigger agent-build.yml workflow
-  gh-ci-get <run-id>          download inkframe-agent-apk artifact
-  gh-release [patch|minor|major]  bump → commit → tag → push → GitHub Release builds & publishes InkFrame-vX.Y.Z-debug.apk
-  agent build                 test + build-apk (CI-free local)
-  agent web                   npm ci + build
-  agent release patch         full release via gh
-  agent export-gif in out     headless GIF
+  gh-clone [dir]                    clone artistso/inkframesv5
+  gh-ci [apk|web|test|all]          trigger agent-build.yml
+  gh-ci-get <run-id>                download inkframe-agent-apk
+  gh-release <patch|minor|major|version>
+                                     prepare metadata only; never commit/tag/push
+  agent build                       test + debug APK
+  agent web                         npm ci + web build
+  agent release <version-kind>      safe release preparation
+  agent export-gif in out           headless GIF
 
-Examples:
-  ./inkframe-cli dev
-  ./inkframe-cli build-apk
-  ./inkframe-cli agent build
-  ./inkframe-cli gh-ci apk
-  ./inkframe-cli gh-release patch
-  ./inkframe-cli export-gif my.inkframe out.gif --fps 24
+Release publication is intentionally multi-step:
+  prepare -> review -> commit/push -> green CI/tablet acceptance -> release-check -> tag
 
-Docs: docs/PIPELINE.md  docs/BUILD.md  docs/ARCHITECTURE.md
+Docs:
+  AGENT.md
+  ARCHITECTURE.md
+  BUILD.md
+  RELEASING.md
+  RELEASE_CHECKLIST.md
 EOF
     ;;
 esac
