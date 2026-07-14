@@ -28,6 +28,7 @@ try {
   const patternsSource=readFileSync(resolve(root,'web/radial-timing-patterns.js'),'utf8');
   const recipesSource=readFileSync(resolve(root,'web/radial-timing-recipes.js'),'utf8');
   const variationsSource=readFileSync(resolve(root,'web/radial-timing-variations.js'),'utf8');
+  const morphSource=readFileSync(resolve(root,'web/radial-timing-morph.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -50,10 +51,13 @@ try {
   assert.ok(existsSync(resolve(root,'web/radial-timing-recipes.js')),'missing Radial Timing Recipes runtime');
   assert.ok(html.includes('<script src="radial-timing-variations.js"></script>'),'release index must load Radial Timing Variations');
   assert.ok(existsSync(resolve(root,'web/radial-timing-variations.js')),'missing Radial Timing Variations runtime');
+  assert.ok(html.includes('<script src="radial-timing-morph.js"></script>'),'release index must load Radial Timing Morph');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-morph.js')),'missing Radial Timing Morph runtime');
   assert.ok(html.indexOf('radial-timeline.js')<html.indexOf('radial-timing-editor.js'),'Radial Timing Editor must load after Radial Timeline');
   assert.ok(html.indexOf('radial-timing-editor.js')<html.indexOf('radial-timing-patterns.js'),'Radial Timing Patterns must load after the direct editor');
   assert.ok(html.indexOf('radial-timing-patterns.js')<html.indexOf('radial-timing-recipes.js'),'Radial Timing Recipes must load after built-in rhythms');
   assert.ok(html.indexOf('radial-timing-recipes.js')<html.indexOf('radial-timing-variations.js'),'Radial Timing Variations must load after reusable recipes');
+  assert.ok(html.indexOf('radial-timing-variations.js')<html.indexOf('radial-timing-morph.js'),'Radial Timing Morph must load after deterministic variations');
   assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
@@ -141,6 +145,20 @@ try {
   assert.ok(variationsSource.includes('projectCanvasWrites:0'),'Timing Variations must declare project-canvas isolation');
   assert.ok(variationsSource.includes('artworkUndoWrites:0'),'Timing Variations must declare artwork-undo isolation');
   assert.ok(variationsSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true,randomWrites:0'),'Timing Variations must declare deterministic isolated persistence');
+  assert.ok(morphSource.includes('const MAX_ALIGNED_VALUES=120'),'Timing Morph must bound cyclic alignment');
+  assert.ok(morphSource.includes('function greatestCommonDivisor'),'Timing Morph must expose deterministic period arithmetic');
+  assert.ok(morphSource.includes('function alignmentLength'),'Timing Morph must align source recipe periods');
+  assert.ok(morphSource.includes('function blendValues'),'Timing Morph must interpolate normalized hold values');
+  assert.ok(morphSource.includes('function blendName'),'Timing Morph must preserve source and mix provenance');
+  assert.ok(morphSource.includes('inkframe-morph-preview-svg'),'Timing Morph must expose non-destructive preview arcs');
+  assert.ok(morphSource.includes('patterns.commitAssignments'),'Timing Morph must share timing-only Undo and Redo');
+  assert.ok(morphSource.includes('recipes.store.save'),'Timing Morph must save blends through the established device library');
+  assert.ok(morphSource.includes('const projectViews=new WeakMap()'),'Timing Morph controls must remain memory-only per project');
+  assert.ok(morphSource.includes('canEditTiming'),'Timing Morph must honor active-stroke guards');
+  assert.ok(morphSource.includes('sourceRecipeWrites:0,randomWrites:0'),'Timing Morph must preserve source recipes and remain deterministic');
+  assert.ok(morphSource.includes('projectCanvasWrites:0'),'Timing Morph must declare project-canvas isolation');
+  assert.ok(morphSource.includes('artworkUndoWrites:0'),'Timing Morph must declare artwork-undo isolation');
+  assert.ok(morphSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true'),'Timing Morph must isolate device persistence from project schema');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -194,7 +212,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial timing, recipes, and deterministic variation policy passed');
+  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial timing, recipes, variations, and deterministic morph policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
@@ -212,4 +230,6 @@ await import('./radial-timing-recipes.test.mjs');
 await import('./radial-timing-recipes-boot.test.mjs');
 await import('./radial-timing-variations.test.mjs');
 await import('./radial-timing-variations-boot.test.mjs');
+await import('./radial-timing-morph.test.mjs');
+await import('./radial-timing-morph-boot.test.mjs');
 await import('./android-branding.test.mjs');
