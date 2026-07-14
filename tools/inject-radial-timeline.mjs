@@ -6,7 +6,7 @@ const block=(...lines)=>lines.join('\n');
 export function injectRadialTimeline(html,replaceOnce){
   html=replaceOnce(html,
     block('<script src="brush-math.js"></script>','<script src="canvas-shape.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
-    block('<script src="brush-math.js"></script>','<script src="canvas-shape.js"></script>','<script src="radial-timeline.js"></script>','<script src="radial-timing-editor.js"></script>','<script src="radial-timing-patterns.js"></script>','<script src="radial-timing-recipes.js"></script>','<script src="radial-timing-variations.js"></script>','<script src="radial-timing-morph.js"></script>','<script src="radial-timing-phrases.js"></script>','<script src="radial-timing-phrase-library.js"></script>','<script src="radial-timing-score.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
+    block('<script src="brush-math.js"></script>','<script src="canvas-shape.js"></script>','<script src="radial-timeline.js"></script>','<script src="radial-timing-editor.js"></script>','<script src="radial-timing-patterns.js"></script>','<script src="radial-timing-recipes.js"></script>','<script src="radial-timing-variations.js"></script>','<script src="radial-timing-morph.js"></script>','<script src="radial-timing-phrases.js"></script>','<script src="radial-timing-phrase-library.js"></script>','<script src="radial-timing-score.js"></script>','<script src="radial-timing-score-library.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
     'Radial Timeline runtime scripts');
 
   html=replaceOnce(html,
@@ -38,6 +38,7 @@ export function injectRadialTimeline(html,replaceOnce){
     'radial-timing-phrases.js',
     'radial-timing-phrase-library.js',
     'radial-timing-score.js',
+    'radial-timing-score-library.js',
     'InkFrameRadialTimeline.render(board',
     'InkFrameRadialTimeline.refreshThumbnail(cur,thumb)',
     'InkFrameRadialTimeline.syncPlayback({',
