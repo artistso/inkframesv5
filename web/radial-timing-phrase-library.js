@@ -135,7 +135,7 @@
     return view.selectedId?store.find(view.selectedId):null;
   }
   function viewSnapshot(project){
-    const view=project&&projectViews.get(project)||fallbackView,record=currentRecord(view),resolved=record?resolveRecord(record,recipeLibrary()):null;
+    const existing=project&&projectViews.get(project),view=existing||(project?{open:false,selectedId:null,name:''}:fallbackView),record=view.selectedId?store.find(view.selectedId):null,resolved=record?resolveRecord(record,recipeLibrary()):null;
     return Object.freeze({open:!!view.open,selectedId:view.selectedId||null,name:String(view.name||''),phraseCount:store.snapshot().phrases.length,missingCount:resolved?resolved.missing.length:0,changedCount:resolved?resolved.changed.length:0,loadable:!!(resolved&&resolved.loadable)});
   }
   function recipeLibrary(){
