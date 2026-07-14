@@ -76,6 +76,9 @@ const recipeSnapshot=JSON.stringify(recipes),arrangementSnapshot=JSON.stringify(
 score.createScore([{arrangementId:'opening',repeat:2}],arrangements,recipes);score.resolveArrangement(arrangements[0],recipes);
 assert.equal(JSON.stringify(recipes),recipeSnapshot,'score composition must not mutate source recipes');
 assert.equal(JSON.stringify(arrangements),arrangementSnapshot,'score composition must not mutate source arrangements');
+assert.equal(score.loadStructure({sections:[{arrangementId:'opening',repeat:1}]}),false,'structural loading requires an installed score environment');
 const project={};assert.deepEqual({...score.viewSnapshot(project),sections:Array.from(score.viewSnapshot(project).sections)},{open:false,selectedArrangementId:null,sections:[],preview:false,name:'',arrangementCount:0,scoreLength:0,valid:false,truncated:false,unresolvedCount:0,changedCount:0});
 assert.equal(score.projectCanvasWrites,0);assert.equal(score.artworkUndoWrites,0);assert.equal(score.timelineTimingWrites,true);assert.equal(score.projectSchemaWrites,0);assert.equal(score.deviceLibraryWrites,true);assert.equal(score.sourceArrangementWrites,0);assert.equal(score.sourceRecipeWrites,0);assert.equal(score.randomWrites,0);
 console.log('✅ deterministic timing score ordering, repeats, provenance resolution, capping, reduction, naming, and isolation passed');
+
+await import('./radial-timing-score-library.test.mjs');
