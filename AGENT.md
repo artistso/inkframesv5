@@ -63,8 +63,9 @@ Available agent workflow tasks are `apk`, `web`, `test`, and `all`.
 ## Workflows
 
 - `.github/workflows/android.yml` — web and brush tests, JVM tests, debug APK, and disposable-key production-path verification
-- `.github/workflows/release-policy.yml` — release-policy diagnostics and generated-asset contracts
+- `.github/workflows/release-policy-diagnostics.yml` — release-policy diagnostics and generated-asset contracts
 - `.github/workflows/agent-build.yml` — manually dispatched agent build entry point
+- `.github/workflows/agent-cli.yml` — path-filtered shell and release-helper safety checks
 - `.github/workflows/release.yml` — permanent-key signed APK/AAB workflow and GitHub Release publication
 
 Artifacts from the disposable CI signing job prove the production build path only. They must not be uploaded to Google Play.
