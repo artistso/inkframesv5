@@ -1,16 +1,19 @@
 name: Signed Android Release
 
 # A matching v* tag builds and publishes release APK/AAB artifacts with the
-# long-lived InkFrame upload key. Manual runs are private signing dry runs only.
+# long-lived InkFrame upload key. A release-trigger/v* branch provides a
+# repository-native fallback when tag creation is unavailable to the connected
+# GitHub client. Manual runs are private signing dry runs only.
 # Missing or incomplete credentials fail before Gradle packages a release.
 
 on:
   push:
     tags: [ 'v*' ]
+    branches: [ 'release-trigger/v*' ]
   workflow_dispatch:
     inputs:
       expected_version:
-        description: Version expected in web/metadata.json, for example 0.2.0
+        description: Version expected in web/metadata.json, for example 0.4.0
         required: true
         type: string
 
@@ -76,17 +79,24 @@ jobs:
             fi
             RELEASE_MODE="dry-run"
             RELEASE_LABEL="v${VERSION}-dry-run"
-          else
-            if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
-              echo "Non-manual release runs must originate from a v* tag." >&2
-              exit 1
-            fi
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
               echo "Tag $GITHUB_REF_NAME does not match metadata version v$VERSION" >&2
               exit 1
             fi
             RELEASE_MODE="tag-release"
             RELEASE_LABEL="v${VERSION}"
+          elif [[ "$GITHUB_REF" == refs/heads/release-trigger/v* ]]; then
+            TRIGGER_VERSION="${GITHUB_REF_NAME#release-trigger/v}"
+            if [[ "$TRIGGER_VERSION" != "$VERSION" ]]; then
+              echo "Release trigger $GITHUB_REF_NAME does not match metadata version v$VERSION" >&2
+              exit 1
+            fi
+            RELEASE_MODE="tag-release"
+            RELEASE_LABEL="v${VERSION}"
+          else
+            echo "Release runs must originate from a matching v* tag, release-trigger/v* branch, or manual dispatch." >&2
+            exit 1
           fi
 
           echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -150,6 +160,7 @@ jobs:
           grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'creator-statement.js' "$RUNNER_TEMP/inkframe-release-index.html"
           if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
             echo "Production index unexpectedly loads native diagnostics" >&2
             exit 1
@@ -162,7 +173,7 @@ jobs:
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
-          BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK")"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
           grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
 
@@ -197,7 +208,7 @@ jobs:
             if [[ "$INKFRAME_RELEASE_MODE" == "dry-run" ]]; then
               echo "This manual run creates private verification artifacts only. It does not publish a GitHub Release or upload to Google Play."
             else
-              echo "This tag run is eligible to publish the GitHub Release after all preceding checks pass."
+              echo "This release-trigger run is eligible to create the v${INKFRAME_VERSION} GitHub Release after all preceding checks pass."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -207,12 +218,14 @@ jobs:
           name: inkframe-signed-${{ env.INKFRAME_RELEASE_LABEL }}
           path: release/*
           if-no-files-found: error
-          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 14 }}
+          retention-days: ${{ env.INKFRAME_RELEASE_MODE == 'tag-release' && 90 || 14 }}
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.INKFRAME_RELEASE_MODE == 'tag-release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.INKFRAME_RELEASE_LABEL }}
+          target_commitish: main
           files: release/*
           body_path: RELEASE_NOTES.md
           name: InkFrame ${{ env.INKFRAME_RELEASE_LABEL }}
