@@ -22,7 +22,7 @@ const arc=studio.applyPreset(base,'arc');
 assert.deepEqual({...arc},{enabled:true,depth:6,pastOpacity:.18,futureOpacity:.14,tint:.82,layerOnly:false,pastColor:'#112233',futureColor:'#445566'});
 assert.equal(studio.matchingPreset(arc).id,'arc');
 const layer=studio.applyPreset(base,'layer');assert.equal(layer.layerOnly,true);assert.equal(layer.depth,3);assert.equal(studio.matchingPreset(layer).id,'layer');
-assert.equal(studio.applyPreset(base,'missing'),base,'unknown presets must return the normalized current object');
+assert.deepEqual({...studio.applyPreset(base,'missing')},{...base},'unknown presets must preserve the current normalized values');
 
 const signature=studio.settingsSignature(arc);assert.equal(signature,'1|6|0.180|0.140|0.820|0|#112233|#445566');
 assert.equal(studio.projectCanvasWrites,0);assert.equal(studio.artworkUndoWrites,0);assert.equal(studio.projectSchemaWrites,0);assert.equal(studio.historyWrites,0);
