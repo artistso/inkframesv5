@@ -121,7 +121,14 @@
     const grid=document.createElement('div');grid.className='inkframe-onion-grid';
     grid.appendChild(rangeRow(document,'depth','Depth',0,8,1,0));grid.appendChild(rangeRow(document,'tint','Tint',0,100,1,.01));grid.appendChild(rangeRow(document,'pastOpacity','Past ghost',2,85,1,.01));grid.appendChild(rangeRow(document,'futureOpacity','Future ghost',2,85,1,.01));panel.appendChild(grid);
     const colors=document.createElement('div');colors.className='inkframe-onion-colors';
-    for(const [key,label] of [['pastColor','Past color'],['futureColor','Future color']]){const wrap=document.createElement('label');wrap.className='inkframe-onion-color';wrap.textContent=label;const input=document.createElement('input');input.type='color';input.dataset.key=key;input.value=settings[key];input.disabled=blocked;input.addEventListener('input',()=>applyChange({[key]:input.value},`${label} · ${input.value}`));wrap.appendChild(input);colors.appendChild(wrap);}panel.appendChild(colors);
+    for(const [key,label] of [['pastColor','Past color'],['futureColor','Future color']]){
+      const wrap=document.createElement('label');wrap.className='inkframe-onion-color';wrap.textContent=label;
+      const input=document.createElement('input');input.type='color';input.dataset.key=key;input.value=settings[key];input.disabled=blocked;
+      input.addEventListener('input',()=>{wrap.dataset.previewColor=input.value;});
+      input.addEventListener('change',()=>applyChange({[key]:input.value},`${label} · ${input.value}`));
+      wrap.appendChild(input);colors.appendChild(wrap);
+    }
+    panel.appendChild(colors);
     const actions=document.createElement('div');actions.className='inkframe-onion-actions';
     const enabled=makeButton(document,settings.enabled?'Onion On':'Onion Off','',()=>applyChange({enabled:!settings.enabled},settings.enabled?'Onion skin off':'Onion skin on'));enabled.setAttribute('aria-pressed',settings.enabled?'true':'false');enabled.disabled=blocked;actions.appendChild(enabled);
     const layer=makeButton(document,settings.layerOnly?'Active layer':'Full frame','',()=>applyChange({layerOnly:!settings.layerOnly},settings.layerOnly?'Onion · full frame':'Onion · active layer only'));layer.setAttribute('aria-pressed',settings.layerOnly?'true':'false');layer.disabled=blocked;actions.appendChild(layer);
