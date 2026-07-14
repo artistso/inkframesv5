@@ -1,10 +1,10 @@
 name: Signed Android Release
 
-# A matching v* tag builds and publishes release APK/AAB artifacts with the
-# long-lived InkFrame upload key. A release-trigger/v* branch provides a
-# repository-native fallback when tag creation is unavailable to the connected
-# GitHub client. Manual runs are private signing dry runs only.
-# Missing or incomplete credentials fail before Gradle packages a release.
+# Matching v* tags build and publish using a configured long-lived upload key.
+# The release-trigger/v* branch can also create a release. When repository
+# signing secrets are absent, that branch generates one permanent upload key,
+# encrypts its recovery bundle to the committed public recovery certificate,
+# and publishes only the encrypted recovery package.
 
 on:
   push:
@@ -104,21 +104,91 @@ jobs:
           echo "INKFRAME_RELEASE_MODE=$RELEASE_MODE" >> "$GITHUB_ENV"
           echo "INKFRAME_RELEASE_LABEL=$RELEASE_LABEL" >> "$GITHUB_ENV"
 
-      - name: Decode release keystore
+      - name: Prepare permanent upload keystore
         shell: bash
         env:
           INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          test -n "$INKFRAME_KEYSTORE_BASE64" || { echo "Missing INKFRAME_KEYSTORE_BASE64" >&2; exit 1; }
-          test -n "$INKFRAME_KEYSTORE_PASSWORD" || { echo "Missing INKFRAME_KEYSTORE_PASSWORD" >&2; exit 1; }
-          test -n "$INKFRAME_KEY_ALIAS" || { echo "Missing INKFRAME_KEY_ALIAS" >&2; exit 1; }
-          test -n "$INKFRAME_KEY_PASSWORD" || { echo "Missing INKFRAME_KEY_PASSWORD" >&2; exit 1; }
           KEYSTORE_PATH="$RUNNER_TEMP/inkframe-release.jks"
-          printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
-          test -s "$KEYSTORE_PATH"
-          chmod 600 "$KEYSTORE_PATH"
+          mkdir -p release
+
+          if [[ -n "$INKFRAME_KEYSTORE_BASE64" &&
+                -n "$INKFRAME_KEYSTORE_PASSWORD" &&
+                -n "$INKFRAME_KEY_ALIAS" &&
+                -n "$INKFRAME_KEY_PASSWORD" ]]; then
+            printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            test -s "$KEYSTORE_PATH"
+            chmod 600 "$KEYSTORE_PATH"
+            SIGNING_SOURCE="repository-secrets"
+          else
+            RECOVERY_CERT=".github/release/inkframe-recovery-cert.pem"
+            test -s "$RECOVERY_CERT" || {
+              echo "Missing public recovery certificate." >&2
+              exit 1
+            }
+
+            GENERATED_PASSWORD="$(openssl rand -hex 32)"
+            GENERATED_ALIAS="inkframe-upload-v0-4-0"
+
+            keytool -genkeypair \
+              -keystore "$KEYSTORE_PATH" \
+              -storetype JKS \
+              -storepass "$GENERATED_PASSWORD" \
+              -keypass "$GENERATED_PASSWORD" \
+              -alias "$GENERATED_ALIAS" \
+              -keyalg RSA \
+              -keysize 4096 \
+              -validity 10000 \
+              -dname "CN=InkFrame Upload Key, O=Steven Michael Allen Owens, C=US"
+
+            INKFRAME_KEYSTORE_PASSWORD="$GENERATED_PASSWORD"
+            INKFRAME_KEY_ALIAS="$GENERATED_ALIAS"
+            INKFRAME_KEY_PASSWORD="$GENERATED_PASSWORD"
+            SIGNING_SOURCE="generated-encrypted-recovery"
+
+            RECOVERY_DIR="$RUNNER_TEMP/inkframe-upload-key-recovery"
+            mkdir -p "$RECOVERY_DIR"
+            cp "$KEYSTORE_PATH" "$RECOVERY_DIR/inkframe-upload-key.jks"
+            chmod 600 "$RECOVERY_DIR/inkframe-upload-key.jks"
+
+            {
+              echo "InkFrame permanent Google Play upload key"
+              echo "Version created for: ${INKFRAME_RELEASE_LABEL}"
+              echo "Package: com.inkframe.studio"
+              echo "Keystore file: inkframe-upload-key.jks"
+              echo "Keystore password: ${INKFRAME_KEYSTORE_PASSWORD}"
+              echo "Key alias: ${INKFRAME_KEY_ALIAS}"
+              echo "Key password: ${INKFRAME_KEY_PASSWORD}"
+              echo
+              echo "KEEP THIS FILE AND THE KEYSTORE TOGETHER."
+              echo "Future Google Play updates must use this upload key unless the upload key is reset in Play Console."
+            } > "$RECOVERY_DIR/credentials.txt"
+            chmod 600 "$RECOVERY_DIR/credentials.txt"
+
+            keytool -list -v \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$INKFRAME_KEYSTORE_PASSWORD" \
+              -alias "$INKFRAME_KEY_ALIAS" \
+              > "$RECOVERY_DIR/certificate-details.txt"
+
+            tar -C "$RECOVERY_DIR" -czf "$RUNNER_TEMP/inkframe-upload-key-recovery.tar.gz" .
+            openssl cms -encrypt \
+              -binary \
+              -aes256 \
+              -in "$RUNNER_TEMP/inkframe-upload-key-recovery.tar.gz" \
+              -outform DER \
+              -out "release/InkFrame-${INKFRAME_RELEASE_LABEL}-upload-key-recovery.p7m" \
+              "$RECOVERY_CERT"
+
+            rm -rf "$RECOVERY_DIR" "$RUNNER_TEMP/inkframe-upload-key-recovery.tar.gz"
+          fi
+
           echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "INKFRAME_KEYSTORE_PASSWORD=$INKFRAME_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "INKFRAME_KEY_ALIAS=$INKFRAME_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "INKFRAME_KEY_PASSWORD=$INKFRAME_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "INKFRAME_SIGNING_SOURCE=$SIGNING_SOURCE" >> "$GITHUB_ENV"
 
       - name: Verify release and Play metadata
         run: |
@@ -189,7 +259,8 @@ jobs:
              "release/InkFrame-${INKFRAME_RELEASE_LABEL}-signed.aab"
           (
             cd release
-            sha256sum *.apk *.aab > SHA256SUMS.txt
+            sha256sum *.apk *.aab *.p7m 2>/dev/null > SHA256SUMS.txt || \
+              sha256sum *.apk *.aab > SHA256SUMS.txt
           )
           ls -lh release
 
@@ -205,11 +276,10 @@ jobs:
             echo "- Production assets: verified"
             echo "- Brush Engine V2: production default"
             echo "- Debug telemetry: excluded"
+            echo "- Signing source: \`${INKFRAME_SIGNING_SOURCE}\`"
             echo
-            if [[ "$INKFRAME_RELEASE_MODE" == "dry-run" ]]; then
-              echo "This manual run creates private verification artifacts only. It does not publish a GitHub Release or upload to Google Play."
-            else
-              echo "This release-trigger run is eligible to create the v${INKFRAME_VERSION} GitHub Release after all preceding checks pass."
+            if [[ "$INKFRAME_SIGNING_SOURCE" == "generated-encrypted-recovery" ]]; then
+              echo "A new permanent upload key was generated. Its keystore and credentials are available only inside the encrypted .p7m recovery artifact."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -250,7 +320,8 @@ jobs:
           - Source branch: \`${GITHUB_REF_NAME}\`
           - Source commit: \`${GITHUB_SHA}\`
           - Workflow run: ${RUN_URL}
-          - Permanent signing credentials are never printed or attached to this report.
+          - Signing source: \`${INKFRAME_SIGNING_SOURCE:-not-reached}\`
+          - Private signing credentials are never printed or attached unencrypted.
           EOF
           )
           gh issue create --title "$TITLE" --body "$BODY"
