@@ -85,8 +85,8 @@ try{
   const library=recipes.store.snapshot();assert.equal(library.recipes.length,beforeLibrary.recipes.length+1);const saved=library.recipes.find(item=>!beforeIds.has(item.id));
   assert.ok(saved);assert.match(saved.name,/↔/);assert.match(saved.name,/· 75%$/);assert.deepEqual(Array.from(saved.values),quarter);assert.ok(w.localStorage.getItem(recipes.STORAGE_KEY));
 
-  await openMorph();board.dispatchEvent(new w.KeyboardEvent('keydown',{key:']',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).mix,80);
-  board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'[',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).mix,75);
+  await openMorph();board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'m',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).mix,80);
+  board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'n',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).mix,75);
   const beforePreview=morph.viewSnapshot(project).preview;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).preview,!beforePreview);
   board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'w',bubbles:true,cancelable:true}));await wait(40);snapshot=morph.viewSnapshot(project);assert.equal(snapshot.sourceAId,alpha.id);assert.equal(snapshot.sourceBId,beta.id);assert.equal(snapshot.mix,25);
 
