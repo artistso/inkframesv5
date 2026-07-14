@@ -57,3 +57,5 @@ const emptyHistory=patterns.historySnapshot(project);assert.deepEqual({cursor:em
 assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);
 assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);assert.equal(patterns.historyPersistenceWrites,0);
 console.log('✅ radial timing patterns, linear 25-step history projection, automatic scopes, deterministic assignments, inversion, and isolation passed');
+
+await import('./radial-timing-history-inspector-release.test.mjs');
