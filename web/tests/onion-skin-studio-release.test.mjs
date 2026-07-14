@@ -25,6 +25,8 @@ try{
   assert.ok(source.includes('projectCanvasWrites:0,artworkUndoWrites:0,projectSchemaWrites:0,historyWrites:0,devicePreferenceWrites:true,randomWrites:0,networkWrites:0'),'Onion Skin Studio must declare exact isolation boundaries');
   assert.equal(source.includes('localStorage'),false,'the panel must use the existing preference bridge rather than its own storage');
   assert.equal(source.includes('fetch('),false,'Onion Skin Studio must remain offline');
-  assert.ok(injector.includes('onionDepth=Math.max(0,Math.min(8')));assert.ok(injector.includes('onionPastOpacity=Math.max(.02,Math.min(.85'));assert.ok(injector.includes('onionFutureOpacity=Math.max(.02,Math.min(.85'));
+  assert.ok(injector.includes('onionDepth=Math.max(0,Math.min(8'));
+  assert.ok(injector.includes('onionPastOpacity=Math.max(.02,Math.min(.85'));
+  assert.ok(injector.includes('onionFutureOpacity=Math.max(.02,Math.min(.85'));
   console.log('✅ generated release Onion Skin Studio asset, bridge, presets, guards, synchronization, and isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
