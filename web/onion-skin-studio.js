@@ -105,7 +105,9 @@
   function applyChange(patch,message){
     const env=environment();if(!env||typeof env.apply!=='function')return false;
     if(!canEdit(env)){notify(env,'Finish the active stroke before changing onion settings');renderPanel();return false;}
-    const current=snapshot(),next=normalizeSettings({...current,...patch},current),result=env.apply(next);
+    const current=snapshot(),next=normalizeSettings({...current,...patch},current);
+    if(settingsSignature(next)===settingsSignature(current))return true;
+    const result=env.apply(next);
     if(!result)return false;notify(env,message||'Onion Skin Studio');renderPanel();return true;
   }
   function renderPanel(){
