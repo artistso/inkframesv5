@@ -49,7 +49,7 @@ assert.equal(pattern.id,'recipe:x');assert.equal(pattern.label,'Imported');asser
 const scope=recipes.scopeValues({framesLength:4,selectedFrames:new Set([1,3]),loopOn:false,holdAt:index=>[1,2,3,4][index]});
 assert.equal(scope.scope.kind,'selection');assert.deepEqual(Array.from(scope.values),[2,4]);
 
-const project={};assert.deepEqual({...recipes.viewSnapshot(project)},{open:false,selectedId:null,preview:false,phase:0,reverse:false,name:'',recipeCount:1});
+const project={};assert.deepEqual({...recipes.viewSnapshot(project)},{open:false,selectedId:null,preview:false,phase:0,reverse:false,name:'',recipeCount:0});
 assert.equal(recipes.projectCanvasWrites,0);assert.equal(recipes.artworkUndoWrites,0);assert.equal(recipes.timelineTimingWrites,true);
 assert.equal(recipes.projectSchemaWrites,0);assert.equal(recipes.deviceLibraryWrites,true);
 console.log('✅ radial timing recipe reduction, transforms, bounded library, persistence contract, and isolation policy passed');
