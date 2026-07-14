@@ -45,6 +45,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install jsdom
+        run: npm install --no-save --prefix /tmp/jsdom jsdom
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
