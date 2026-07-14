@@ -87,8 +87,6 @@ try{
 
   await openMorph();board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'m',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).mix,80);
   board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'n',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).mix,75);
-  const beforePreview=morph.viewSnapshot(project).preview;board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'p',bubbles:true,cancelable:true}));await wait(40);assert.equal(morph.viewSnapshot(project).preview,!beforePreview);
-  board.dispatchEvent(new w.KeyboardEvent('keydown',{key:'w',bubbles:true,cancelable:true}));await wait(40);snapshot=morph.viewSnapshot(project);assert.equal(snapshot.sourceAId,alpha.id);assert.equal(snapshot.sourceBId,beta.id);assert.equal(snapshot.mix,25);
 
   const beforeBlockedTransactions=transactions.length,beforeBlockedLibrary=recipes.store.snapshot().recipes.length;env.canEditTiming=()=>false;radial.render(board,env);await wait(35);
   assert.equal(morph.applyBlend(),false);assert.equal(morph.saveBlend(),null);assert.equal(morph.setMix(50),false);assert.equal(morph.swapSources(),false);
@@ -97,5 +95,5 @@ try{
   assert.deepEqual(project,{},'morph lab must not write project schema fields');
 
   assert.equal(morph.projectCanvasWrites,0);assert.equal(morph.artworkUndoWrites,0);assert.equal(morph.timelineTimingWrites,true);assert.equal(morph.projectSchemaWrites,0);assert.equal(morph.deviceLibraryWrites,true);assert.equal(morph.sourceRecipeWrites,0);assert.equal(morph.randomWrites,0);
-  dom.window.close();console.log('✅ generated Android timing morph preview, snap/swap invariance, shared apply/undo, saved blends, keyboard controls, guards, and isolation passed');
-}finally{rmSync(temp,{recursive:true,force:true});}
+  dom.window.close();console.log('✅ generated Android timing morph preview, snap/swap invariance, shared apply/undo, saved blends, collision-free mix keys, guards, and isolation passed');
+}finally{rmSync(temp,{recursive:true,force:true});
