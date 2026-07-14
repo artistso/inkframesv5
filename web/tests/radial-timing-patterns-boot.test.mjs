@@ -131,6 +131,23 @@ try{
     assert.equal(patterns.commitAssignments({id:`limit-${index}`,label:`Limit ${index}`,scope:'all'},[{index:0,before,after}]),true);
   }
   assert.equal(limitHolds[0],3);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,25);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,0);
+  let timeline=patterns.historySnapshot(limitProject);assert.equal(timeline.cursor,25);assert.equal(timeline.total,25);
+  assert.equal(timeline.entries[0].label,'Limit 1','the inspector must begin with the oldest retained transaction');assert.equal(timeline.entries[24].label,'Limit 25');
+
+  radial.render(board,limitEnv);await new Promise(r=>setTimeout(r,40));
+  board.querySelector('.inkframe-radial-timing-toggle').click();await new Promise(r=>setTimeout(r,55));
+  board.querySelector('.inkframe-rhythm-toggle').click();await new Promise(r=>setTimeout(r,45));
+  const historyToggle=board.querySelector('.inkframe-rhythm-history-toggle');assert.ok(historyToggle);historyToggle.click();await new Promise(r=>setTimeout(r,65));
+  assert.ok(board.querySelector('.inkframe-rhythm-history'));assert.match(board.querySelector('.inkframe-rhythm-history-status').textContent,/25\/25 · 25 max/);
+  assert.equal(board.querySelectorAll('.inkframe-rhythm-history-position').length,26,'history inspector must show Start plus 25 retained edits');
+  assert.match(board.querySelector('[data-history-position="1"]').textContent,/Limit 1/);assert.match(board.querySelector('[data-history-position="25"]').textContent,/Limit 25/);
+  assert.equal(board.querySelector('[data-history-position="25"]').getAttribute('aria-pressed'),'true');
+  board.querySelector('[data-history-position="10"]').click();await new Promise(r=>setTimeout(r,130));
+  timeline=patterns.historySnapshot(limitProject);assert.equal(timeline.cursor,10);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,10);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,15);
+  assert.equal(timeline.entries[9].state,'applied');assert.equal(timeline.entries[10].state,'undone');assert.match(board.querySelector('.inkframe-rhythm-history-status').textContent,/10\/25/);
+  board.querySelector('[data-history-position="25"]').click();await new Promise(r=>setTimeout(r,130));
+  timeline=patterns.historySnapshot(limitProject);assert.equal(timeline.cursor,25);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,25);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,0);
+
   for(let index=0;index<25;index++)assert.equal(patterns.undo(),true);
   assert.equal(limitHolds[0],2,'the first retained state must remain after the oldest transaction is evicted');
   assert.equal(patterns.undo(),false,'a 26th Undo must be unavailable');
@@ -140,8 +157,11 @@ try{
   assert.equal(patterns.undo(),true);assert.equal(limitHolds[0],2);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,1);
   assert.equal(patterns.commitAssignments({id:'divergent',label:'Divergent',scope:'all'},[{index:0,before:2,after:4}]),true);
   assert.equal(limitHolds[0],4);assert.equal(patterns.viewSnapshot(limitProject).undoDepth,25);assert.equal(patterns.viewSnapshot(limitProject).redoDepth,0,'a divergent edit must clear Redo');
-  assert.ok(limitTransactions.length>=52,'25-step history validation must exercise real batched timing writes');
+  timeline=patterns.historySnapshot(limitProject);assert.equal(timeline.cursor,25);assert.equal(timeline.total,25);assert.equal(timeline.entries[24].label,'Divergent');
+  const beforeGuard=JSON.stringify(timeline);limitEnv.canEditTiming=()=>false;radial.render(board,limitEnv);await new Promise(r=>setTimeout(r,30));
+  assert.equal(patterns.jumpToHistoryPosition(0),false,'active strokes must block inspector jumps');assert.equal(JSON.stringify(patterns.historySnapshot(limitProject)),beforeGuard);
+  assert.ok(limitTransactions.length>=82,'history inspector validation must exercise real batched Undo and Redo writes');
 
-  assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);
-  dom.window.close();console.log('✅ generated Android radial exposure rhythms preview, batch scopes, 25-step timing Undo/Redo, guards, and artwork isolation passed');
+  assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);assert.equal(patterns.historyPersistenceWrites,0);
+  dom.window.close();console.log('✅ generated Android radial rhythms, linear 25-step history inspector, batch scopes, guards, and artwork isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
