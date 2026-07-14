@@ -149,9 +149,9 @@
     if(!board||board._inkframeMorphInstalled)return;board._inkframeMorphInstalled=true;
     board.addEventListener('keydown',event=>{
       if(!lastEnvironment||!canEdit(lastEnvironment))return;const tag=event.target&&event.target.tagName;if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
-      const view=viewFor(lastEnvironment);if(!view.open)return;let handled=true;
-      if(event.key==='[')view.mix=clampMix(view.mix-5);else if(event.key===']')view.mix=clampMix(view.mix+5);else if(event.key.toLowerCase()==='w'){const previous=view.sourceAId;view.sourceAId=view.sourceBId;view.sourceBId=previous;view.mix=100-clampMix(view.mix);}
-      else if(event.key.toLowerCase()==='p')view.preview=!view.preview;else if(event.key.toLowerCase()==='g')applyBlend();else if(event.key.toLowerCase()==='d')saveBlend();else handled=false;
+      const view=viewFor(lastEnvironment);if(!view.open)return;let handled=true,key=event.key.toLowerCase();
+      if(key==='n')view.mix=clampMix(view.mix-5);else if(key==='m')view.mix=clampMix(view.mix+5);else if(key==='w'){const previous=view.sourceAId;view.sourceAId=view.sourceBId;view.sourceBId=previous;view.mix=100-clampMix(view.mix);}
+      else if(key==='p')view.preview=!view.preview;else if(key==='g')applyBlend();else if(key==='d')saveBlend();else handled=false;
       if(handled){event.preventDefault();event.stopImmediatePropagation();scheduleRefresh(false);}
     },true);
     if(typeof root.MutationObserver==='function'){
