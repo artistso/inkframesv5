@@ -223,6 +223,8 @@ fun registerWebAssetPipeline(
             injector,
             rootProject.file("tools/inject-canvas-shape.mjs"),
             rootProject.file("tools/inject-onion-skin-studio.mjs"),
+            rootProject.file("tools/inject-feedback-report.mjs"),
+            webMetadataFile,
         )
         val sourceIndex = rootProject.file("web/index.html")
         val targetIndex = outputDir.map { it.file("index.html") }
