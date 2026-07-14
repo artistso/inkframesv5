@@ -82,6 +82,10 @@
       preview:!!view.preview,name:String(view.name||''),recipeCount:library.length,phraseLength:phrase&&phrase.values.length||0,truncated:!!(phrase&&phrase.truncated),
     });
   }
+  function arrangementSnapshot(project){
+    const snapshot=viewSnapshot(project);
+    return Object.freeze({name:snapshot.name,selectedRecipeId:snapshot.selectedRecipeId,segments:snapshot.segments});
+  }
   function canEdit(environment){
     if(environment&&typeof environment.canEditTiming==='function')return environment.canEditTiming()!==false;
     return !(environment&&typeof environment.canNavigate==='function')||environment.canNavigate()!==false;
@@ -114,6 +118,16 @@
   }
   function clearSegments(){
     if(!lastEnvironment||!canEdit(lastEnvironment))return false;const view=viewFor(lastEnvironment);if(!view.segments.length)return false;view.segments=[];view.preview=false;scheduleRefresh(false);return true;
+  }
+  function loadArrangement(arrangement){
+    if(!lastEnvironment||!canEdit(lastEnvironment))return false;
+    const input=arrangement&&typeof arrangement==='object'?arrangement:{},view=viewFor(lastEnvironment),state=ensureState(lastEnvironment,view),segments=sanitizeSegments(input.segments,state.library);
+    if(!segments.length)return false;
+    view.segments=Array.from(segments,segment=>({...segment}));
+    const recipes=root.InkFrameRadialRecipes,clean=recipes&&typeof recipes.cleanName==='function'?recipes.cleanName(input.name):String(input.name||'').replace(/\s+/g,' ').trim().slice(0,32);
+    view.name=clean||phraseName(segments,state.library);
+    const selectedId=String(input.selectedRecipeId||segments[0].recipeId||'');view.selectedRecipeId=state.library.some(item=>item.id===selectedId)?selectedId:segments[0].recipeId;
+    view.preview=false;scheduleRefresh(false);return true;
   }
   function assignmentsForPhrase(environment,phrase){
     const patterns=root.InkFrameRadialPatterns;if(!patterns||!phrase)return Object.freeze([]);
@@ -197,7 +211,7 @@
 
   const api={
     MAX_SEGMENTS,MAX_REPEAT,MAX_VALUES,clampRepeat,normalizeValues,canonicalValues,signature,normalizeSegment,sanitizeSegments,compileSegments,phraseName,createPhrase,
-    recipeLibrary,assignmentsForPhrase,addSelected,setSegmentRepeat,moveSegment,duplicateSegment,removeSegment,clearSegments,applyPhrase,savePhrase,render,viewSnapshot,installIntoRadial,
+    recipeLibrary,arrangementSnapshot,loadArrangement,assignmentsForPhrase,addSelected,setSegmentRepeat,moveSegment,duplicateSegment,removeSegment,clearSegments,applyPhrase,savePhrase,render,viewSnapshot,installIntoRadial,
     projectCanvasWrites:0,artworkUndoWrites:0,timelineTimingWrites:true,projectSchemaWrites:0,deviceLibraryWrites:true,sourceRecipeWrites:0,randomWrites:0,
   };
   root.InkFrameRadialPhrases=api;installIntoRadial();
