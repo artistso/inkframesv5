@@ -35,8 +35,25 @@ assert.deepEqual(Array.from(changed,entry=>entry.index),[1]);
 const inverted=patterns.invertAssignments(assignments.slice(0,2));
 assert.deepEqual(Array.from(inverted,entry=>[entry.index,entry.before,entry.after]),[[2,1,8],[4,1,8]]);
 
+const transaction=(label,scopeName,count)=>({patternId:label.toLowerCase(),label,scope:scopeName,assignments:Array.from({length:count},(_,index)=>({index,before:1,after:2}))});
+const alpha=transaction('Alpha','all',1),beta=transaction('Beta','selection',2),gamma=transaction('Gamma','loop',3),delta=transaction('Delta','all',4);
+const timeline=patterns.historyTimeline({undo:[alpha,beta],redo:[delta,gamma]});
+assert.deepEqual({cursor:timeline.cursor,total:timeline.total,limit:timeline.limit},{cursor:2,total:4,limit:25});
+assert.deepEqual(Array.from(timeline.entries,entry=>({position:entry.position,label:entry.label,scope:entry.scope,changeCount:entry.changeCount,state:entry.state})),[
+  {position:1,label:'Alpha',scope:'all',changeCount:1,state:'applied'},
+  {position:2,label:'Beta',scope:'selection',changeCount:2,state:'applied'},
+  {position:3,label:'Gamma',scope:'loop',changeCount:3,state:'undone'},
+  {position:4,label:'Delta',scope:'all',changeCount:4,state:'undone'},
+]);
+assert.equal(Object.isFrozen(timeline),true);assert.equal(Object.isFrozen(timeline.entries),true);assert.equal(Object.isFrozen(timeline.entries[0]),true);
+assert.deepEqual({...patterns.historyPositionPlan(2,0,4)},{cursor:2,target:0,steps:2,direction:'undo'});
+assert.deepEqual({...patterns.historyPositionPlan(2,4,4)},{cursor:2,target:4,steps:2,direction:'redo'});
+assert.deepEqual({...patterns.historyPositionPlan(2,2,4)},{cursor:2,target:2,steps:0,direction:'none'});
+assert.deepEqual({...patterns.historyPositionPlan(20,-9,4)},{cursor:4,target:0,steps:4,direction:'undo'});
+
 const project={};
 assert.deepEqual({...patterns.viewSnapshot(project)},{open:false,preview:false,previewPatternId:null,undoDepth:0,redoDepth:0});
+const emptyHistory=patterns.historySnapshot(project);assert.deepEqual({cursor:emptyHistory.cursor,total:emptyHistory.total,limit:emptyHistory.limit,entries:Array.from(emptyHistory.entries)},{cursor:0,total:0,limit:25,entries:[]});
 assert.equal(patterns.projectCanvasWrites,0);assert.equal(patterns.artworkUndoWrites,0);
-assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);
-console.log('✅ radial timing patterns, 25-step history, automatic scopes, deterministic assignments, inversion, and isolation policy passed');
+assert.equal(patterns.timelineTimingWrites,true);assert.equal(patterns.projectSchemaWrites,0);assert.equal(patterns.historyPersistenceWrites,0);
+console.log('✅ radial timing patterns, linear 25-step history projection, automatic scopes, deterministic assignments, inversion, and isolation passed');
