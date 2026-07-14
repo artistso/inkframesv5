@@ -29,6 +29,9 @@ try {
   const recipesSource=readFileSync(resolve(root,'web/radial-timing-recipes.js'),'utf8');
   const variationsSource=readFileSync(resolve(root,'web/radial-timing-variations.js'),'utf8');
   const morphSource=readFileSync(resolve(root,'web/radial-timing-morph.js'),'utf8');
+  const phrasesSource=readFileSync(resolve(root,'web/radial-timing-phrases.js'),'utf8');
+  const phraseLibrarySource=readFileSync(resolve(root,'web/radial-timing-phrase-library.js'),'utf8');
+  const scoreSource=readFileSync(resolve(root,'web/radial-timing-score.js'),'utf8');
   assert.ok(html.includes('INKFRAME_BRUSH_V2_RUNTIME'));
   assert.ok(html.includes('"variant":"release"'));
   assert.ok(html.includes('"diagnostics":false'));
@@ -53,11 +56,20 @@ try {
   assert.ok(existsSync(resolve(root,'web/radial-timing-variations.js')),'missing Radial Timing Variations runtime');
   assert.ok(html.includes('<script src="radial-timing-morph.js"></script>'),'release index must load Radial Timing Morph');
   assert.ok(existsSync(resolve(root,'web/radial-timing-morph.js')),'missing Radial Timing Morph runtime');
+  assert.ok(html.includes('<script src="radial-timing-phrases.js"></script>'),'release index must load Timing Phrase Composer');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-phrases.js')),'missing Timing Phrase Composer runtime');
+  assert.ok(html.includes('<script src="radial-timing-phrase-library.js"></script>'),'release index must load Timing Phrase Library');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-phrase-library.js')),'missing Timing Phrase Library runtime');
+  assert.ok(html.includes('<script src="radial-timing-score.js"></script>'),'release index must load Timing Score Composer');
+  assert.ok(existsSync(resolve(root,'web/radial-timing-score.js')),'missing Timing Score Composer runtime');
   assert.ok(html.indexOf('radial-timeline.js')<html.indexOf('radial-timing-editor.js'),'Radial Timing Editor must load after Radial Timeline');
   assert.ok(html.indexOf('radial-timing-editor.js')<html.indexOf('radial-timing-patterns.js'),'Radial Timing Patterns must load after the direct editor');
   assert.ok(html.indexOf('radial-timing-patterns.js')<html.indexOf('radial-timing-recipes.js'),'Radial Timing Recipes must load after built-in rhythms');
   assert.ok(html.indexOf('radial-timing-recipes.js')<html.indexOf('radial-timing-variations.js'),'Radial Timing Variations must load after reusable recipes');
   assert.ok(html.indexOf('radial-timing-variations.js')<html.indexOf('radial-timing-morph.js'),'Radial Timing Morph must load after deterministic variations');
+  assert.ok(html.indexOf('radial-timing-morph.js')<html.indexOf('radial-timing-phrases.js'),'Timing Phrase Composer must load after Morph');
+  assert.ok(html.indexOf('radial-timing-phrases.js')<html.indexOf('radial-timing-phrase-library.js'),'Timing Phrase Library must load after Phrase Composer');
+  assert.ok(html.indexOf('radial-timing-phrase-library.js')<html.indexOf('radial-timing-score.js'),'Timing Score Composer must load after Phrase Library');
   assert.ok(existsSync(resolve(root,'tools/inject-radial-timeline.mjs')),'missing Radial Timeline injector');
   assert.ok(html.includes('InkFrameRadialTimeline.render(board'),'release index must delegate frame-board rendering');
   assert.ok(html.includes('InkFrameRadialTimeline.refreshThumbnail(cur,thumb)'),'release index must refresh orbital thumbnails');
@@ -159,6 +171,35 @@ try {
   assert.ok(morphSource.includes('projectCanvasWrites:0'),'Timing Morph must declare project-canvas isolation');
   assert.ok(morphSource.includes('artworkUndoWrites:0'),'Timing Morph must declare artwork-undo isolation');
   assert.ok(morphSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true'),'Timing Morph must isolate device persistence from project schema');
+  assert.ok(phrasesSource.includes('const MAX_SEGMENTS=8,MAX_REPEAT=4,MAX_VALUES=120'),'Timing Phrase Composer must bound sections, repeats, and output values');
+  assert.ok(phrasesSource.includes('function compileSegments'),'Timing Phrase Composer must deterministically compile ordered recipe segments');
+  assert.ok(phrasesSource.includes('function loadArrangement'),'Timing Phrase Composer must expose an explicit editable arrangement load boundary');
+  assert.ok(phrasesSource.includes('inkframe-phrase-preview-svg'),'Timing Phrase Composer must expose non-destructive preview arcs');
+  assert.ok(phrasesSource.includes('patterns.commitAssignments'),'Timing Phrase Composer must share timing-only Undo and Redo');
+  assert.ok(phrasesSource.includes('recipes.store.save'),'Timing Phrase Composer must save compiled phrases through the established recipe library');
+  assert.ok(phrasesSource.includes('const projectViews=new WeakMap()'),'Timing Phrase Composer state must remain memory-only per project');
+  assert.ok(phrasesSource.includes('canEditTiming'),'Timing Phrase Composer must honor active-stroke guards');
+  assert.ok(phrasesSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true,sourceRecipeWrites:0,randomWrites:0'),'Timing Phrase Composer must isolate deterministic device writes');
+  assert.ok(phraseLibrarySource.includes("const STORAGE_KEY='inkframe.radialTiming.phraseLibrary.v1'"),'Timing Phrase Library must use a versioned device-library key');
+  assert.ok(phraseLibrarySource.includes('const SCHEMA=1,MAX_PHRASES=16,MAX_SEGMENTS=8'),'Timing Phrase Library must visibly bound and version editable arrangements');
+  assert.ok(phraseLibrarySource.includes('function resolveRecord'),'Timing Phrase Library must report changed and missing source provenance');
+  assert.ok(phraseLibrarySource.includes('function createPhraseLibraryStore'),'Timing Phrase Library must expose a sanitized persistent store');
+  assert.ok(phraseLibrarySource.includes('phrases.loadArrangement'),'Timing Phrase Library must restore editable composer structure explicitly');
+  assert.ok(phraseLibrarySource.includes('const projectViews=new WeakMap()'),'Timing Phrase Library selection must remain memory-only per project');
+  assert.ok(phraseLibrarySource.includes('canEditTiming'),'Timing Phrase Library must honor active-stroke guards');
+  assert.ok(phraseLibrarySource.includes('timelineTimingWrites:0,projectSchemaWrites:0,deviceLibraryWrites:true,sourceRecipeWrites:0,randomWrites:0,transientPhraseWrites:true'),'Timing Phrase Library must isolate structure persistence from timing and project schema');
+  assert.ok(scoreSource.includes('const MAX_SECTIONS=8,MAX_REPEAT=4,MAX_VALUES=120'),'Timing Score Composer must bound sections, repeats, and output values');
+  assert.ok(scoreSource.includes('function resolveArrangement'),'Timing Score Composer must resolve current phrase and recipe provenance');
+  assert.ok(scoreSource.includes('function createScore'),'Timing Score Composer must deterministically compile ordered phrase sections');
+  assert.ok(scoreSource.includes('inkframe-score-preview-svg'),'Timing Score Composer must expose non-destructive preview arcs');
+  assert.ok(scoreSource.includes('patterns.commitAssignments'),'Timing Score Composer must share timing-only Undo and Redo');
+  assert.ok(scoreSource.includes('recipes.store.save'),'Timing Score Composer must save compiled scores through the established recipe library');
+  assert.ok(scoreSource.includes('const projectViews=new WeakMap()'),'Timing Score Composer state must remain memory-only per project');
+  assert.ok(scoreSource.includes('canEditTiming'),'Timing Score Composer must honor active-stroke guards');
+  assert.ok(scoreSource.includes('sourceArrangementWrites:0,sourceRecipeWrites:0,randomWrites:0'),'Timing Score Composer must preserve all sources and remain deterministic');
+  assert.ok(scoreSource.includes('projectCanvasWrites:0'),'Timing Score Composer must declare project-canvas isolation');
+  assert.ok(scoreSource.includes('artworkUndoWrites:0'),'Timing Score Composer must declare artwork-undo isolation');
+  assert.ok(scoreSource.includes('projectSchemaWrites:0,deviceLibraryWrites:true'),'Timing Score Composer must isolate device persistence from project schema');
   for(const script of [
     'stabilizer.js','ghost-trail.js','runtime.js','ghost-runtime.js',
     'stabilizer-ui.js','ghost-ui.js','user-presets.js','lab-ui.js','preset-ui.js','preview-compare.js','preview-pad.js',
@@ -212,7 +253,7 @@ try {
   assert.ok(html.includes('InkFrameBrushV2InputBridge.begin'));
   assert.ok(html.includes('coordinateTransform:inputTransform'));
 
-  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial timing, recipes, variations, and deterministic morph policy passed');
+  console.log('✅ generated Brush V2 production recovery, Circular Canvas, radial timing, recipes, variations, morphs, phrases, phrase library, and score policy passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
