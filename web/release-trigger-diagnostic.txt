@@ -1,0 +1,2 @@
+InkFrame 0.4.0 release-trigger diagnostics.
+This text-only file exists to trigger the captured production-policy workflow.
