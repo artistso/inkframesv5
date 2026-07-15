@@ -9,11 +9,12 @@ import kotlin.math.hypot
  *
  * The linear part is stored as a complex number `a = ax + i·ay` (so `|a|` is the zoom
  * and `arg(a)` is the rotation), with translation `b = bx + i·by`. Representing the
- * transform this way makes the two operations we need cheap and exact:
+ * transform this way keeps canvas/view conversion exact while allowing touch navigation
+ * to apply stable centroid pan and span-only zoom without accidental rotation.
  *
  *  - **canvasToView(c) = a·c + b**, **viewToCanvas(v) = (v − b) / a**
- *  - **gesture composition** (pinch/rotate from two finger correspondences) is a single
- *    complex division + multiply, with no matrix bookkeeping.
+ *  - **touch gesture composition** maps the previous two-finger centroid onto the current
+ *    centroid while scaling by the change in finger span.
  *
  * Immutable; every mutator returns a new instance. Pure Kotlin — fully unit-tested.
  */
@@ -65,25 +66,41 @@ data class ViewportTransform(
     fun pan(dx: Float, dy: Float): ViewportTransform = copy(bx = bx + dx, by = by + dy)
 
     /**
-     * Applies the incremental similarity that maps the previous two-finger configuration
-     * (prevA, prevB) onto the current one (curA, curB): pinch-zoom, two-finger rotate and
-     * pan, all at once. The unique similarity with two point correspondences is computed
-     * via complex division `M_a = (curB−curA)/(prevB−prevA)`.
+     * Applies stable two-finger navigation from the previous pointer positions to the
+     * current positions.
+     *
+     * The gesture intentionally uses only:
+     *
+     *  - centroid movement for two-finger panning; and
+     *  - span change for pinch zoom.
+     *
+     * Finger-vector angle is ignored. Small angle changes are unavoidable when pinching
+     * on glass and previously caused the canvas to rotate and wobble. Any rotation already
+     * present in this transform is retained, but touch navigation does not add more.
      */
     fun applyGesture(prevA: Vec2, prevB: Vec2, curA: Vec2, curB: Vec2): ViewportTransform {
-        val pvx = prevB.x - prevA.x
-        val pvy = prevB.y - prevA.y
-        val cvx = curB.x - curA.x
-        val cvy = curB.y - curA.y
-        val den = pvx * pvx + pvy * pvy
-        if (den < 1e-6f) return this
-        // M_a = cv / pv  (complex)
-        val mAx = (cvx * pvx + cvy * pvy) / den
-        val mAy = (cvy * pvx - cvx * pvy) / den
-        // M_b = curA - M_a · prevA
-        val mBx = curA.x - (mAx * prevA.x - mAy * prevA.y)
-        val mBy = curA.y - (mAy * prevA.x + mAx * prevA.y)
-        return preCompose(mAx, mAy, mBx, mBy)
+        val prevCenterX = (prevA.x + prevB.x) * 0.5f
+        val prevCenterY = (prevA.y + prevB.y) * 0.5f
+        val curCenterX = (curA.x + curB.x) * 0.5f
+        val curCenterY = (curA.y + curB.y) * 0.5f
+
+        val prevSpan = hypot(prevB.x - prevA.x, prevB.y - prevA.y)
+        val curSpan = hypot(curB.x - curA.x, curB.y - curA.y)
+
+        // When the previous pointers are effectively coincident, retain useful centroid
+        // panning while suppressing an undefined/infinite zoom ratio.
+        val scaleFactor = if (prevSpan >= MIN_GESTURE_SPAN && curSpan.isFinite()) {
+            (curSpan / prevSpan).takeIf { it.isFinite() && it > 0f } ?: 1f
+        } else {
+            1f
+        }
+
+        return preCompose(
+            mAx = scaleFactor,
+            mAy = 0f,
+            mBx = curCenterX - scaleFactor * prevCenterX,
+            mBy = curCenterY - scaleFactor * prevCenterY,
+        )
     }
 
     /**
@@ -99,6 +116,8 @@ data class ViewportTransform(
     }
 
     companion object {
+        private const val MIN_GESTURE_SPAN = 0.5f
+
         val IDENTITY = ViewportTransform(1f, 0f, 0f, 0f)
 
         /**
