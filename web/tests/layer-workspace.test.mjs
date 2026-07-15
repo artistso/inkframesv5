@@ -13,10 +13,11 @@ assert.ok(workspace,'Layer Workspace runtime did not install');
 
 const state=workspace.normalizeLayerState({count:4,active:2,visible:false,opacity:73.6,blend:'Multiply',canInteract:true});
 assert.deepEqual({...state},{
-  count:4,active:2,visible:false,opacity:74,blend:'Multiply',canInteract:true,
+  count:4,active:2,background:false,visible:false,opacity:74,blend:'Multiply',canInteract:true,
   canSelectAbove:true,canSelectBelow:true,canMoveUp:true,canMoveDown:true,canDelete:true,canMergeDown:true,
 });
 assert.equal(workspace.layerLabel(state),'2 / 4');
+assert.equal(workspace.countLabel(state),'4 frame layers + BG');
 assert.equal(workspace.visibilityLabel(state),'Hidden');
 assert.equal(workspace.visibilityLabel(workspace.normalizeLayerState({count:1,active:1,visible:true})),'Visible');
 assert.equal(workspace.normalizeLayerState({count:1,active:9,opacity:900}).active,1);
@@ -25,11 +26,22 @@ assert.equal(workspace.normalizeLayerState({count:1,active:1,opacity:-20}).opaci
 assert.equal(workspace.normalizeLayerState({count:1,active:1}).canDelete,false);
 assert.equal(workspace.normalizeLayerState({count:3,active:1}).canMergeDown,false);
 assert.equal(workspace.normalizeLayerState({count:3,active:3}).canMoveUp,false);
+
+const background=workspace.normalizeLayerState({count:3,active:2,background:true,visible:true,opacity:50,blend:'Screen'});
+assert.equal(background.active,0);
+assert.equal(workspace.layerLabel(background),'Static BG');
+assert.equal(workspace.countLabel(background),'3 frame layers + BG');
+assert.equal(background.canSelectAbove,true);
+assert.equal(background.canSelectBelow,false);
+assert.equal(background.canMoveUp,false);
+assert.equal(background.canMoveDown,false);
+assert.equal(background.canDelete,false);
+assert.equal(background.canMergeDown,false);
 assert.equal(Object.isFrozen(state),true);
 
-assert.equal(workspace.COMMANDS.length,14);
+assert.equal(workspace.COMMANDS.length,15);
 assert.deepEqual([...workspace.COMMANDS].filter(item=>item.name==='opacity').map(item=>item.value),[25,50,75,100]);
-assert.deepEqual([...new Set([...workspace.COMMANDS].map(item=>item.name))].sort(),['add','blend','delete','duplicate','mergeDown','moveDown','moveUp','opacity','selectAbove','selectBelow','visibility'].sort());
+assert.deepEqual([...new Set([...workspace.COMMANDS].map(item=>item.name))].sort(),['add','background','blend','delete','duplicate','mergeDown','moveDown','moveUp','opacity','selectAbove','selectBelow','visibility'].sort());
 
 assert.equal(workspace.directLayerWrites,0);
 assert.equal(workspace.directCanvasWrites,0);
@@ -42,4 +54,4 @@ assert.equal(workspace.delegatedLayerCommands,true);
 assert.equal(workspace.artworkReads,0);
 assert.equal(workspace.layerNameReads,0);
 assert.equal(workspace.projectNameReads,0);
-console.log('✅ Layer Workspace state, boundaries, opacity presets, command surface, and zero-direct-write contract passed');
+console.log('✅ Layer Workspace frame/static-background state, boundaries, opacity presets, command surface, and zero-direct-write contract passed');
