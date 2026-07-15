@@ -10,7 +10,7 @@ const temp=mkdtempSync(resolve(tmpdir(),'inkframe-static-background-')),generate
 try{
   execFileSync(process.execPath,[resolve(root,'tools/inject-brush-v2-index.mjs'),resolve(root,'web/index.html'),generated,'--variant=release','--diagnostics=false','--default-engine=v2'],{cwd:root,stdio:'pipe'});
   const html=readFileSync(generated,'utf8');
-  const injector=readFileSync(resolve(root,'tools/inject-static-background.mjs'),'utf8');
+  const injector=readFileSync(resolve(root,'tools/inject-static-background-v2.mjs'),'utf8');
   const autosave=readFileSync(resolve(root,'web/autosave.js'),'utf8');
 
   for(const marker of [
