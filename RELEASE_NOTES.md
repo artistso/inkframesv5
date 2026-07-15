@@ -22,6 +22,8 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 - Modernized the production WebView controls with larger 48 px targets and 56 px coarse-pointer targets for Galaxy Tab touch and S Pen use.
 - Added persistent selected states, clearer disabled states, keyboard focus rings, press feedback, reduced-motion handling, and stronger contrast across radial tools, modal actions, and project controls.
 - Refined the Tablet Command Deck with clearer mode grouping, status surfaces, transport controls, accessible labels, and visible Draw, Frames, Layers, and Actions states.
+- Added stable two-finger canvas pan and 0.35×–8× pinch zoom anchored under the gesture centroid, without accidental rotation from changing finger angles.
+- Kept S Pen drawing immediate while briefly arbitrating finger input so a pinch cannot leave an unwanted first-contact mark.
 
 ## Project-wide Static Background
 
@@ -55,6 +57,7 @@ See `RELEASE_CHECKLIST.md` for the full tablet/browser/APK smoke-test flow.
 - Switching to Original produces an independent fallback stroke path.
 - Separate strokes and fast uninterrupted strokes never create a long connecting bridge.
 - Brush Lab texture, brush preset save/use/export/import/delete work.
+- Two-finger pan and pinch zoom remain anchored, do not rotate the canvas, and do not leave an accidental touch mark.
 - PNG/GIF/video export paths report success or a clear unsupported message.
 - Installed APK launches offline and can export media/archive files.
 
