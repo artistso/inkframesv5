@@ -1,5 +1,6 @@
 // Compatibility entry point tracked by the generated Android asset pipeline.
 import { injectStaticBackground as injectGeneratedBackground } from './inject-static-background-v2.mjs';
+import { injectStaticBackgroundLayerBridge } from './inject-static-background-layer-bridge.mjs';
 
 export function injectStaticBackground(html) {
   // Canvas Shape emits the same two-line default in useProject() and the direct
@@ -26,7 +27,7 @@ export function injectStaticBackground(html) {
     };
   };
   try {
-    return injectGeneratedBackground(html);
+    return injectStaticBackgroundLayerBridge(injectGeneratedBackground(html));
   } finally {
     String.prototype.matchAll = originalMatchAll;
   }
