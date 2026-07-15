@@ -23,7 +23,7 @@ jobs:
     name: Build upload-key APK and AAB
     runs-on: ubuntu-latest
     env:
-      SOURCE_SHA: '8e2a4809c7796c5fa15b81ee26da8fee3a964ed9'
+      SOURCE_SHA: 'e9dbc2030247709b79e3c2912c6ebff6390740a1'
       EXPECTED_VERSION: '0.5.0'
       EXPECTED_VERSION_CODE: '50001'
       INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
