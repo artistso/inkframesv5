@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { injectCanvasShape } from './inject-canvas-shape.mjs';
 import { injectOnionSkinStudio } from './inject-onion-skin-studio.mjs';
 import { injectFeedbackReport } from './inject-feedback-report.mjs';
+import { injectStaticBackground } from './inject-static-background.mjs';
 
 const input = resolve(process.argv[2] || 'web/index.html');
 const output = resolve(process.argv[3] || 'build/generated/webAssets/debug/index.html');
@@ -162,6 +163,7 @@ html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 html = injectCanvasShape(html, replaceOnce);
 html = injectOnionSkinStudio(html, replaceOnce);
 html = injectFeedbackReport(html, replaceOnce);
+html = injectStaticBackground(html, replaceOnce);
 
 const requiredMarkers = [
   'INKFRAME_BRUSH_V2_RUNTIME',
@@ -174,6 +176,9 @@ const requiredMarkers = [
   'InkFrameOnionStudioEnvironment',
   'feedback-report.js',
   'InkFrameFeedbackEnvironment',
+  'newBackground',
+  'drawProjectBackground',
+  'backgroundPixels',
   'makeBrushV2Env()',
   'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
