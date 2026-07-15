@@ -38,6 +38,7 @@ function replaceOnce(source, needle, replacement, label) {
 
 const scriptsNeedle = '<script src="brush-math.js"></script>\n<script src="flood-fill.js"></script>';
 const nativeScript = diagnostics ? '<script src="brush-engine-v2/native.js"></script>\n' : '';
+const performanceUiScript = diagnostics ? '<script src="brush-engine-v2/performance-ui.js"></script>\n' : '';
 const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->
 <script>window.InkFrameBuild=Object.freeze(${JSON.stringify(buildConfig)});</script>
@@ -67,7 +68,7 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
 <script src="brush-engine-v2/ghost-ui.js"></script>
 <script src="brush-engine-v2/lab-ui.js"></script>
-<script src="brush-engine-v2/preset-ui.js"></script>
+${performanceUiScript}<script src="brush-engine-v2/preset-ui.js"></script>
 <script src="brush-engine-v2/preview-compare.js"></script>
 <script src="brush-engine-v2/preview-pad.js"></script>
 <script src="flood-fill.js"></script>`;
@@ -208,12 +209,15 @@ const requiredMarkers = [
   'brush-engine-v2/preview-compare.js',
   'brush-engine-v2/preview-pad.js',
 ];
-if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js');
+if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js', 'brush-engine-v2/performance-ui.js');
 for (const marker of requiredMarkers) {
   if (!html.includes(marker)) throw new Error(`Generated index failed verification: ${marker}`);
 }
 if (!diagnostics && html.includes('<script src="brush-engine-v2/native.js"></script>')) {
   throw new Error('Release index must not load native diagnostics');
+}
+if (!diagnostics && html.includes('<script src="brush-engine-v2/performance-ui.js"></script>')) {
+  throw new Error('Release index must not load performance diagnostics');
 }
 
 mkdirSync(dirname(output), { recursive: true });
