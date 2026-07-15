@@ -18,11 +18,12 @@ try{
     "background:newBackground(w,h)",'backgroundActive:false','backgroundPixels','backgroundStruct',
     "drawProjectBackground(ctx,projects[pi],W,H)","drawProjectBackground(oc,projects[pi],W,H)",
     'flattenFrame(P, frame, width, height)',"drawProjectBackground(g,P,width,height)",
-    "v:4, app:'InkFrame Studio'",'background,backgroundActive:false',
+    "v:4, app:'InkFrame Studio'",
     "const kLayBg=lAct('@paper','BG'",'Static background · shared across all frames',
     'newBackground: newBackground',
   ])assert.ok(html.includes(marker),`generated static-background contract missing ${marker}`);
 
+  assert.ok(/restored\.push\([\s\S]*?background[\s\S]*?backgroundActive:false/.test(html),'archive restore must attach the background and keep selection transient');
   assert.ok(html.indexOf('drawProjectBackground(ctx,projects[pi],W,H)')<html.indexOf('if(onion&&!playing)'),'background must render once before onion ghosts');
   assert.equal(/function onionSource[\s\S]{0,500}drawProjectBackground/.test(html),false,'onion sources must not include the shared background');
   assert.equal((html.match(/background:newBackground\(w,h\)/g)||[]).length>=2,true,'new projects and templates need backgrounds');
