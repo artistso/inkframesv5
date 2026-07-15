@@ -130,7 +130,6 @@ Local:
   test
   bump <patch|minor|major|version>
   release-check
-  export-gif <input.inkframe> <output.gif>
 
 GitHub / Agent:
   gh-clone [dir]
@@ -140,8 +139,15 @@ GitHub / Agent:
   agent build
   agent web
   agent release <patch|minor|major|version>
-  agent export-gif <input> <output>
 ```
+
+Unknown local commands and unknown `agent` subtasks must fail with a nonzero exit status. Do not document or restore a command until its implementation and behavior are covered by CI.
+
+## Media export contract
+
+PNG, animated GIF, and MP4/WebM export are supported inside the shipping application through the **Actions** orb. The in-app path uses the current frame compositor, paper color, frame holds, FPS, and browser/Android runtime.
+
+Headless `.inkframe` archive conversion is not currently supported. Do not claim that an external exporter is bit-identical to the application unless a current archive fixture and output comparison prove that contract.
 
 ## Repository map
 

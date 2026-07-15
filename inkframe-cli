@@ -66,6 +66,44 @@ resolve_version(){
   printf '%s.%s.%s\n' "$maj" "$min" "$pat"
 }
 
+print_help(){
+  cat <<'EOF'
+InkFrame Studio CLI — Agent Mode ready
+
+Local:
+  dev              Vite HMR http://localhost:5173
+  build-web        npm run build -> web/dist/
+  serve            python -m http.server 8080
+  build-apk        ./gradlew :app:assembleDebug
+  test             ./gradlew test
+  bump <patch|minor|major|version>
+  release-check    verify clean synchronized main and print tag commands
+
+GitHub / Agent Mode:
+  gh-clone [dir]                    clone artistso/inkframesv5
+  gh-ci [apk|web|test|all]          trigger agent-build.yml
+  gh-ci-get <run-id>                download inkframe-agent-apk
+  gh-release <patch|minor|major|version>
+                                     prepare metadata only; never commit/tag/push
+  agent build                       test + debug APK
+  agent web                         npm ci + web build
+  agent release <version-kind>      safe release preparation
+
+Media export is supported inside InkFrame through the Actions orb:
+  PNG, animated GIF, and MP4/WebM. Headless archive export is not currently supported.
+
+Release publication is intentionally multi-step:
+  prepare -> review -> commit/push -> green CI/tablet acceptance -> release-check -> tag
+
+Docs:
+  AGENT.md
+  ARCHITECTURE.md
+  BUILD.md
+  RELEASING.md
+  RELEASE_CHECKLIST.md
+EOF
+}
+
 case "$cmd" in
   dev)
     cd web
@@ -101,14 +139,6 @@ case "$cmd" in
 
   release-check)
     node tools/prepare-release.mjs
-    ;;
-
-  export-gif)
-    node tools/inkframe-cli.mjs export-gif "$@"
-    ;;
-
-  export)
-    node tools/inkframe-cli.mjs "$@"
     ;;
 
   # --- GitHub / Agent Mode -------------------------------------------------
@@ -186,50 +216,20 @@ EOF
       release)
         "$0" gh-release "${1:-patch}"
         ;;
-      export-gif)
-        node tools/inkframe-cli.mjs export-gif "$@"
-        ;;
       *)
-        echo "agent tasks: build | web | release [patch|minor|major|version] | export-gif <in> <out>" >&2
+        echo "Agent task must be one of: build, web, release <patch|minor|major|version>" >&2
         exit 1
         ;;
     esac
     ;;
 
-  help|*)
-    cat <<'EOF'
-InkFrame Studio CLI — Agent Mode ready
+  help|-h|--help)
+    print_help
+    ;;
 
-Local:
-  dev              Vite HMR http://localhost:5173
-  build-web        npm run build -> web/dist/
-  serve            python -m http.server 8080
-  build-apk        ./gradlew :app:assembleDebug
-  test             ./gradlew test
-  bump <patch|minor|major|version>
-  release-check    verify clean synchronized main and print tag commands
-  export-gif in.inkframe out.gif [--fps 12] [--width 1024]
-
-GitHub / Agent Mode:
-  gh-clone [dir]                    clone artistso/inkframesv5
-  gh-ci [apk|web|test|all]          trigger agent-build.yml
-  gh-ci-get <run-id>                download inkframe-agent-apk
-  gh-release <patch|minor|major|version>
-                                     prepare metadata only; never commit/tag/push
-  agent build                       test + debug APK
-  agent web                         npm ci + web build
-  agent release <version-kind>      safe release preparation
-  agent export-gif in out           headless GIF
-
-Release publication is intentionally multi-step:
-  prepare -> review -> commit/push -> green CI/tablet acceptance -> release-check -> tag
-
-Docs:
-  AGENT.md
-  ARCHITECTURE.md
-  BUILD.md
-  RELEASING.md
-  RELEASE_CHECKLIST.md
-EOF
+  *)
+    echo "Unknown InkFrame CLI command: $cmd" >&2
+    print_help >&2
+    exit 2
     ;;
 esac

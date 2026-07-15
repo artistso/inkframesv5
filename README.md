@@ -81,7 +81,7 @@ Grab a prebuilt debug APK from any green CI run: **Actions → Android CI → in
 
 ## CLI pipeline
 
-All build / release / export tasks go through `./inkframe-cli`:
+All build and release tasks go through `./inkframe-cli`:
 
 ```
 dev              Vite HMR dev server
@@ -91,24 +91,16 @@ build-apk        Gradle debug APK
 test             ./gradlew test (210 JVM unit tests)
 bump <patch|minor|major>  Bump web/metadata.json + package.json
 release-check    Verify release readiness, print git tag commands
-export-gif in.inkframe out.gif [--fps 12] [--width 1024]
 help
 ```
 
 Full docs: [`AGENT.md`](AGENT.md)
 
-### Headless export
+### Media export
 
-```bash
-# GIF – bit-identical to the in-app encoder
-./inkframe-cli export-gif myproject.inkframe out.gif --fps 24
+PNG, animated GIF, and MP4/WebM export are available inside InkFrame through the **Actions** orb. This is the supported export path in both the browser and Android application.
 
-# MP4 – via ffmpeg
-ffmpeg -i out.gif -movflags +faststart -pix_fmt yuv420p out.mp4
-```
-
-The GIF exporter needs puppeteer once:
-`cd web && npm install puppeteer --save-dev`
+Headless `.inkframe` archive conversion is not currently supported by `inkframe-cli`. The historical Puppeteer helper was removed from the repository and has not been validated against the current layered v3 archive format.
 
 ---
 
