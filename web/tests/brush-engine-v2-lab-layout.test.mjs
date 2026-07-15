@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import vm from 'node:vm';
+
+const require=createRequire(import.meta.url);let JSDOM;
+try{({JSDOM}=require('jsdom'));}catch{({JSDOM}=require(process.env.JSDOM_PATH||'/tmp/jsdom/node_modules/jsdom'));}
 
 const here=dirname(fileURLToPath(import.meta.url));
 const web=resolve(here,'..');
@@ -97,6 +101,48 @@ function loadPerformance(config,stats){
   const release=loadPerformance({variant:'release',diagnostics:false,traceTools:false},{});
   assert.equal(release.enabled(),false);
   assert.equal(release.install(),false);
+}
+
+// The debug card must install into the established Diagnostics workspace and
+// refresh from a one-shot termination event without any polling loop.
+{
+  let stats={
+    frames:0,queuedEvents:0,processedEvents:0,compactedEvents:0,liveRenders:0,
+    stampHits:0,stampMisses:0,stampFallbacks:0,paintedDabs:0,ribbonLines:0,
+    active:false,queued:0,stampCacheSize:0,maxEventsPerFrame:48,frameBudgetMs:5,
+  };
+  const dom=new JSDOM(`<!doctype html><html><head></head><body>
+    <div id="inkframe-v2-tuning">
+      <button data-lab-tab="diagnostics">Diagnostics</button>
+      <section id="inkframe-v2-lab-section-diagnostics" class="inkframe-v2-lab-section">
+        <div class="inkframe-v2-lab-primary"></div>
+      </section>
+    </div>
+  </body></html>`,{runScripts:'outside-only',url:'http://localhost/'});
+  dom.window.InkFrameBuild={variant:'debug',diagnostics:true,traceTools:true,defaultBrushEngine:'v2'};
+  dom.window.InkFrameBrushV2Adapter={
+    performanceStats:()=>Object.assign({},stats),
+    sessionStats:()=>({implicitEnds:0}),
+    ghostTrailStats:()=>({sessionsFinished:0}),
+  };
+  dom.window.InkFrameBrushV2InputBridge={stats:()=>({emitted:stats.processedEvents})};
+  dom.window.eval(performanceSource);
+  const api=dom.window.InkFrameBrushV2PerformanceUI;
+  assert.equal(api.install(),true);
+  const card=dom.window.document.getElementById('inkframe-v2-performance-diagnostics');
+  assert.ok(card,'debug performance card must install');
+  assert.equal(card.querySelectorAll('[data-perf-metric]').length,12);
+  assert.deepEqual(Array.from(card.querySelectorAll('button')).map(button=>button.textContent),[
+    'Set test baseline','Copy JSON snapshot',
+  ]);
+
+  stats=Object.assign({},stats,{frames:2,queuedEvents:8,processedEvents:8,liveRenders:2,stampHits:7,stampMisses:1,paintedDabs:64,ribbonLines:12,stampCacheSize:5});
+  dom.window.document.dispatchEvent(new dom.window.Event('pointerup',{bubbles:true}));
+  await new Promise(resolveWait=>dom.window.setTimeout(resolveWait,0));
+  assert.equal(card.querySelector('[data-perf-metric="processedEvents"]').textContent,'8');
+  assert.equal(card.querySelector('[data-perf-metric="stampHitRate"]').textContent,'87.5%');
+  assert.equal(card.querySelector('.inkframe-v2-perf-status').textContent,'No queue compaction');
+  dom.window.close();
 }
 
 assert.match(source,/shell\.dataset\.layout='split'/);
