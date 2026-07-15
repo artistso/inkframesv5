@@ -2,7 +2,7 @@ name: One-time Signed Play Candidate
 
 # Temporary trusted-main workflow. It checks out one exact reviewed feature SHA,
 # signs with the permanent InkFrame Play upload key, uploads the APK/AAB plus
-# hashes, and is deleted after capture.
+# hashes, reports the run on PR #111, and is deleted after capture.
 
 on:
   push:
@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: one-time-play-candidate-v0.5.0
@@ -20,7 +21,6 @@ concurrency:
 jobs:
   candidate:
     name: Build upload-key APK and AAB
-    if: github.actor == 'artistso'
     runs-on: ubuntu-latest
     env:
       SOURCE_SHA: '8e2a4809c7796c5fa15b81ee26da8fee3a964ed9'
@@ -170,3 +170,12 @@ jobs:
           path: release/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Report candidate run to PR 111
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          gh pr comment 111 --repo "$GITHUB_REPOSITORY" --body "Signed Play candidate workflow **${JOB_STATUS}**. Run ID: \`${GITHUB_RUN_ID}\`. Source: \`${SOURCE_SHA}\`. Version: \`${EXPECTED_VERSION}\`; versionCode: \`${EXPECTED_VERSION_CODE}\`. Artifact: \`inkframe-play-candidate-v0.5.0-50001\`."
