@@ -31,6 +31,6 @@ try{
   for(const path of ['tools/inject-feedback-report.mjs'])assert.ok(gradle.includes(`rootProject.file("${path}")`),`missing Gradle input for ${path}`);
   assert.ok(gradle.includes('webMetadataFile'),'metadata must invalidate generated Android indexes');
   assert.ok(mainActivity.includes('fun copyTesterReport(report: String)'),'native clipboard bridge must remain available');
-  assert.ok(mainActivity.includes('fun saveDataUrl(dataUrl: String)'),'native text-save bridge must remain available');
+  assert.ok(mainActivity.includes('fun saveDataUrl(dataUrl: String, suggestedName: String?, mimeType: String?)'),'native text-save bridge must remain available');
   console.log(`✅ generated release Feedback Report asset, ${metadata.version} metadata bridge, copy/save paths, Gradle inputs, redaction, and offline contract passed`);
 }finally{rmSync(temp,{recursive:true,force:true});}
