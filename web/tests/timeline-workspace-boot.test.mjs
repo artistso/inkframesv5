@@ -41,10 +41,11 @@ assert.equal(panel.querySelector('[data-timeline-state="loop"]').textContent,'Of
 const command=(name,value)=>panel.querySelector(`[data-timeline-command="${name}"]${value==null?'':`[data-timeline-value="${value}"]`}`);
 command('hold',2).click();api.updateState();assert.deepEqual(commands.at(-1),['hold',2]);assert.equal(panel.querySelector('[data-timeline-state="hold"]').textContent,'×2');assert.equal(command('hold',2).classList.contains('active'),true);
 command('holdDelta',1).click();api.updateState();assert.equal(panel.querySelector('[data-timeline-state="hold"]').textContent,'×3');
-command('selectAll').click();api.updateState();assert.equal(panel.querySelector('[data-timeline-state="selection"]').textContent,'12 selected · 1–12');assert.equal(command('reverse').disabled,false);
+command('selectAll').click();api.updateState();assert.equal(panel.querySelector('[data-timeline-state="selection"]').textContent,'12 selected · 1–12');assert.equal(command('reverse').disabled,false);assert.equal(command('pingPong').disabled,false);
 command('duplicate').click();api.updateState();assert.equal(panel.querySelector('[data-timeline-state="count"]').textContent,'24 / 120');assert.equal(panel.querySelector('[data-timeline-state="capacity"]').textContent,'96 free');
-command('clearSelection').click();api.updateState();assert.equal(panel.querySelector('[data-timeline-state="selection"]').textContent,'Frame 4');assert.equal(command('reverse').disabled,true);
-command('pingPong').click();assert.deepEqual(commands.at(-1),['pingPong',undefined]);
+command('clearSelection').click();api.updateState();assert.equal(panel.querySelector('[data-timeline-state="selection"]').textContent,'Frame 4');assert.equal(command('reverse').disabled,true);assert.equal(command('pingPong').disabled,false);
+timeline.selected=[4];timeline.targetCount=1;api.updateState();assert.equal(command('pingPong').disabled,true,'single-frame selection must disable ping-pong');
+timeline.selected=[];timeline.targetCount=1;api.updateState();command('pingPong').click();assert.deepEqual(commands.at(-1),['pingPong',undefined]);
 
 timeline.canInteract=false;api.updateState();assert.equal(command('delete').disabled,true);assert.equal(api.runCommand('delete'),false);assert.match(notices.at(-1),/Finish the active stroke/);timeline.canInteract=true;
 frames.classList.remove('open');api.updateState();assert.equal(panel.hidden,true);
@@ -52,4 +53,4 @@ frames.classList.remove('open');api.updateState();assert.equal(panel.hidden,true
 const css=d.querySelector('style[data-inkframe-timeline-workspace-style]').textContent;
 assert.match(css,/min-height:48px/);assert.match(css,/grid-template-columns:repeat\(4,1fr\)/);assert.match(css,/overflow-y:auto/);
 assert.equal(api.directFrameWrites,0);assert.equal(api.directHoldWrites,0);assert.equal(api.directSelectionWrites,0);assert.equal(api.directProjectSchemaWrites,0);assert.equal(api.storageWrites,0);assert.equal(api.networkWrites,0);
-dom.window.close();console.log('✅ Timeline Workspace visibility, live state, holds, selection, delegated commands, touch layout, and active-stroke lockout passed');
+dom.window.close();console.log('✅ Timeline Workspace visibility, live state, holds, selection, ping-pong rules, delegated commands, touch layout, and active-stroke lockout passed');
