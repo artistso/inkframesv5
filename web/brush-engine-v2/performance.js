@@ -302,14 +302,20 @@
       value.events = value.events.slice(value.head);
       value.head = 0;
     }
+    const active = typeof adapter.isActive !== 'function' || adapter.isActive();
+    if (!active) {
+      totals.frames++;
+      clearStroke(value);
+      return processed;
+    }
     if (allowLiveRender) renderLive(value);
     totals.frames++;
-    if (!force && queueSize(value) && (!adapter.isActive || adapter.isActive())) schedule(value);
+    if (!force && queueSize(value)) schedule(value);
     return processed;
   }
 
   adapter.begin = function(event, env) {
-    if (stroke) clearStroke(stroke);
+    if (stroke && typeof adapter.isActive === 'function' && !adapter.isActive()) clearStroke(stroke);
     const value = {
       env,
       events: [],
@@ -328,7 +334,8 @@
       };
       env.renderLive = value.wrappedRenderLive;
     }
-    stroke = value;
+    // Do not publish the new performance state until the wrapped session begin
+    // has implicitly finalized any stale physical stroke through adapter.end().
     const handled = original.begin.call(adapter, event, env);
     value.starting = false;
     const active = typeof adapter.isActive !== 'function' || adapter.isActive();
@@ -336,13 +343,16 @@
       clearStroke(value);
       return handled;
     }
+    stroke = value;
     renderLive(value);
     return handled;
   };
 
   adapter.move = function(event) {
     const value = stroke;
-    if (!value || !event || (typeof adapter.isActive === 'function' && !adapter.isActive())) {
+    if (!value || !event) return original.move.call(adapter, event);
+    if (typeof adapter.isActive === 'function' && !adapter.isActive()) {
+      clearStroke(value);
       return original.move.call(adapter, event);
     }
     if (typeof event.preventDefault === 'function') event.preventDefault();
