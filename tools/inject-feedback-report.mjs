@@ -1,4 +1,4 @@
-// Offline Feedback Report, Tablet Command Deck, and Timeline Workspace postprocessor.
+// Offline Feedback Report and tablet workspace postprocessor for generated Android assets.
 // The checked-in browser fallback remains unchanged.
 
 import {readFileSync} from 'node:fs';
@@ -14,9 +14,10 @@ export function injectFeedbackReport(html,replaceOnce){
       '<script src="onion-skin-studio.js"></script>',
       '<script src="feedback-report.js"></script>',
       '<script src="tablet-command-deck.js"></script>',
-      '<script src="timeline-workspace.js"></script>'
+      '<script src="timeline-workspace.js"></script>',
+      '<script src="layer-workspace.js"></script>'
     ),
-    'Feedback Report, Tablet Command Deck, and Timeline Workspace runtime scripts');
+    'Feedback Report and tablet workspace runtime scripts');
 
   const onionEnvironment=block(
     '  window.InkFrameOnionStudioEnvironment=()=>Object.freeze({',
@@ -53,7 +54,7 @@ export function injectFeedbackReport(html,replaceOnce){
     '  });',
     '',
     '  // Tablet-first command bridge. Commands reuse established controls and',
-    '  // timeline functions instead of implementing a second editor state model.',
+    '  // editor functions instead of implementing a second state model.',
     '  function tabletDeckCanInteract(){',
     '    const adapter=window.InkFrameBrushV2Adapter;',
     '    return !drawing&&!(adapter&&adapter.isActive&&adapter.isActive());',
@@ -114,36 +115,65 @@ export function injectFeedbackReport(html,replaceOnce){
     '    if(handled)window.dispatchEvent(new Event(\'inkframe:timeline\'));',
     '    return handled;',
     '  }',
+    '  function tabletLayerSnapshot(){',
+    '    const fr=frames[cur]||null,L=fr&&fr.layers&&fr.layers[fr.active]||null;',
+    '    return Object.freeze({',
+    '      count:fr&&Array.isArray(fr.layers)?fr.layers.length:0,active:fr?fr.active+1:0,',
+    '      visible:L?L.visible!==false:false,opacity:L?Math.round(L.opacity*100):0,',
+    '      blend:L?(BLEND_LABEL[L.blend]||L.blend||\'Normal\'):\'Normal\',canInteract:tabletDeckCanInteract(),',
+    '    });',
+    '  }',
+    '  function tabletLayerSelect(delta){',
+    '    const fr=frames[cur];if(!fr||!fr.layers.length)return false;',
+    '    const next=Math.max(0,Math.min(fr.layers.length-1,fr.active+(Number(delta)<0?-1:1)));',
+    '    if(next===fr.active)return false;fr.active=next;refreshFctx();render();refreshLayers();',
+    '    flash(`Layer ${fr.active+1} of ${fr.layers.length}`);return true;',
+    '  }',
+    '  function tabletLayerSetOpacity(value){',
+    '    const L=activeLayer();if(!L)return false;',
+    '    const next=Math.max(0,Math.min(100,Math.round(Number(value)||0)));',
+    '    L.opacity=next/100;bumpFrame(frames[cur]);render();refreshLayers();flash(`Layer opacity · ${next}%`);return true;',
+    '  }',
+    '  function tabletLayerCommand(name,value){',
+    '    if(!tabletDeckCanInteract())return false;',
+    '    const command=String(name||\'\');const fr=frames[cur];let handled=true;',
+    '    if(command===\'selectAbove\')handled=tabletLayerSelect(1);',
+    '    else if(command===\'selectBelow\')handled=tabletLayerSelect(-1);',
+    '    else if(command===\'add\')kLayAdd.click();',
+    '    else if(command===\'duplicate\')kLayDup.click();',
+    '    else if(command===\'delete\'){if(!fr||fr.layers.length<=1)handled=false;else kLayDel.click();}',
+    '    else if(command===\'moveUp\'){if(!fr||fr.active>=fr.layers.length-1)handled=false;else kLayUp.click();}',
+    '    else if(command===\'moveDown\'){if(!fr||fr.active<=0)handled=false;else kLayDn.click();}',
+    '    else if(command===\'mergeDown\'){if(!fr||fr.active<=0||fr.layers.length<=1)handled=false;else kLayMerge.click();}',
+    '    else if(command===\'visibility\')kLayEye.click();',
+    '    else if(command===\'blend\')kLayBlend.click();',
+    '    else if(command===\'opacity\')handled=tabletLayerSetOpacity(value);',
+    '    else handled=false;',
+    '    if(handled)window.dispatchEvent(new Event(\'inkframe:layers\'));',
+    '    return handled;',
+    '  }',
     '  window.InkFrameTabletDeckEnvironment=()=>Object.freeze({',
     '    snapshot:feedbackReportSnapshot,canInteract:tabletDeckCanInteract,openMode:tabletDeckOpenMode,',
     '    openBrushLab:()=>{if(!tabletDeckCanInteract())return false;openBrushLab();return true;},',
     '    togglePlayback:()=>{if(!tabletDeckCanInteract())return false;kPlay.click();return true;},',
     '    collapseModes:tabletDeckCollapseModes,timelineSnapshot:tabletTimelineSnapshot,timelineCommand:tabletTimelineCommand,',
+    '    layerSnapshot:tabletLayerSnapshot,layerCommand:tabletLayerCommand,',
     `    notify:message=>flash(String(message||'Tablet Command Deck')),`,
     '  });'
   );
-  html=replaceOnce(html,onionEnvironment,feedbackBridge,'Feedback Report, Tablet Command Deck, and Timeline Workspace environment bridge');
+  html=replaceOnce(html,onionEnvironment,feedbackBridge,'Feedback Report and tablet workspace environment bridge');
 
   for(const marker of [
-    'feedback-report.js',
-    'tablet-command-deck.js',
-    'timeline-workspace.js',
-    'InkFrameFeedbackEnvironment',
-    'InkFrameTabletDeckEnvironment',
-    'feedbackReportSnapshot',
-    'tabletDeckOpenMode',
-    'tabletTimelineSnapshot',
-    'tabletTimelineCommand',
-    'duplicateFrameSequence()',
-    'pingPongSelection()',
-    'openBrushLab()',
-    'kPlay.click()',
-    'projectSlot:pi+1',
-    'recoveryLastSave',
+    'feedback-report.js','tablet-command-deck.js','timeline-workspace.js','layer-workspace.js',
+    'InkFrameFeedbackEnvironment','InkFrameTabletDeckEnvironment','feedbackReportSnapshot','tabletDeckOpenMode',
+    'tabletTimelineSnapshot','tabletTimelineCommand','tabletLayerSnapshot','tabletLayerCommand',
+    'duplicateFrameSequence()','pingPongSelection()','kLayAdd.click()','kLayMerge.click()',
+    'openBrushLab()','kPlay.click()','projectSlot:pi+1','recoveryLastSave',
   ]){
     if(!html.includes(marker))throw new Error(`Feedback/UI injection verification failed: ${marker}`);
   }
   if(html.indexOf('feedback-report.js')>html.indexOf('tablet-command-deck.js'))throw new Error('Tablet Command Deck must load after Feedback Report');
   if(html.indexOf('tablet-command-deck.js')>html.indexOf('timeline-workspace.js'))throw new Error('Timeline Workspace must load after Tablet Command Deck');
+  if(html.indexOf('timeline-workspace.js')>html.indexOf('layer-workspace.js'))throw new Error('Layer Workspace must load after Timeline Workspace');
   return html;
 }
