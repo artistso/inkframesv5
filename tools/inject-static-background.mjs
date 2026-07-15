@@ -2,6 +2,21 @@
 import { injectStaticBackground as injectGeneratedBackground } from './inject-static-background-v2.mjs';
 import { injectStaticBackgroundLayerBridge } from './inject-static-background-layer-bridge.mjs';
 
+function injectControlSurface(html) {
+  const marker = '<script src="layer-workspace.js"></script>';
+  const first = html.indexOf(marker);
+  if (first < 0) throw new Error('Control Surface injection marker missing: Layer Workspace runtime');
+  if (html.indexOf(marker, first + marker.length) >= 0) {
+    throw new Error('Control Surface injection marker is not unique: Layer Workspace runtime');
+  }
+  const script = `${marker}\n<script src="control-surface.js"></script>`;
+  const next = html.slice(0, first) + script + html.slice(first + marker.length);
+  if ((next.match(/control-surface\.js/g) || []).length !== 1) {
+    throw new Error('Control Surface runtime must load exactly once');
+  }
+  return next;
+}
+
 export function injectStaticBackground(html) {
   // Canvas Shape emits the same two-line default in useProject() and the direct
   // archive binder. The v2 postprocessor intentionally updates them in order.
@@ -27,7 +42,8 @@ export function injectStaticBackground(html) {
     };
   };
   try {
-    return injectStaticBackgroundLayerBridge(injectGeneratedBackground(html));
+    const integrated = injectStaticBackgroundLayerBridge(injectGeneratedBackground(html));
+    return injectControlSurface(integrated);
   } finally {
     String.prototype.matchAll = originalMatchAll;
   }
