@@ -1,4 +1,4 @@
-// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, and zoom UI
+// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, and compact zoom UI
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -96,8 +96,37 @@ function pointer(window,type,id,x,y,pointerType='touch'){
 
   const dock=document.getElementById('inkframe-viewport-dock');
   assert.ok(dock,'tablet zoom dock must install');
-  assert.equal(dock.querySelectorAll('button').length,6);
+  assert.equal(dock.querySelectorAll('button').length,7);
   assert.equal(dock.querySelector('.inkframe-viewport-percent').textContent,'160%');
+
+  // The dock can collapse without hiding the two controls needed during drawing:
+  // live zoom/Fit and the Hand tool.
+  const dockControls=document.getElementById('inkframe-viewport-controls');
+  const dockToggle=dock.querySelector('.inkframe-viewport-collapse');
+  assert.ok(dockControls);
+  assert.ok(dockToggle);
+  assert.equal(api.dockCollapsed,false);
+  assert.equal(dockToggle.getAttribute('aria-expanded'),'true');
+  dockToggle.click();
+  assert.equal(api.dockCollapsed,true);
+  assert.equal(dock.classList.contains('collapsed'),true);
+  assert.equal(dock.dataset.collapsed,'true');
+  assert.equal(dockToggle.getAttribute('aria-expanded'),'false');
+  assert.equal(dockControls.getAttribute('aria-hidden'),'true');
+  assert.ok(dock.querySelector('.inkframe-viewport-percent'));
+  assert.ok(dock.querySelector('.inkframe-viewport-pan'));
+  dockToggle.click();
+  assert.equal(api.dockCollapsed,false);
+  assert.equal(dockToggle.getAttribute('aria-expanded'),'true');
+  assert.equal(dockControls.getAttribute('aria-hidden'),'false');
+
+  // N toggles compact navigation without affecting artwork or viewport state.
+  const beforeKeyboardCollapse=Object.assign({},viewport);
+  window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'n',bubbles:true,cancelable:true}));
+  assert.equal(api.dockCollapsed,true);
+  assert.deepEqual(viewport,beforeKeyboardCollapse);
+  window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'N',bubbles:true,cancelable:true}));
+  assert.equal(api.dockCollapsed,false);
 
   // Hand mode consumes the first touch before drawing and turns it into
   // one-finger canvas navigation. Pen input remains untouched.
@@ -163,12 +192,22 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.equal(redoCalls,historyBeforeCancel.redo);
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
   assert.equal(hud.classList.contains('show'),false);
+
+  // Entering Zen mode compacts the dock event-by-event rather than through polling.
+  document.body.classList.add('zen');
+  await Promise.resolve();
+  assert.equal(api.dockCollapsed,true);
+  assert.equal(dock.classList.contains('collapsed'),true);
+
   dom.window.close();
 }
 
 assert.match(source,/inkframe-viewport-dock/);
 assert.match(source,/inkframe-viewport-hud/);
 assert.match(source,/inkframe-viewport-pan-mode/);
+assert.match(source,/inkframe-viewport-collapse/);
+assert.match(source,/MutationObserver/);
+assert.match(source,/aria-expanded/);
 assert.match(source,/aria-pressed/);
 assert.match(source,/translatedViewport/);
 assert.match(source,/stopImmediatePropagation/);
@@ -177,4 +216,4 @@ assert.match(source,/pointercancel/);
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/touchstart|touchmove/,'Pointer Events remain the single gesture input model');
 
-console.log('✅ anchored pinch, hand pan, gesture HUD, ownership, tap dead zone, cancellation, Undo/Redo, and zoom UI tests passed');
+console.log('✅ anchored pinch, hand pan, compact dock, gesture HUD, ownership, cancellation, Undo/Redo, and zoom UI tests passed');
