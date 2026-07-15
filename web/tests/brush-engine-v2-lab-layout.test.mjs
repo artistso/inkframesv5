@@ -106,7 +106,9 @@ assert.match(source,/studioDetails\.className='inkframe-v2-studio-presets'/);
 assert.doesNotMatch(source,/studioDetails\.open\s*=\s*true/);
 assert.match(source,/button\.append\(iconNode,summaryNode,labelNode\)/);
 assert.match(performanceSource,/inkframe-v2-performance-diagnostics/);
-assert.match(performanceSource,/Display refresh pauses during active strokes/);
+assert.match(performanceSource,/Metrics refresh after stroke termination/);
+assert.doesNotMatch(performanceSource,/setInterval/);
+assert.doesNotMatch(performanceSource,/setTimeout\(tick/);
 assert.doesNotMatch(performanceSource,/localStorage/);
 assert.doesNotMatch(performanceSource,/fetch\(/);
 
