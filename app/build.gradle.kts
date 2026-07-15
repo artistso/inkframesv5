@@ -219,9 +219,16 @@ fun registerWebAssetPipeline(
     val injectTask = tasks.register<Exec>("injectBrushV2${capitalized}Index") {
         dependsOn(stageTask)
         val injector = rootProject.file("tools/inject-brush-v2-index.mjs")
+        val indexInjectorInputs = files(
+            injector,
+            rootProject.file("tools/inject-canvas-shape.mjs"),
+            rootProject.file("tools/inject-onion-skin-studio.mjs"),
+            rootProject.file("tools/inject-feedback-report.mjs"),
+            webMetadataFile,
+        )
         val sourceIndex = rootProject.file("web/index.html")
         val targetIndex = outputDir.map { it.file("index.html") }
-        inputs.files(injector, sourceIndex)
+        inputs.files(indexInjectorInputs, sourceIndex)
         inputs.property("variantName", variantName)
         inputs.property("diagnostics", diagnostics)
         inputs.property("defaultEngine", defaultEngine)

@@ -40,4 +40,19 @@ try{
 }finally{rmSync(temp,{recursive:true,force:true});}
 console.log('✅ creator statement testimony label, Studio rename, production packaging, and zero-write isolation passed');
 
+await import('./onion-skin-studio.test.mjs');
+await import('./onion-skin-studio-boot.test.mjs');
+await import('./onion-skin-studio-release.test.mjs');
+await import('./feedback-report.test.mjs');
+await import('./feedback-report-boot.test.mjs');
+await import('./feedback-report-release.test.mjs');
+await import('./tablet-command-deck.test.mjs');
+await import('./tablet-command-deck-boot.test.mjs');
+await import('./tablet-command-deck-release.test.mjs');
+await import('./timeline-workspace.test.mjs');
+await import('./timeline-workspace-boot.test.mjs');
+await import('./timeline-workspace-release.test.mjs');
+await import('./layer-workspace.test.mjs');
+await import('./layer-workspace-boot.test.mjs');
+await import('./layer-workspace-release.test.mjs');
 await import('./brush-engine-v2-profile-history-boot.test.mjs');
