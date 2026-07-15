@@ -83,7 +83,9 @@
 
   function finishImplicit(reason) {
     if (!isActive()) return false;
-    const handled = original.end.call(adapter, syntheticTerminal(reason));
+    // Resolve end dynamically so wrappers installed after session continuity
+    // (Ghost Trail, performance budgeting, diagnostics) can flush and finalize.
+    const handled = adapter.end(syntheticTerminal(reason));
     if (handled) {
       counters.implicitEnds++;
       clearRemembered();
