@@ -10,6 +10,7 @@ const temp=mkdtempSync(resolve(tmpdir(),'inkframe-static-background-')),generate
 try{
   execFileSync(process.execPath,[resolve(root,'tools/inject-brush-v2-index.mjs'),resolve(root,'web/index.html'),generated,'--variant=release','--diagnostics=false','--default-engine=v2'],{cwd:root,stdio:'pipe'});
   const html=readFileSync(generated,'utf8');
+  const indexInjector=readFileSync(resolve(root,'tools/inject-brush-v2-index.mjs'),'utf8');
   const coordinator=readFileSync(resolve(root,'tools/inject-static-background.mjs'),'utf8');
   const injector=readFileSync(resolve(root,'tools/inject-static-background-v2.mjs'),'utf8');
   const layerBridge=readFileSync(resolve(root,'tools/inject-static-background-layer-bridge.mjs'),'utf8');
@@ -26,6 +27,8 @@ try{
     'newBackground: newBackground',"command==='background'",'background=backgroundEditing()',
   ])assert.ok(html.includes(marker),`generated static-background contract missing ${marker}`);
 
+  assert.match(indexInjector,/import \{ injectStaticBackground \} from '\.\/inject-static-background\.mjs';/,'index generator must import the static-background coordinator');
+  assert.ok(indexInjector.indexOf('html = injectStaticBackground(html)')>indexInjector.indexOf('html = injectFeedbackReport(html, replaceOnce)'),'static background must run after feedback and tablet bridge generation');
   assert.match(coordinator,/injectGeneratedBackground/,'coordinator must delegate to the deterministic background core');
   assert.match(coordinator,/injectStaticBackgroundLayerBridge/,'coordinator must apply the contextual Layer Workspace bridge');
   assert.match(layerBridge,/command==='background'/,'Layer Workspace bridge must expose Static BG selection');
