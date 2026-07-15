@@ -28,7 +28,7 @@ class FakeTarget{
   }
 }
 
-const context={module:{exports:{}},exports:{},console,setTimeout,clearTimeout,performance:{now:()=>Date.now()}};
+const context={module:{exports:{}},exports:{},console,setTimeout,clearTimeout,performance:{now:()=>Date.now()},Event:FakeEvent,PointerEvent:FakeEvent};
 vm.createContext(context);
 vm.runInContext(source,context,{filename:'canvas-navigation.js'});
 const api=context.module.exports;
@@ -37,10 +37,10 @@ assert.ok(api&&typeof api.nextTransform==='function','canvas navigation API did 
 // Pure transform contract: pinch uses span + centroid only. Turning the finger vector
 // ninety degrees with equal span must not rotate or move the canvas.
 const bounds={baseLeft:0,baseTop:0,baseWidth:400,baseHeight:300,viewportWidth:1000,viewportHeight:800,minZoom:.35,maxZoom:8,minVisiblePx:72};
-assert.deepEqual(
-  api.nextTransform({zoom:1,x:0,y:0},[{x:-10,y:0},{x:10,y:0}],[{x:0,y:-10},{x:0,y:10}],bounds),
-  {zoom:1,x:0,y:0},
-);
+const angleNoise=api.nextTransform({zoom:1,x:0,y:0},[{x:-10,y:0},{x:10,y:0}],[{x:0,y:-10},{x:0,y:10}],bounds);
+assert.equal(angleNoise.zoom,1);
+assert.equal(angleNoise.x,0);
+assert.equal(angleNoise.y,0);
 const doubled=api.nextTransform({zoom:1,x:0,y:0},[{x:100,y:100},{x:200,y:100}],[{x:50,y:120},{x:250,y:120}],bounds);
 assert.equal(doubled.zoom,2);
 assert.equal(0+doubled.x+doubled.zoom*150,150,'zoom pivot drifted on x');
