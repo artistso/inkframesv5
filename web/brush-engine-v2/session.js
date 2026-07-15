@@ -83,8 +83,11 @@
 
   function finishImplicit(reason) {
     if (!isActive()) return false;
+    // Later wrappers may defer raw moves. Flush them before capturing the
+    // synthetic endpoint so the terminal sample uses the latest S Pen position.
+    if (typeof adapter.flushPerformanceQueue === 'function') adapter.flushPerformanceQueue(false);
     // Resolve end dynamically so wrappers installed after session continuity
-    // (Ghost Trail, performance budgeting, diagnostics) can flush and finalize.
+    // (Ghost Trail, performance budgeting, diagnostics) can finalize themselves.
     const handled = adapter.end(syntheticTerminal(reason));
     if (handled) {
       counters.implicitEnds++;
