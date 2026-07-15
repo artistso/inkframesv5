@@ -136,7 +136,7 @@ The signed workflow is fail-closed and requires the repository's permanent Andro
 
 Agent workflow: [`.github/workflows/agent-build.yml`](.github/workflows/agent-build.yml)
 
-CLI helper for agents: [`tools/inkframe-cli.mjs`](tools/inkframe-cli.mjs) – `export-gif`, version bump, release check. Wrap it in your own Agent Mode runner; no API keys needed.
+CLI entry point for agents: [`inkframe-cli`](inkframe-cli) – build, test, release preparation, and GitHub workflow helpers.
 
 ---
 
@@ -190,8 +190,9 @@ media/                # hero.png, demo.gif, …
   android.yml         # CI – tests + debug APK + disposable-key production verification
   release.yml         # v* tag → permanent-key signed APK/AAB → GitHub Release
   agent-build.yml     # workflow_dispatch – for Agent Mode
+inkframe-cli          # root CLI entry point
 tools/
-  inkframe-cli.mjs    # export-gif, version helpers
+  check-doc-links.mjs # deterministic local documentation-link validation
   bump-version.mjs
   prepare-release.mjs
   update-release-notes.mjs
