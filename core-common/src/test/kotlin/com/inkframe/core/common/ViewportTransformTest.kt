@@ -65,13 +65,15 @@ class ViewportTransformTest {
     }
 
     @Test
-    fun twoFingerRotate_producesExpectedAngle() {
-        // Rotate the finger vector 90 degrees about midpoint (0,0).
+    fun fingerAngleChange_doesNotRotateCanvas() {
+        // Real pinches rarely maintain an exact finger angle. Rotating the finger vector
+        // with the same span and centroid must not rotate or wobble the artwork.
         val prevA = Vec2(-10f, 0f); val prevB = Vec2(10f, 0f)
         val curA = Vec2(0f, -10f); val curB = Vec2(0f, 10f)
         val t = ViewportTransform.IDENTITY.applyGesture(prevA, prevB, curA, curB)
-        assertEquals(1f, t.scale, eps)              // no zoom
-        assertEquals((PI / 2).toFloat(), t.rotation, eps)
+        assertEquals(1f, t.scale, eps)
+        assertEquals(0f, t.rotation, eps)
+        assertEquals(ViewportTransform.IDENTITY, t)
     }
 
     @Test
@@ -119,25 +121,32 @@ class ViewportTransformTest {
     }
 
     @Test
-    fun gesture_combinedZoomRotatePan() {
-        // Arbitrary correspondence; verify the resulting transform reproduces both
-        // finger positions exactly (defining property of the 2-point similarity).
+    fun gesture_combinesZoomAndPan_withoutChangingRotation() {
         val prevA = Vec2(20f, 30f); val prevB = Vec2(60f, 30f)
         val curA = Vec2(50f, 50f); val curB = Vec2(50f, 120f)
+        val previousCenter = Vec2(40f, 30f)
+        val currentCenter = Vec2(50f, 85f)
+        val expectedScaleFactor = 70f / 40f
+
         val t = ViewportTransform(ax = 1.1f, ay = 0.2f, bx = 4f, by = -3f)
         val moved = t.applyGesture(prevA, prevB, curA, curB)
-        // Points that were at prevA/prevB (in view space) must now be at curA/curB.
-        val canvasA = t.viewToCanvas(prevA)
-        val canvasB = t.viewToCanvas(prevB)
-        assertVec(curA, moved.canvasToView(canvasA), 1e-2f)
-        assertVec(curB, moved.canvasToView(canvasB), 1e-2f)
+
+        assertEquals(t.scale * expectedScaleFactor, moved.scale, eps)
+        assertEquals(t.rotation, moved.rotation, eps)
+        val canvasAtPreviousCenter = t.viewToCanvas(previousCenter)
+        assertVec(currentCenter, moved.canvasToView(canvasAtPreviousCenter), 1e-2f)
     }
 
     @Test
-    fun degenerateGesture_returnsUnchanged() {
+    fun degenerateGesture_keepsZoomFiniteAndStillPans() {
         val t = ViewportTransform(ax = 2f, ay = 0f, bx = 1f, by = 1f)
-        // Both fingers at same point -> zero-length vector -> no-op.
-        val same = Vec2(5f, 5f)
-        assertEquals(t, t.applyGesture(same, same, Vec2(9f, 9f), Vec2(9f, 9f)))
+        val previous = Vec2(5f, 5f)
+        val current = Vec2(9f, 9f)
+        val moved = t.applyGesture(previous, previous, current, current)
+
+        assertTrue(moved.scale.isFinite())
+        assertEquals(t.scale, moved.scale, eps)
+        assertEquals(t.rotation, moved.rotation, eps)
+        assertEquals(t.pan(4f, 4f), moved)
     }
 }
