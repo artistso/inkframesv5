@@ -71,14 +71,14 @@ function pointer(window,type,id,x,y){
   assert.equal(cancelCalls,1,'joining a second finger rolls back the provisional touch stroke');
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),true);
 
-  canvas.dispatchEvent(pointer(window,'pointermove',2,260,260));
+  canvas.dispatchEvent(pointer(window,'pointermove',2,260,200));
   assert.equal(raf.length,1,'pinch writes are coalesced into one animation frame');
   raf.shift()(16);
   assert.equal(viewport.scale,1.6);
   assert.equal(viewport.panX,240,'pinch centroid movement pans while preserving the anchored canvas point');
-  assert.equal(viewport.panY,150);
+  assert.equal(viewport.panY,120);
 
-  canvas.dispatchEvent(pointer(window,'pointerup',2,260,260));
+  canvas.dispatchEvent(pointer(window,'pointerup',2,260,200));
   canvas.dispatchEvent(pointer(window,'pointerup',1,100,200));
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
   assert.match(flashes.at(-1),/^Canvas 160%$/);
