@@ -32,14 +32,15 @@ jobs:
       INKFRAME_VERSION_CODE: ${{ github.run_number }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
+          package-manager-cache: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -162,7 +163,7 @@ jobs:
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
-          BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK")"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
           grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
 
