@@ -46,4 +46,7 @@ await import('./onion-skin-studio-release.test.mjs');
 await import('./feedback-report.test.mjs');
 await import('./feedback-report-boot.test.mjs');
 await import('./feedback-report-release.test.mjs');
+await import('./tablet-command-deck.test.mjs');
+await import('./tablet-command-deck-boot.test.mjs');
+await import('./tablet-command-deck-release.test.mjs');
 await import('./brush-engine-v2-profile-history-boot.test.mjs');
