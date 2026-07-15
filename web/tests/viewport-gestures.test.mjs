@@ -83,12 +83,19 @@ function pointer(window,type,id,x,y){
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
   assert.match(flashes.at(-1),/^Canvas 160%$/);
 
-  // Quick two-finger tap keeps the established Undo gesture.
+  // Natural tap jitter remains inside the dead zone: it performs Undo without
+  // also shifting or scaling the viewport.
+  const beforeTap=Object.assign({},viewport);
   canvas.dispatchEvent(pointer(window,'pointerdown',3,120,220));
   canvas.dispatchEvent(pointer(window,'pointerdown',4,220,220));
-  canvas.dispatchEvent(pointer(window,'pointerup',4,220,220));
+  canvas.dispatchEvent(pointer(window,'pointermove',4,221,221));
+  assert.equal(raf.length,0,'sub-threshold tap jitter must not schedule a viewport write');
+  canvas.dispatchEvent(pointer(window,'pointerup',4,221,221));
   canvas.dispatchEvent(pointer(window,'pointerup',3,120,220));
   assert.equal(undoCalls,1);
+  assert.equal(viewport.scale,beforeTap.scale);
+  assert.equal(viewport.panX,beforeTap.panX);
+  assert.equal(viewport.panY,beforeTap.panY);
 
   // Quick three-finger tap keeps the established Redo gesture.
   canvas.dispatchEvent(pointer(window,'pointerdown',5,120,220));
@@ -112,4 +119,4 @@ assert.match(source,/requestAnimationFrame/);
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/touchstart|touchmove/,'Pointer Events remain the single gesture input model');
 
-console.log('✅ anchored pinch, two-finger pan, gesture ownership, Undo\/Redo taps, and zoom UI tests passed');
+console.log('✅ anchored pinch, two-finger pan, gesture ownership, dead-zone taps, Undo\/Redo, and zoom UI tests passed');
