@@ -56,6 +56,7 @@ ${changes}
 - Switching to Original produces an independent fallback stroke path.
 - Separate strokes and fast uninterrupted strokes never create a long connecting bridge.
 - Brush Lab texture, brush preset save/use/export/import/delete work.
+- Two-finger pan and pinch zoom remain anchored, do not rotate the canvas, and do not leave an accidental touch mark.
 - PNG/GIF/video export paths report success or a clear unsupported message.
 - Installed APK launches offline and can export media/archive files.
 
