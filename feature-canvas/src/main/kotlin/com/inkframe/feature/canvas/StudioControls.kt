@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /**
@@ -38,7 +40,6 @@ internal object StudioControlTokens {
     val ToolbarBackground = Color(0xFF202126)
     val GroupBackground = Color(0xFF2A2C32)
     val IdleBackground = Color.Transparent
-    val HoverBackground = Color(0xFF363941)
     val DisabledContent = Color(0xFF6D7079)
 }
 
@@ -78,9 +79,10 @@ internal fun StudioIconButton(
     enabled: Boolean = true,
     selected: Boolean = false,
 ) {
-    val container = when {
-        selected -> MaterialTheme.colorScheme.primaryContainer
-        else -> StudioControlTokens.IdleBackground
+    val container = if (selected) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        StudioControlTokens.IdleBackground
     }
     val content = when {
         !enabled -> StudioControlTokens.DisabledContent
@@ -126,7 +128,9 @@ internal fun StudioToolButton(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.size(StudioControlTokens.TouchTarget),
+        modifier = modifier
+            .size(StudioControlTokens.TouchTarget)
+            .semantics { this.contentDescription = contentDescription },
         shape = RoundedCornerShape(StudioControlTokens.ControlRadius),
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -148,9 +152,6 @@ internal fun StudioToolButton(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(StudioControlTokens.TouchTarget),
         ) {
-            // Surface supplies semantics through onClick; description is provided by slot content.
-            @Suppress("UNUSED_VARIABLE")
-            val accessibilityLabel = contentDescription
             content()
         }
     }
