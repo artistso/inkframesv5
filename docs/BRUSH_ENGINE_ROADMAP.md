@@ -1,50 +1,90 @@
-# InkFrame Brush Engine — Stabilizer & Brush Refinement Roadmap
+# InkFrame Brush Engine — Stabilizer Research and Shipped Record
 
-## What we have today (v0.1.1)
-- Per-brush profiles: size, opacity, minSize, stabilize, hard, spacing, jitter, taperIn/Out, entry/exit pool, texture, response.
-- Catmull-Rom spline strokes through the last 4 samples.
-- Velocity-adaptive dab spacing.
-- Pressure seat-in (anti-blob at stroke start).
-- Living Line: nib width + orientation inertia (Nolan weight).
-- Predicted-stroke overlay from last confirmed sample to raw pen tip.
-- StreamLine: a single EMA `pen += (raw - pen) * factor`.
+Status: stabilizer overhaul shipped in 0.1.2; Brush Engine V2 expanded in 0.4.0
+Original roadmap date: 2026-07-07
+Record updated: 2026-07-14
 
-## What the big programs do
-- **Procreate StreamLine**: "pen on a rope" — virtual string length scales with the slider; fast strokes shorten the rope so the line catches up; slow strokes get a longer rope and more smoothing.
-- **Photoshop Smoothing**: stroke-snap + rope length; pulls toward a smoothed point with optional "catch-up on stroke end".
-- **Clip Studio Paint**: post-stroke correction (line simplification), plus per-brush "correction" that acts like a weighted average with velocity gating.
-- **Krita**: mass-spring-damper stabilizer; heavier mass = smoother, slower line; explicitly separates position/pressure smoothing.
-- **Fresco**: vector-raster hybrid; velocity curves affect width and taper; live preview is drawn ahead of the touch.
-- **Infinite Painter**: rope stabilizer + predictive stroke extrapolation.
-- **Rebelle**: paint-engine simulation; not directly relevant to the stabilizer but informs wet-brush behaviour.
+This document preserves the research that informed InkFrame’s stabilizer work and records what shipped. Current priorities live in `ROADMAP.md`.
 
-## v0.1.2 plan — stabilizer overhaul
-1. Replace the single EMA with a **velocity-adaptive rope + directional bias** smoother.
-   - Smoothing factor is high at low velocity, reduced at high velocity.
-   - Perpendicular jitter is suppressed more than forward progress.
-   - Tiny movements (< jitter gate) are ignored so the line doesn't "breathe" when holding still.
-2. Separate smoothing paths for:
-   - Position (x, y)
-   - Pressure (already partly smoothed; make it velocity-aware too)
-   - Tilt/azimuth (already EMA; keep it)
-3. Enhance the predicted overlay:
-   - Use `getPredictedEvents()` to draw a multi-point predicted curve.
-   - Fade the predicted line so it reads as "future ink".
-4. Keep per-brush Stabilize slider (0–100) as the primary control.
-5. Add a lightweight "Predict" amount to Brush Lab so artists can tune how far ahead the overlay reaches.
-6. Tune default profiles:
-   - ink: 0.05 (near 1:1, already good)
-   - pencil: 0.22
-   - marker: 0.28
-   - watercolor: 0.45
-   - frost: 0.32
-   - smudge: 0.16
-   - glow/neon: 0.22
-   - star: 0.10
-   - eraser: 0.12
+## Baseline before the overhaul
 
-## Future ideas (not in v0.1.2)
-- Post-stroke line simplification / QuickShape ellipse snap.
-- Brush dynamics: velocity → opacity/width curves per brush.
-- Wet-edge and pigment simulation for water/frost.
-- Vector-backed ink layer for infinite zoom.
+InkFrame already had:
+
+- Per-brush profiles for size, opacity, minimum size, stabilization, hardness, spacing, jitter, taper, pooling, texture, and pressure response
+- Catmull–Rom spline strokes through recent samples
+- Velocity-adaptive dab spacing
+- Pressure seat-in to prevent start blobs
+- Living Line nib-width and orientation inertia
+- A predicted-stroke overlay from the confirmed path toward the raw pen tip
+- A single-EMA StreamLine smoother
+
+## Reference models considered
+
+The research compared several established approaches:
+
+- **Procreate StreamLine** — virtual rope behavior with speed-dependent catch-up
+- **Photoshop Smoothing** — snap/rope smoothing with end-of-stroke catch-up concepts
+- **Clip Studio Paint** — per-brush correction and post-stroke simplification
+- **Krita** — mass/spring/damper stabilization with separate signal treatment
+- **Adobe Fresco** — pressure/velocity shaping and live predictive feedback
+- **Infinite Painter** — rope stabilization and prediction
+- **Rebelle** — wet-media behavior relevant to later pigment research
+
+These references informed general interaction principles; InkFrame’s implementation remains its own offline JavaScript engine.
+
+## Shipped in 0.1.2
+
+The original stabilizer plan was completed:
+
+1. The single EMA was replaced by velocity-adaptive rope and directional-bias smoothing.
+2. Slow movement receives stronger smoothing while fast strokes retain direct response.
+3. Perpendicular jitter is suppressed more aggressively than forward progress.
+4. Sub-pixel stationary noise is gated so a held stylus does not make the line breathe.
+5. Pressure smoothing became stabilizer-aware and velocity-sensitive.
+6. Predicted ink became tunable per brush and visually fades as future ink.
+7. Brush defaults were retuned individually for ink, pencil, marker, watercolor, frost, smudge, glow, neon, star, and eraser.
+8. The existing Stabilize control remained the primary artist-facing parameter.
+
+The canonical release record is in `CHANGELOG.md`.
+
+## Expanded in Brush Engine V2 and 0.4.0
+
+Later work built a deterministic modular engine around the stabilizer foundation:
+
+- Original/V2 runtime selection and generated Android policy
+- Coalesced input normalization and discontinuity segmentation
+- Contact-boundary and radius-continuity guards
+- Continuous ribbon coverage
+- Corner-preservation controls
+- Ghost Trail feedback
+- Tablet Brush Lab categories and safety controls
+- Custom presets and profile history/recovery
+- Non-destructive preview pad, A/B comparison, and reference-stroke replay
+- Local deterministic Brush Coach
+- Brush identities, Identity Mixer, Brush Match, and Brush Signature
+- Generated browser/Android boot isolation and release-policy verification
+
+## Candidate research, not committed release work
+
+The remaining ideas are exploratory and must begin with narrow issues and explicit write boundaries:
+
+- Post-stroke simplification with editable QuickShape geometry
+- Per-brush velocity-to-opacity and velocity-to-width curves
+- Wet-edge, pigment transport, and drying behavior for watercolor and frost
+- Vector-backed or editable ink layers for nondestructive line revision and deep zoom
+- Additional performance instrumentation for long sessions and 120-frame projects
+
+None of these candidates should bypass physical tablet acceptance when stylus latency, pointer capture, WebView behavior, or memory pressure is involved.
+
+## Continuing constraints
+
+Brush work must preserve:
+
+- Original-engine compatibility
+- Deterministic V2 replay and generated Android assets
+- Per-brush profile migration and recovery
+- Project/archive backward compatibility
+- No network dependency or automatic telemetry
+- Non-destructive diagnostics and previews
+- Active-stroke ownership and pointer-capture safety
+- Debug APK plus signed production APK/AAB verification

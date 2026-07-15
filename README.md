@@ -202,11 +202,11 @@ PRIVACY.md            # offline/privacy notes
 RELEASING.md          # GitHub Release process
 RELEASE_CHECKLIST.md  # tester smoke checklist
 RELEASE_NOTES.md      # generated tester-facing notes
-CIRCULAR_CANVAS_PLAN.md
-TIMELINE_IMPROVEMENTS_PLAN.md
+ROADMAP.md            # canonical current development plan
+CIRCULAR_CANVAS_PLAN.md # shipped historical design record
 
 docs/
-  BRUSH_ENGINE_ROADMAP.md
+  BRUSH_ENGINE_ROADMAP.md # shipped stabilizer research record
 ```
 
 The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin implementation. They still compile and test in CI, but the shipping app is the WebView build – faster to iterate. See `ARCHITECTURE.md`.
