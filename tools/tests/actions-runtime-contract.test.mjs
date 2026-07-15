@@ -12,9 +12,10 @@ const workflowFiles=readdirSync(workflowsDir)
 
 function actionStepBody(lines,index,usesIndent){
   // `uses:` can either be on the step marker itself (`- uses:`) or be a sibling
-  // of `name:` inside a named step. In both forms the next step begins with a
-  // list marker two spaces shallower than a named-step `uses:` property.
-  const stepIndent=Math.max(0,usesIndent-2);
+  // of `name:` inside a named step. Preserve the real list-item indentation in
+  // both forms so a following sibling step can never satisfy this step's policy.
+  const usesIsStepMarker=/^\s*-\s*uses:/.test(lines[index]);
+  const stepIndent=usesIsStepMarker ? usesIndent : Math.max(0,usesIndent-2);
   const block=[];
   for(let cursor=index+1;cursor<lines.length;cursor++){
     const next=lines[cursor];
@@ -45,8 +46,18 @@ const unnamedFixture=[
   '          package-manager-cache: false',
   '      - run: node --version',
 ];
+const leakingUnnamedFixture=[
+  '      - uses: actions/setup-node@v6',
+  '      - name: Unrelated later step',
+  '        env:',
+  "          node-version: '24'",
+  '          package-manager-cache: false',
+  '        run: node --version',
+];
 assert.match(actionStepBody(namedFixture,1,8),/node-version:\s*'24'/);
 assert.match(actionStepBody(unnamedFixture,0,6),/package-manager-cache:\s*false/);
+assert.doesNotMatch(actionStepBody(leakingUnnamedFixture,0,6),/node-version|package-manager-cache/,
+  'an unnamed setup action must stop before the next sibling step');
 
 assert.ok(workflowFiles.length>=6,'expected the active InkFrame workflow set');
 
