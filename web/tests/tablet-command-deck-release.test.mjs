@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {existsSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {dirname,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
+
+const here=dirname(fileURLToPath(import.meta.url)),root=resolve(here,'..','..');
+const temp=mkdtempSync(resolve(tmpdir(),'inkframe-tablet-ui-release-')),generated=resolve(temp,'index.html');
+try{
+  execFileSync(process.execPath,[resolve(root,'tools/inject-brush-v2-index.mjs'),resolve(root,'web/index.html'),generated,'--variant=release','--diagnostics=false','--default-engine=v2'],{cwd:root,stdio:'pipe'});
+  const html=readFileSync(generated,'utf8'),sourcePath=resolve(root,'web/tablet-command-deck.js'),source=readFileSync(sourcePath,'utf8'),injector=readFileSync(resolve(root,'tools/inject-feedback-report.mjs'),'utf8'),gradle=readFileSync(resolve(root,'app/build.gradle.kts'),'utf8');
+  assert.ok(existsSync(sourcePath),'missing Tablet Command Deck runtime');
+  assert.equal((html.match(/<script src="tablet-command-deck\.js"><\/script>/g)||[]).length,1,'release index must package one Tablet Command Deck runtime');
+  assert.ok(html.indexOf('onion-skin-studio.js')<html.indexOf('feedback-report.js'));
+  assert.ok(html.indexOf('feedback-report.js')<html.indexOf('tablet-command-deck.js'),'Tablet Command Deck must load after Feedback Report');
+  assert.ok(html.indexOf('tablet-command-deck.js')<html.indexOf('brush-engine-v2/sample.js'),'Tablet Command Deck must initialize before modular brush UI');
+  assert.ok(html.includes('window.InkFrameFeedbackEnvironment'),'deck must reuse the bounded feedback snapshot environment');
+  assert.ok(injector.includes('<script src="tablet-command-deck.js"></script>'),'tracked feedback injector must add the deck runtime');
+  assert.ok(injector.includes('Tablet Command Deck must load after Feedback Report'));
+  assert.ok(gradle.includes('"**/*.js", "**/*.css"'),'web staging must include the deck runtime');
+  assert.ok(gradle.includes('rootProject.file("tools/inject-feedback-report.mjs")'),'deck injection path must remain an explicit Gradle input');
+  assert.ok(source.includes('min-height:48px'),'tablet deck controls must meet the 48 CSS px target');
+  assert.ok(source.includes('.frameSlot{width:26px!important'),'coarse-pointer perimeter frames must be enlarged');
+  assert.ok(source.includes('inkframe-tablet-deck-toggle'),'Actions must expose a Deck toggle');
+  assert.ok(source.includes("PREF_KEY='inkframe.ui.tabletDeck.v1'"),'UI state must use a dedicated device preference key');
+  assert.ok(source.includes("storageWrites:'device-ui-preference-only'"));
+  for(const marker of ['projectCanvasWrites:0','artworkUndoWrites:0','timingHistoryWrites:0','projectSchemaWrites:0','archiveWrites:0','networkWrites:0'])assert.ok(source.includes(marker),`missing isolation marker ${marker}`);
+  for(const forbidden of ['fetch(','XMLHttpRequest','WebSocket','sendBeacon'])assert.equal(source.includes(forbidden),false,`Tablet Command Deck must remain offline: ${forbidden}`);
+  console.log('✅ generated release Tablet Command Deck ordering, touch targets, tracked injection, device-only state, and offline isolation passed');
+}finally{rmSync(temp,{recursive:true,force:true});}
