@@ -61,6 +61,7 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="brush-engine-v2/session.js"></script>
 <script src="brush-engine-v2/ghost-runtime.js"></script>
+<script src="brush-engine-v2/performance.js"></script>
 <script src="brush-engine-v2/input.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
@@ -194,6 +195,7 @@ const requiredMarkers = [
   'brush-engine-v2/radius.js',
   'brush-engine-v2/ghost-trail.js',
   'brush-engine-v2/ghost-runtime.js',
+  'brush-engine-v2/performance.js',
   'brush-engine-v2/runtime.js',
   'brush-engine-v2/session.js',
   'brush-engine-v2/input.js',
