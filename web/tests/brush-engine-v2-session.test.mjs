@@ -151,4 +151,25 @@ function makeHarness() {
   assert.equal(h.adapter.sessionStats().hiddenEnds, 1);
 }
 
+// Lifecycle termination must resolve the current adapter.end implementation so
+// wrappers installed later can flush queued input and finalize their own state.
+{
+  const h = makeHarness();
+  const sessionEnd = h.adapter.end;
+  let downstreamEnds = 0;
+  h.adapter.end = function(event) {
+    downstreamEnds++;
+    return sessionEnd.call(h.adapter, event);
+  };
+
+  h.adapter.begin(pen(6, 15, 25, 0, { type:'pointerdown' }), {});
+  h.adapter.move(pen(6, 35, 45, 8));
+  h.windowTarget.dispatch('blur');
+
+  assert.equal(downstreamEnds, 1, 'blur must pass through wrappers installed after session continuity');
+  assert.equal(h.adapter.isActive(), false);
+  assert.equal(h.calls.at(-1).kind, 'end');
+  assert.equal(h.calls.at(-1).event.type, 'window-blur');
+}
+
 console.log('✅ Brush Engine V2 session continuity tests passed');
