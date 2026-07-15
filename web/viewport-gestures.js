@@ -47,6 +47,7 @@
   const startPoints=new Map();
   let consumed=false;
   let moved=false;
+  let cancelled=false;
   let startedAt=0;
   let maxTouches=0;
   let pinch=null;
@@ -114,17 +115,18 @@
     if(consumed)return true;
     if(!env||typeof env.canGesture!=='function'||!env.canGesture())return false;
     if(typeof env.cancelTouchStroke==='function')env.cancelTouchStroke();
-    consumed=true;moved=false;pinch=makePinch();
+    consumed=true;moved=false;cancelled=false;pinch=makePinch();
     if(root.document&&root.document.body)root.document.body.classList.add('inkframe-viewport-gesture');
     consume(event);return true;
   }
   function resetGesture(){
     flushViewport();
-    touches.clear();startPoints.clear();pinch=null;consumed=false;moved=false;maxTouches=0;startedAt=0;
+    touches.clear();startPoints.clear();pinch=null;consumed=false;moved=false;cancelled=false;maxTouches=0;startedAt=0;
     if(root.document&&root.document.body)root.document.body.classList.remove('inkframe-viewport-gesture');
   }
   function finishGesture(){
     flushViewport();
+    if(cancelled){resetGesture();return;}
     const elapsed=now()-startedAt;
     if(elapsed<430&&!moved){
       if(maxTouches===2&&env&&typeof env.undo==='function')env.undo();
@@ -135,10 +137,14 @@
     }
     resetGesture();
   }
+  function abortGesture(){
+    if(!touches.size&&!consumed)return false;
+    cancelled=true;resetGesture();return true;
+  }
 
   function onPointerDown(event){
     if(!event||event.pointerType!=='touch')return;
-    if(touches.size===0){startedAt=now();maxTouches=0;moved=false;startPoints.clear();}
+    if(touches.size===0){startedAt=now();maxTouches=0;moved=false;cancelled=false;startPoints.clear();}
     touches.set(event.pointerId,event);startPoints.set(event.pointerId,point(event));
     maxTouches=Math.max(maxTouches,touches.size);
     if(touches.size>=2){
@@ -161,11 +167,12 @@
   }
   function onPointerEnd(event){
     if(!event||event.pointerType!=='touch'||!touches.has(event.pointerId))return;
+    if(event.type==='pointercancel')cancelled=true;
     if(consumed)consume(event);
     touches.delete(event.pointerId);
     if(!consumed){
       startPoints.delete(event.pointerId);
-      if(touches.size===0){startedAt=0;maxTouches=0;moved=false;startPoints.clear();}
+      if(touches.size===0){startedAt=0;maxTouches=0;moved=false;cancelled=false;startPoints.clear();}
       return;
     }
     if(touches.size>=2){pinch=makePinch();return;}
@@ -218,6 +225,8 @@
     root.addEventListener('pointermove',onPointerMove,{capture:true,passive:false});
     root.addEventListener('pointerup',onPointerEnd,{capture:true,passive:false});
     root.addEventListener('pointercancel',onPointerEnd,{capture:true,passive:false});
+    root.addEventListener('blur',abortGesture);
+    if(root.document)root.document.addEventListener('visibilitychange',()=>{if(root.document.hidden)abortGesture();});
     stage.addEventListener('wheel',event=>{
       if(consumed||!env.canGesture())return;event.preventDefault();
       zoomBy(Math.exp(-finite(event.deltaY)*0.0015),event.clientX,event.clientY);
@@ -233,7 +242,7 @@
     return true;
   }
 
-  const api=Object.freeze({clamp,midpoint,distance,anchoredViewport,zoomAt,install,zoomBy,fit,center,get installed(){return installed;}});
+  const api=Object.freeze({clamp,midpoint,distance,anchoredViewport,zoomAt,install,zoomBy,fit,center,abortGesture,get installed(){return installed;}});
   root.InkFrameViewportGestures=api;
   if(root.document){
     const start=()=>{if(!install())root.setTimeout(start,16);};
