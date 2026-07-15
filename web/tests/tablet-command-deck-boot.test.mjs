@@ -38,7 +38,7 @@ assert.equal(deck.querySelector('[data-status="layers"]').textContent,'2 / 3');
 assert.match(deck.querySelector('[data-status="timing"]').textContent,/12 fps · paused · onion/);
 
 const button=text=>Array.from(deck.querySelectorAll('button')).find(item=>item.textContent===text);
-button('Draw').click();assert.equal(tools.classList.contains('open'),true);assert.equal(button('Draw').classList.contains('active'),true);
+button('Draw').click();api.updateState();assert.equal(tools.classList.contains('open'),true);assert.equal(button('Draw').classList.contains('active'),true);
 button('Frames').click();button('Actions').click();assert.equal(frames.classList.contains('open'),true);assert.equal(actions.classList.contains('open'),true);
 deck.querySelector('[data-action="prev"]').click();deck.querySelector('[data-action="next"]').click();assert.equal(prevClicks,1);assert.equal(nextClicks,1);
 deck.querySelector('[data-action="play"]').click();assert.equal(playClicks,1);api.updateState();assert.equal(deck.querySelector('[data-action="play"]').textContent,'Pause');
