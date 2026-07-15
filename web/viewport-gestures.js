@@ -150,13 +150,13 @@
     touches.set(event.pointerId,event);
     if(!consumed)return;
     consume(event);
-    if(movementFromStart()>10)moved=true;
     if(touches.size<2)return;
     if(!pinch)pinch=makePinch();
     const pair=touchPair();if(!pair||!pinch)return;
     const a=point(pair[0]),b=point(pair[1]);
     const currentDistance=Math.max(1,distance(a,b));
-    if(Math.abs(currentDistance/pinch.distance-1)>0.015)moved=true;
+    if(movementFromStart()>10||Math.abs(currentDistance/pinch.distance-1)>0.015)moved=true;
+    if(!moved)return;
     queueViewport(anchoredViewport(pinch.base,pinch.centroid,midpoint(a,b),pinch.distance,currentDistance));
   }
   function onPointerEnd(event){
@@ -219,7 +219,7 @@
     root.addEventListener('pointerup',onPointerEnd,{capture:true,passive:false});
     root.addEventListener('pointercancel',onPointerEnd,{capture:true,passive:false});
     stage.addEventListener('wheel',event=>{
-      if(consumed)return;event.preventDefault();
+      if(consumed||!env.canGesture())return;event.preventDefault();
       zoomBy(Math.exp(-finite(event.deltaY)*0.0015),event.clientX,event.clientY);
     },{passive:false});
     root.addEventListener('keydown',event=>{
