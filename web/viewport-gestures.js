@@ -216,7 +216,7 @@
     }
     if(touches.size>=2){
       if(consumed){
-        historyEligible=false;singlePan=null;pinch=makePinch();gestureKind='Zoom';
+        singlePan=null;pinch=makePinch();gestureKind='Zoom';
         if(pinch)showHud('Zoom',pinch.centroid);
         consume(event);
       }else if(beginGesture(event,'Zoom',true)){
