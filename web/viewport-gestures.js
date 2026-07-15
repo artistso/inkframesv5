@@ -48,6 +48,8 @@
   let env=null;
   let stage=null;
   let dock=null;
+  let dockControls=null;
+  let dockToggle=null;
   let zoomReadout=null;
   let panButton=null;
   let hud=null;
@@ -67,6 +69,7 @@
   let singlePan=null;
   let gestureKind='';
   let panMode=false;
+  let dockCollapsed=false;
 
   const now=()=>root.performance&&typeof root.performance.now==='function'?root.performance.now():Date.now();
   const requestFrame=callback=>typeof root.requestAnimationFrame==='function'
@@ -205,6 +208,27 @@
   }
   function togglePanMode(){return setPanMode(!panMode);}
 
+  function setDockCollapsed(enabled,announce){
+    const next=!!enabled;
+    dockCollapsed=next;
+    if(dock){
+      dock.classList.toggle('collapsed',dockCollapsed);
+      dock.dataset.collapsed=String(dockCollapsed);
+    }
+    if(dockControls)dockControls.setAttribute('aria-hidden',String(dockCollapsed));
+    if(dockToggle){
+      dockToggle.setAttribute('aria-expanded',String(!dockCollapsed));
+      dockToggle.textContent=dockCollapsed?'›':'‹';
+      dockToggle.title=dockCollapsed?'Expand canvas navigation controls':'Collapse canvas navigation controls';
+      dockToggle.setAttribute('aria-label',dockToggle.title);
+    }
+    if(announce!==false&&env&&typeof env.flash==='function'){
+      env.flash(dockCollapsed?'Navigation controls collapsed':'Navigation controls expanded');
+    }
+    return dockCollapsed;
+  }
+  function toggleDockCollapsed(){return setDockCollapsed(!dockCollapsed);}
+
   function onPointerDown(event){
     if(!event||event.pointerType!=='touch')return;
     if(touches.size===0){startedAt=now();maxTouches=0;moved=false;cancelled=false;historyEligible=true;startPoints.clear();}
@@ -287,10 +311,14 @@
   function installUi(){
     const style=root.document.createElement('style');style.dataset.inkframeViewportStyle='true';
     style.textContent=`
-      #inkframe-viewport-dock{position:fixed;left:50%;top:max(54px,calc(env(safe-area-inset-top) + 48px));z-index:26;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(255,240,243,.34);border-radius:16px;background:rgba(28,4,24,.78);box-shadow:0 10px 28px rgba(12,0,10,.34),inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);touch-action:manipulation}
+      #inkframe-viewport-dock{position:fixed;left:50%;top:max(54px,calc(env(safe-area-inset-top) + 48px));z-index:26;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(255,240,243,.34);border-radius:16px;background:rgba(28,4,24,.78);box-shadow:0 10px 28px rgba(12,0,10,.34),inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);touch-action:manipulation;transition:padding .16s ease,gap .16s ease,opacity .16s ease}
       #inkframe-viewport-dock button{min-width:42px;height:40px;padding:0 10px;border:0;border-radius:11px;background:rgba(255,255,255,.07);color:#fff0f3;font:800 15px/1 system-ui;touch-action:manipulation}
       #inkframe-viewport-dock button:active{transform:scale(.95);background:rgba(247,202,201,.18)}
       #inkframe-viewport-dock button:focus-visible{outline:2px solid #fff0f3;outline-offset:2px}
+      #inkframe-viewport-dock .inkframe-viewport-controls{display:flex;align-items:center;gap:4px}
+      #inkframe-viewport-dock.collapsed .inkframe-viewport-controls{display:none}
+      #inkframe-viewport-dock.collapsed{gap:3px;padding:4px}
+      #inkframe-viewport-dock .inkframe-viewport-collapse{min-width:32px;width:32px;padding:0;font-size:18px}
       #inkframe-viewport-dock .inkframe-viewport-percent{min-width:64px;font-size:12px;letter-spacing:.04em;background:linear-gradient(145deg,rgba(187,0,55,.78),rgba(105,0,78,.82))}
       #inkframe-viewport-dock .inkframe-viewport-fit{font-size:10px;letter-spacing:.07em;text-transform:uppercase}
       #inkframe-viewport-dock .inkframe-viewport-pan[aria-pressed="true"]{background:linear-gradient(145deg,rgba(247,202,201,.30),rgba(187,0,55,.82));box-shadow:inset 0 0 0 1px rgba(255,240,243,.56),0 0 16px rgba(187,0,55,.32)}
@@ -300,20 +328,35 @@
       body.inkframe-viewport-pan-mode canvas#c{cursor:grab}
       body.inkframe-viewport-pan-mode.inkframe-viewport-gesture canvas#c{cursor:grabbing}
       body.zen #inkframe-viewport-dock{top:max(10px,env(safe-area-inset-top));opacity:.72}
-      @media(max-width:620px){#inkframe-viewport-dock{top:max(48px,calc(env(safe-area-inset-top) + 44px));gap:3px;padding:4px}#inkframe-viewport-dock button{min-width:36px;height:38px;padding:0 7px}#inkframe-viewport-dock .inkframe-viewport-percent{min-width:54px}}
+      @media(max-width:620px){#inkframe-viewport-dock{top:max(48px,calc(env(safe-area-inset-top) + 44px));gap:3px;padding:4px}#inkframe-viewport-dock button{min-width:36px;height:38px;padding:0 7px}#inkframe-viewport-dock .inkframe-viewport-controls{gap:3px}#inkframe-viewport-dock .inkframe-viewport-percent{min-width:54px}#inkframe-viewport-dock .inkframe-viewport-collapse{min-width:30px;width:30px}}
     `;
     root.document.head.appendChild(style);
     dock=root.document.createElement('nav');dock.id='inkframe-viewport-dock';dock.setAttribute('aria-label','Canvas zoom and navigation controls');
+    dockControls=root.document.createElement('span');dockControls.id='inkframe-viewport-controls';dockControls.className='inkframe-viewport-controls';
     const minus=button('−','Zoom out',()=>zoomBy(1/1.16));
-    zoomReadout=button('100%','Fit canvas',fit,'inkframe-viewport-percent');
     const plus=button('+','Zoom in',()=>zoomBy(1.16));
     const fitButton=button('Fit','Fit canvas to screen',fit,'inkframe-viewport-fit');
     const centerButton=button('⌖','Center canvas',center);
+    dockControls.append(minus,plus,fitButton,centerButton);
+    zoomReadout=button('100%','Fit canvas',fit,'inkframe-viewport-percent');
     panButton=button('✋','Hand tool off · touch draws',togglePanMode,'inkframe-viewport-pan');
     panButton.setAttribute('aria-pressed','false');
-    dock.append(minus,zoomReadout,plus,fitButton,centerButton,panButton);
+    dockToggle=button('‹','Collapse canvas navigation controls',toggleDockCollapsed,'inkframe-viewport-collapse');
+    dockToggle.setAttribute('aria-controls','inkframe-viewport-controls');
+    dockToggle.setAttribute('aria-expanded','true');
+    dock.append(dockToggle,zoomReadout,dockControls,panButton);
     hud=root.document.createElement('output');hud.id='inkframe-viewport-hud';hud.setAttribute('aria-live','polite');hud.setAttribute('aria-atomic','true');
-    root.document.body.append(dock,hud);syncUi();
+    root.document.body.append(dock,hud);
+    const compactAtStart=!!(root.document.body&&root.document.body.classList.contains('zen'))
+      || !!(root.matchMedia&&root.matchMedia('(max-width: 620px)').matches);
+    setDockCollapsed(compactAtStart,false);
+    if(root.MutationObserver&&root.document.body){
+      const observer=new root.MutationObserver(()=>{
+        if(root.document.body.classList.contains('zen')&&!dockCollapsed)setDockCollapsed(true,false);
+      });
+      observer.observe(root.document.body,{attributes:true,attributeFilter:['class']});
+    }
+    syncUi();
   }
 
   function install(){
@@ -337,6 +380,7 @@
       if(target&&(/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)||target.isContentEditable))return;
       if(!(event.ctrlKey||event.metaKey)){
         if((event.key==='h'||event.key==='H')&&!event.repeat){event.preventDefault();togglePanMode();}
+        else if((event.key==='n'||event.key==='N')&&!event.repeat){event.preventDefault();toggleDockCollapsed();}
         return;
       }
       if(event.key==='0'){event.preventDefault();fit();}
@@ -350,7 +394,8 @@
 
   const api=Object.freeze({
     clamp,midpoint,distance,anchoredViewport,translatedViewport,zoomAt,install,zoomBy,fit,center,
-    setPanMode,togglePanMode,abortGesture,get panMode(){return panMode;},get installed(){return installed;}
+    setPanMode,togglePanMode,setDockCollapsed,toggleDockCollapsed,abortGesture,
+    get panMode(){return panMode;},get dockCollapsed(){return dockCollapsed;},get installed(){return installed;}
   });
   root.InkFrameViewportGestures=api;
   if(root.document){
