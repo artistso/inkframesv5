@@ -1,4 +1,4 @@
-// Offline Feedback Report and Tablet Command Deck postprocessor for generated Android assets.
+// Offline Feedback Report, Tablet Command Deck, and Timeline Workspace postprocessor.
 // The checked-in browser fallback remains unchanged.
 
 import {readFileSync} from 'node:fs';
@@ -13,9 +13,10 @@ export function injectFeedbackReport(html,replaceOnce){
     block(
       '<script src="onion-skin-studio.js"></script>',
       '<script src="feedback-report.js"></script>',
-      '<script src="tablet-command-deck.js"></script>'
+      '<script src="tablet-command-deck.js"></script>',
+      '<script src="timeline-workspace.js"></script>'
     ),
-    'Feedback Report and Tablet Command Deck runtime scripts');
+    'Feedback Report, Tablet Command Deck, and Timeline Workspace runtime scripts');
 
   const onionEnvironment=block(
     '  window.InkFrameOnionStudioEnvironment=()=>Object.freeze({',
@@ -51,8 +52,8 @@ export function injectFeedbackReport(html,replaceOnce){
     `    notify:message=>flash(String(message||'Feedback Report')),`,
     '  });',
     '',
-    '  // Tablet-first command bridge. Commands reuse the established radial nodes,',
-    '  // Brush Lab, rail, and playback controls instead of duplicating editor state.',
+    '  // Tablet-first command bridge. Commands reuse established controls and',
+    '  // timeline functions instead of implementing a second editor state model.',
     '  function tabletDeckCanInteract(){',
     '    const adapter=window.InkFrameBrushV2Adapter;',
     '    return !drawing&&!(adapter&&adapter.isActive&&adapter.isActive());',
@@ -83,23 +84,58 @@ export function injectFeedbackReport(html,replaceOnce){
     '    if(typeof startWires===\'function\')startWires();',
     '    return changed;',
     '  }',
+    '  function tabletTimelineSnapshot(){',
+    '    const selected=selectedSorted().map(i=>i+1);',
+    '    const targets=selectedFrames.size?selectedSorted():[cur];',
+    '    const holdValues=[...new Set(targets.map(i=>hOf(i)))];',
+    '    return Object.freeze({',
+    '      frameCount:frames.length,currentFrame:cur+1,selected,targetCount:targets.length,',
+    '      hold:holdValues[0]||1,mixedHold:holdValues.length>1,maxFrames:MAX_FRAMES,',
+    '      remainingFrames:frameRoom(),loopEnabled:!!loopOn,canInteract:tabletDeckCanInteract(),',
+    '    });',
+    '  }',
+    '  function tabletTimelineSetHold(value){',
+    '    const next=Math.max(1,Math.min(8,Math.round(Number(value)||1)));',
+    '    const targets=selectedOrCurrent();targets.forEach(i=>holds[i]=next);',
+    '    refreshFrames();buildRail();flash(`Hold ${next} · ${targets.length} frame${targets.length===1?\'\':\'s\'}`);',
+    '  }',
+    '  function tabletTimelineCommand(name,value){',
+    '    if(!tabletDeckCanInteract())return false;',
+    '    const command=String(name||\'\');let handled=true;',
+    '    if(command===\'hold\')tabletTimelineSetHold(value);',
+    '    else if(command===\'holdDelta\')adjustHolds(Number(value)<0?-1:1);',
+    '    else if(command===\'duplicate\')duplicateFrameSequence();',
+    '    else if(command===\'delete\')deleteFrameSelection();',
+    '    else if(command===\'selectAll\'){selectedFrames.clear();frames.forEach((_,i)=>selectedFrames.add(i));refreshFrames();flash(`Selected ${frames.length} frames`);}',
+    '    else if(command===\'clearSelection\')clearFrameSelection();',
+    '    else if(command===\'reverse\')reverseFrameSelection();',
+    '    else if(command===\'pingPong\')pingPongSelection();',
+    '    else handled=false;',
+    '    if(handled)window.dispatchEvent(new Event(\'inkframe:timeline\'));',
+    '    return handled;',
+    '  }',
     '  window.InkFrameTabletDeckEnvironment=()=>Object.freeze({',
     '    snapshot:feedbackReportSnapshot,canInteract:tabletDeckCanInteract,openMode:tabletDeckOpenMode,',
     '    openBrushLab:()=>{if(!tabletDeckCanInteract())return false;openBrushLab();return true;},',
     '    togglePlayback:()=>{if(!tabletDeckCanInteract())return false;kPlay.click();return true;},',
-    '    collapseModes:tabletDeckCollapseModes,',
+    '    collapseModes:tabletDeckCollapseModes,timelineSnapshot:tabletTimelineSnapshot,timelineCommand:tabletTimelineCommand,',
     `    notify:message=>flash(String(message||'Tablet Command Deck')),`,
     '  });'
   );
-  html=replaceOnce(html,onionEnvironment,feedbackBridge,'Feedback Report and Tablet Command Deck environment bridge');
+  html=replaceOnce(html,onionEnvironment,feedbackBridge,'Feedback Report, Tablet Command Deck, and Timeline Workspace environment bridge');
 
   for(const marker of [
     'feedback-report.js',
     'tablet-command-deck.js',
+    'timeline-workspace.js',
     'InkFrameFeedbackEnvironment',
     'InkFrameTabletDeckEnvironment',
     'feedbackReportSnapshot',
     'tabletDeckOpenMode',
+    'tabletTimelineSnapshot',
+    'tabletTimelineCommand',
+    'duplicateFrameSequence()',
+    'pingPongSelection()',
     'openBrushLab()',
     'kPlay.click()',
     'projectSlot:pi+1',
@@ -107,8 +143,7 @@ export function injectFeedbackReport(html,replaceOnce){
   ]){
     if(!html.includes(marker))throw new Error(`Feedback/UI injection verification failed: ${marker}`);
   }
-  if(html.indexOf('feedback-report.js')>html.indexOf('tablet-command-deck.js')){
-    throw new Error('Tablet Command Deck must load after Feedback Report');
-  }
+  if(html.indexOf('feedback-report.js')>html.indexOf('tablet-command-deck.js'))throw new Error('Tablet Command Deck must load after Feedback Report');
+  if(html.indexOf('tablet-command-deck.js')>html.indexOf('timeline-workspace.js'))throw new Error('Timeline Workspace must load after Tablet Command Deck');
   return html;
 }
