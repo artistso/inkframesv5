@@ -38,7 +38,7 @@ try{
   canvas.addEventListener('pointermove',event=>observed.move.push({id:event.pointerId,x:event.clientX,y:event.clientY}));
   window.addEventListener('pointerup',event=>observed.up.push({id:event.pointerId,type:event.pointerType}));
 
-  function pointer(type,{id,x,y,pointerType='touch',pressure=pointerType==='pen'?.5:.5,buttons=type==='pointerup'?0:1}){
+  function pointer(type,{id,x,y,pointerType='touch',pressure=.5,buttons=type==='pointerup'?0:1}){
     const event=new window.Event(type,{bubbles:true,cancelable:true,composed:true});
     const values={pointerId:id,pointerType,clientX:x,clientY:y,pressure,width:8,height:8,button:type==='pointerdown'?0:-1,buttons,isPrimary:id===1,getCoalescedEvents:()=>[]};
     for(const [key,value] of Object.entries(values))Object.defineProperty(event,key,{configurable:true,value});
@@ -71,7 +71,10 @@ try{
   pointer('pointermove',{id:3,x:550,y:420});
   const pinch=api.snapshot();
   assert.ok(Math.abs(pinch.zoom-2)<1e-6,`expected 2x zoom, received ${pinch.zoom}`);
-  assert.ok(Math.abs(pinch.y-20)<1e-6,`expected centroid pan y=20, received ${pinch.y}`);
+  // The original local point under the 450,400 centroid stays under the moved
+  // 450,420 centroid after zooming, proving pan and pivot-preserving scale compose.
+  assert.ok(Math.abs((300+pinch.x+pinch.zoom*150)-450)<1e-6,'pinch pivot drifted on x');
+  assert.ok(Math.abs((250+pinch.y+pinch.zoom*150)-420)<1e-6,'pinch pivot drifted on y');
   assert.equal(observed.down.length,downBeforePinch,'pinch contacts leaked into drawing');
   pointer('pointerup',{id:2,x:350,y:420});
   pointer('pointerup',{id:3,x:550,y:420});
