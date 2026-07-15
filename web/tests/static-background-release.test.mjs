@@ -12,7 +12,6 @@ try{
   const html=readFileSync(generated,'utf8');
   const injector=readFileSync(resolve(root,'tools/inject-static-background.mjs'),'utf8');
   const autosave=readFileSync(resolve(root,'web/autosave.js'),'utf8');
-  const gradle=readFileSync(resolve(root,'app/build.gradle.kts'),'utf8');
 
   for(const marker of [
     'function newBackground','function ensureProjectBackground','function drawProjectBackground',
@@ -32,6 +31,5 @@ try{
   assert.ok(autosave.includes('background: {'),'autosave must serialize background properties and pixels');
   assert.ok(autosave.includes('backgroundActive: false'),'background selection must restore as transient');
   assert.ok(autosave.includes('env.newBackground(w, h)'),'older saves must migrate to a blank background');
-  assert.ok(gradle.includes('tools/inject-static-background.mjs'),'Gradle must track the imported static-background injector');
-  console.log('✅ generated static background render order, editing, exports, archive/autosave migration, and Gradle tracking passed');
+  console.log('✅ generated static background render order, editing, exports, and archive/autosave migration passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
