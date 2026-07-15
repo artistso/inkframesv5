@@ -1,0 +1,44 @@
+name: Documentation Links
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs-links:
+    name: Validate local Markdown links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate checker syntax
+        run: |
+          node --check tools/check-doc-links.mjs
+          node --check tools/tests/check-doc-links.test.mjs
+      - name: Run checker fixtures
+        run: node tools/tests/check-doc-links.test.mjs
+      - name: Validate repository documentation
+        shell: bash
+        run: |
+          set -o pipefail
+          node tools/check-doc-links.mjs 2>&1 | tee "$RUNNER_TEMP/documentation-links.txt"
+      - name: Upload validation transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-link-transcript
+          path: ${{ runner.temp }}/documentation-links.txt
+          if-no-files-found: error
+          retention-days: 7
