@@ -5,7 +5,7 @@ on:
     paths:
       - 'tools/**'
       - 'web/**'
-      - '.github/workflows/release-policy-diagnostics.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -20,11 +20,12 @@ jobs:
     name: Generated release policy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
+          package-manager-cache: false
       - name: Install jsdom
         run: npm install --no-save --prefix /tmp/jsdom jsdom
       - name: Run release policy with captured transcript
@@ -34,7 +35,10 @@ jobs:
           NODE_PATH: /tmp/jsdom/node_modules
         run: |
           set +e
-          node web/tests/brush-engine-v2-release.test.mjs > "$RUNNER_TEMP/release-policy.log" 2>&1
+          {
+            node tools/tests/actions-runtime-contract.test.mjs
+            node web/tests/brush-engine-v2-release.test.mjs
+          } > "$RUNNER_TEMP/release-policy.log" 2>&1
           status=$?
           cat "$RUNNER_TEMP/release-policy.log"
           echo "status=$status" >> "$GITHUB_OUTPUT"
