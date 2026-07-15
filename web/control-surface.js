@@ -20,13 +20,15 @@
   function normalizeDescriptor(value){
     const input=value&&typeof value==='object'?value:{};
     const dataset=input.dataset&&typeof input.dataset==='object'?input.dataset:{};
+    const ariaDisabled=safe(input.ariaDisabled||input['aria-disabled']).toLowerCase();
     return Object.freeze({
       tag:safe(input.tag||input.tagName).toLowerCase(),
       id:safe(input.id).toLowerCase(),
       text:safe(input.text||input.textContent||input.label),
       title:safe(input.title),
       classes:Object.freeze(classTokens(input.className||input.classes)),
-      disabled:!!input.disabled,
+      disabled:!!input.disabled||ariaDisabled==='true',
+      ariaDisabled,
       ariaPressed:safe(input.ariaPressed||input['aria-pressed']).toLowerCase(),
       dataAction:datasetValue(dataset,'action').toLowerCase(),
       dataTimelineCommand:datasetValue(dataset,'timelineCommand').toLowerCase(),
@@ -68,6 +70,7 @@
       className:element&&element.className,
       dataset:element&&element.dataset,
       disabled:!!(element&&element.disabled),
+      ariaDisabled:element&&element.getAttribute?element.getAttribute('aria-disabled'):'',
       ariaPressed:element&&element.getAttribute?element.getAttribute('aria-pressed'):'',
     };
   }
