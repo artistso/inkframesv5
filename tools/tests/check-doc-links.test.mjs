@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
@@ -12,6 +13,7 @@ import {fileURLToPath} from 'node:url';
 import {
   collectMarkdownTargets,
   formatFailure,
+  trackedMarkdownFiles,
   validateMarkdownFiles,
 } from '../check-doc-links.mjs';
 
@@ -44,7 +46,9 @@ try{
 [Reference][guide]
 [guide]: docs/Guide.md
 <a href="docs/Guide.md?view=full#intro">HTML guide</a>
+<a data-href="missing-data.md">Metadata only</a>
 \`[Inline code](missing-inline.md)\`
+😀 \`[Emoji inline code](missing-emoji.md)\`
 
 \`\`\`md
 [Fenced code](missing-fenced.md)
@@ -58,7 +62,9 @@ try{
   assert.ok(targets.some(item=>item.target==='media/hero%20image.png'&&item.kind==='inline'));
   assert.ok(targets.some(item=>item.target==='docs/Guide.md'&&item.kind==='reference'));
   assert.ok(targets.some(item=>item.target==='docs/Guide.md?view=full#intro'&&item.kind==='html'));
+  assert.equal(targets.some(item=>item.target.includes('missing-data')),false);
   assert.equal(targets.some(item=>item.target.includes('missing-inline')),false);
+  assert.equal(targets.some(item=>item.target.includes('missing-emoji')),false);
   assert.equal(targets.some(item=>item.target.includes('missing-fenced')),false);
 
   writeFileSync(resolve(root,'docs','Broken.md'),`# Broken
@@ -90,7 +96,13 @@ try{
   assert.deepEqual(missingSource.map(item=>item.file),['A.md','Z.md']);
   assert.ok(missingSource.every(item=>item.code==='missing-source'));
 
-  console.log('✅ Markdown link parsing, URI exclusion, traversal, real-path containment, line reporting, and deterministic ordering passed');
+  writeFileSync(resolve(root,'Mixed.Md'),'# Mixed\n');
+  writeFileSync(resolve(root,'UPPER.MD'),'# Upper\n');
+  execFileSync('git',['init','-q'],{cwd:root});
+  execFileSync('git',['add','README.md','Mixed.Md','UPPER.MD','docs/Guide.md'],{cwd:root});
+  assert.deepEqual(trackedMarkdownFiles(root),['Mixed.Md','README.md','UPPER.MD','docs/Guide.md']);
+
+  console.log('✅ Markdown parsing, case-insensitive discovery, URI exclusion, real-path containment, and deterministic ordering passed');
 }finally{
   rmSync(workspace,{recursive:true,force:true});
 }
