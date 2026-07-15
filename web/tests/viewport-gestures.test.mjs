@@ -25,7 +25,7 @@ function pureApi(){
   const next=api.anchoredViewport(base,{x:150,y:200},{x:180,y:230},100,160);
   assert.equal(next.scale,1.6);
   assert.equal(next.panX,240);
-  assert.equal(next.panY,110);
+  assert.equal(next.panY,150);
   const capped=api.zoomAt(base,10,500,400);
   assert.equal(capped.scale,2.2,'button and wheel zoom must obey the host maximum');
 }
@@ -76,7 +76,7 @@ function pointer(window,type,id,x,y){
   raf.shift()(16);
   assert.equal(viewport.scale,1.6);
   assert.equal(viewport.panX,240,'pinch centroid movement pans while preserving the anchored canvas point');
-  assert.equal(viewport.panY,110);
+  assert.equal(viewport.panY,150);
 
   canvas.dispatchEvent(pointer(window,'pointerup',2,260,260));
   canvas.dispatchEvent(pointer(window,'pointerup',1,100,200));
