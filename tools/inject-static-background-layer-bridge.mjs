@@ -24,7 +24,7 @@ export function injectStaticBackgroundLayerBridge(html){
     if(direction<0&&fr.active===0){setBackgroundEditing(true);flash('Static background');return true;}
     const next=Math.max(0,Math.min(fr.layers.length-1,fr.active+direction));
     if(next===fr.active)return false;projects[pi].backgroundActive=false;fr.active=next;refreshFctx();render();refreshLayers();
-    flash(`Layer ${fr.active+1} of ${fr.layers.length}`);return true;
+    flash(\`Layer \${fr.active+1} of \${fr.layers.length}\`);return true;
   }
   function tabletLayerSetOpacity`;
   html=replacePattern(html,/  function tabletLayerSnapshot\(\)\{[\s\S]*?\n  \}\n  function tabletLayerSelect\(delta\)\{[\s\S]*?\n  \}\n  function tabletLayerSetOpacity/,snapshotAndSelect,'snapshot and navigation');
