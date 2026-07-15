@@ -36,7 +36,7 @@ jobs:
         run: |
           set +e
           {
-            node tools/tests/actions-runtime-contract.test.mjs
+            node tools/tests/actions-runtime-contract.test.mjs &&
             node web/tests/brush-engine-v2-release.test.mjs
           } > "$RUNNER_TEMP/release-policy.log" 2>&1
           status=$?
