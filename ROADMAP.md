@@ -1,11 +1,12 @@
 # InkFrame Studio Roadmap
 
-Status date: 2026-07-14
+Status date: 2026-07-15
 Current public release: `0.4.0`
+Current integrated development baseline: `8bba8e0c3b773a48c791c172ae10889a1a7649b0`
 
-This document is the canonical development roadmap. Historical design plans remain in the repository as implementation records, but they no longer define current work.
+This document is the canonical development roadmap. Historical design plans and stacked pull requests remain implementation and acceptance records, but they do not override the state of `main`.
 
-## Current release baseline
+## Public release baseline
 
 InkFrame 0.4.0 established the production foundation:
 
@@ -19,59 +20,89 @@ InkFrame 0.4.0 established the production foundation:
 
 The detailed shipped record is maintained in `CHANGELOG.md` and `ARCHITECTURE.md`.
 
-## Active development line
+## Integrated development baseline on `main`
 
-### 1. Onion Skin Studio
+The following work is integrated after 0.4.0 but is not automatically considered a public release or physical-device acceptance:
 
-Tracking: PR #70 and issue #74.
+### Animator and tablet workspaces
 
-A focused animator workspace for onion depth, independent past/future opacity, tint strength, colors, layer-only mode, color swapping, resets, and deterministic animator presets.
+- Onion Skin Studio with deterministic presets, independent past/future opacity, tint controls, color swapping, and active-layer-only mode
+- Offline Feedback Report with privacy-bounded technical state, explicit copy/save actions, and no artwork or project-name access
+- Tablet Command Deck with Draw, Frames, Layers, Actions, Brush Lab, transport, live editor state, and tablet-first control sizing
+- Contextual Timeline Workspace for frame selection, holds, duplication, deletion, reverse, and ping-pong operations
+- Contextual Layer Workspace for layer selection, opacity, visibility, blend, ordering, duplication, deletion, and merge-down
 
-Gate before merge:
+### Project-wide Static Background
 
-- Physical Galaxy Tab and S Pen acceptance
-- Native color-picker lifecycle verification
-- Persistence and compositor regression checks
-- Exact tested APK and commit recorded in issue #74
+- One editable shared background canvas per project, rendered below onion skins and frame layers
+- Original and Brush Engine V2 editing through the established drawing paths
+- Visibility, opacity, blend, clear, fill, selection, Layer FX, and exact Undo/Redo support
+- Autosave payload v3 with v1/v2 migration
+- `.inkframe` archive v4 with earlier-archive migration
+- Correct live, playback, thumbnail, PNG, GIF, video, eyedropper, and A/B rendering
+- Contextual `Static BG` controls with per-frame structural-operation isolation
 
-### 2. Offline Feedback Report
+Tracking:
 
-Tracking: PR #76 and issue #77.
+- Implementation: PR #100 and issue #98
+- Integrated physical acceptance: issue #104
 
-A privacy-bounded prerelease report surface for reproducible tablet diagnostics. It reports technical state without reading artwork, project names, layer names, archives, or clipboard contents. Copy and save occur only after explicit user action.
+### Build and repository infrastructure
 
-Gate before merge:
+- Active GitHub Actions use `actions/checkout@v7`, `actions/setup-node@v7`, and explicit Node 24
+- Automatic setup-node package-manager caching is disabled unless deliberately enabled
+- A repository contract prevents regression to older action runtimes or inconsistent Node selection
+- Debug APK and disposable-key production APK/AAB paths remain mandatory CI gates
 
-- Parent Onion Skin Studio branch accepted and merged first
-- Physical Galaxy Tab presentation, keyboard, clipboard, and `.txt` save verification
-- Redaction checks using deliberately distinctive project and layer names
-- Original and Brush Engine V2 active-stroke guards
-- Exact tested APK and commit recorded in issue #77
+Tracking: PR #101 and issue #83.
 
-## Merge sequence
+## Active release line
 
-1. Complete issue #74 against the exact PR #70 artifact.
-2. Mark PR #70 ready only after every required exception is resolved or documented.
-3. Merge PR #70 into `main` with its expected head SHA.
-4. Retarget or rebase PR #76 onto the updated `main` without changing behavior.
-5. Rerun all mandatory CI and release-policy checks.
-6. Complete issue #77 against the final PR #76 artifact.
-7. Merge PR #76 only after acceptance.
+### 1. Integrated Galaxy Tab acceptance
 
-This sequencing prevents untested child work from changing a physically approved parent build.
+Complete issue #104 against the exact recorded APK and SHA-256.
 
-## Candidate research after the active line
+Required coverage includes:
+
+- Upgrade and cold-start behavior
+- Existing autosave and archive migration
+- Original and Brush Engine V2 S Pen editing
+- Static Background selection, properties, isolation, and Undo/Redo
+- Onion, playback, thumbnail, and export compositor order
+- Portrait/landscape, Android WebView, MediaStore, and active-stroke behavior
+
+A new implementation commit invalidates the recorded acceptance artifact and requires replacement hashes.
+
+### 2. Preserve component-level evidence
+
+Issues #74, #77, #89, #94, and #97 retain exact historical component artifacts for Onion Skin Studio, Feedback Report, Tablet Command Deck, Timeline Workspace, and Layer Workspace.
+
+The associated stacked draft PRs are historical implementation records. Their feature code is already represented in the integrated `main` baseline through later integration work. Do not merge or rewrite those branches merely to make their PR state resemble current `main`; preserve their exact heads when component-level acceptance evidence is still needed.
+
+### 3. Prepare the next public release
+
+After integrated acceptance succeeds:
+
+1. Update `CHANGELOG.md` `[Unreleased]` with the accepted user-facing behavior.
+2. Regenerate and verify `RELEASE_NOTES.md`.
+3. Select and apply the release version with `./inkframe-cli bump`.
+4. Run `./inkframe-cli release-check` from a clean, synchronized `main`.
+5. Complete a protected signed-release dry run.
+6. Tag only the exact accepted and verified commit.
+7. Publish the GitHub Release and manually submit the signed AAB to the intended Google Play track.
+
+## Candidate engineering after acceptance
 
 These are investigation areas, not committed release promises:
 
+- Performance budgets and memory diagnostics for long 120-frame projects
+- Accessible high-contrast and reduced-motion Glass Horizon variants
 - Per-brush velocity curves for width and opacity
 - Wet-edge and pigment transport for watercolor and frost media
 - Post-stroke vector-backed ink or editable line layers
 - Expanded QuickShape geometry and editable shape constraints
-- Performance budgets and memory diagnostics for long 120-frame projects
-- Accessible high-contrast and reduced-motion variants of Glass Horizon
 
-Each candidate should begin with a narrow issue, explicit project/write boundaries, deterministic tests, and a separate acceptance artifact.
+Each candidate should begin with a narrow issue, explicit read/write boundaries, deterministic tests, and a separate acceptance artifact when Android WebView, S Pen, storage, or picker behavior is involved.
 
 ## Engineering constraints
 
@@ -80,12 +111,13 @@ Every new feature must preserve:
 - Offline-first operation
 - No account requirement, advertising, analytics, or automatic uploads
 - Artwork isolation unless the feature explicitly edits artwork
-- Project/archive backward compatibility
+- Project and archive backward compatibility
 - Original-engine and Brush Engine V2 interoperability
 - Generated Android asset determinism
 - Explicit Gradle inputs for every imported index postprocessor
 - Debug APK and signed production APK/AAB verification in CI
 - Physical tablet acceptance for stylus, keyboard, picker, storage, or WebView-sensitive behavior
+- Exact artifact and commit recording for acceptance builds
 
 ## Historical documents
 
