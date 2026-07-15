@@ -1,0 +1,172 @@
+name: One-time Signed Play Candidate
+
+# Temporary trusted-main workflow. It checks out one exact reviewed feature SHA,
+# signs with the permanent InkFrame Play upload key, uploads the APK/AAB plus
+# hashes, and is deleted after capture.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-time-play-candidate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-time-play-candidate-v0.5.0
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Build upload-key APK and AAB
+    if: github.actor == 'artistso'
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: '8e2a4809c7796c5fa15b81ee26da8fee3a964ed9'
+      EXPECTED_VERSION: '0.5.0'
+      EXPECTED_VERSION_CODE: '50001'
+      INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
+      INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
+      INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
+
+    steps:
+      - name: Check out exact release candidate
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install release-test runtime
+        run: npm install --no-save --prefix /tmp/jsdom jsdom
+
+      - name: Verify immutable source, version, and candidate code
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          VERSION="$(node -p "require('./web/metadata.json').version")"
+          test "$VERSION" = "$EXPECTED_VERSION" || {
+            echo "Candidate expected $EXPECTED_VERSION but metadata contains $VERSION" >&2
+            exit 1
+          }
+          VERSION_CODE="$(node tools/android-version-code.mjs "$VERSION" 1)"
+          test "$VERSION_CODE" = "$EXPECTED_VERSION_CODE" || {
+            echo "Candidate versionCode drifted: expected $EXPECTED_VERSION_CODE, got $VERSION_CODE" >&2
+            exit 1
+          }
+          echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
+      - name: Decode permanent Play upload keystore
+        shell: bash
+        env:
+          INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$INKFRAME_KEYSTORE_BASE64" || { echo "Missing INKFRAME_KEYSTORE_BASE64" >&2; exit 1; }
+          test -n "$INKFRAME_KEYSTORE_PASSWORD" || { echo "Missing INKFRAME_KEYSTORE_PASSWORD" >&2; exit 1; }
+          test -n "$INKFRAME_KEY_ALIAS" || { echo "Missing INKFRAME_KEY_ALIAS" >&2; exit 1; }
+          test -n "$INKFRAME_KEY_PASSWORD" || { echo "Missing INKFRAME_KEY_PASSWORD" >&2; exit 1; }
+          KEYSTORE_PATH="$RUNNER_TEMP/inkframe-play-upload.jks"
+          printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate release and Play policy
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+        run: |
+          node tools/update-release-notes.mjs --check
+          node tools/validate-play-release.mjs
+          node tools/tests/android-version-code.test.mjs
+          node web/tests/version-smoke.mjs
+          node web/tests/tablet-command-deck.test.mjs
+          node web/tests/brush-engine-v2-release.test.mjs
+
+      - name: Run JVM tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --stacktrace
+
+      - name: Assemble upload-key APK and AAB
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
+
+      - name: Verify signatures and production package
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/apk-signature.txt"
+          jarsigner -verify -certs "$AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
+          grep -F "versionCode='${INKFRAME_VERSION_CODE}'" <<< "$BADGING"
+          grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
+          unzip -p "$APK" assets/index.html > "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
+            echo "Production index unexpectedly loads native diagnostics" >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -F 'assets/brush-engine-v2/native.js'; then
+            echo "Production package unexpectedly contains native diagnostics" >&2
+            exit 1
+          fi
+
+      - name: Collect signed candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk "release/InkFrame-v${INKFRAME_VERSION}-play-candidate-${INKFRAME_VERSION_CODE}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "release/InkFrame-v${INKFRAME_VERSION}-play-candidate-${INKFRAME_VERSION_CODE}.aab"
+          cp "$RUNNER_TEMP/apk-signature.txt" release/APK-SIGNATURE.txt
+          cp "$RUNNER_TEMP/aab-signature.txt" release/AAB-SIGNATURE.txt
+          {
+            echo "version=${INKFRAME_VERSION}"
+            echo "versionCode=${INKFRAME_VERSION_CODE}"
+            echo "package=com.inkframe.studio"
+            echo "sourceSha=${SOURCE_SHA}"
+          } > release/BUILD-METADATA.txt
+          (
+            cd release
+            sha256sum *.apk *.aab > SHA256SUMS.txt
+          )
+          ls -lh release
+
+      - name: Upload Play candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-play-candidate-v0.5.0-50001
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
