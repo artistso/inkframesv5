@@ -224,6 +224,9 @@ fun registerWebAssetPipeline(
             rootProject.file("tools/inject-canvas-shape.mjs"),
             rootProject.file("tools/inject-onion-skin-studio.mjs"),
             rootProject.file("tools/inject-feedback-report.mjs"),
+            rootProject.file("tools/inject-static-background.mjs"),
+            rootProject.file("tools/inject-static-background-v2.mjs"),
+            rootProject.file("tools/inject-static-background-layer-bridge.mjs"),
             webMetadataFile,
         )
         val sourceIndex = rootProject.file("web/index.html")

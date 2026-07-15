@@ -2,6 +2,7 @@
 'use strict';
 (function(root){
   const COMMANDS=Object.freeze([
+    Object.freeze({name:'background',label:'Static BG',group:'navigate'}),
     Object.freeze({name:'selectBelow',label:'Layer below',group:'navigate'}),
     Object.freeze({name:'selectAbove',label:'Layer above',group:'navigate'}),
     Object.freeze({name:'opacity',value:25,label:'25%',group:'opacity'}),
@@ -25,18 +26,22 @@
 
   function normalizeLayerState(value){
     const input=value&&typeof value==='object'?value:{};
-    const count=integer(input.count);
-    const active=count?Math.min(Math.max(1,integer(input.active,1)||1),count):0;
+    const count=integer(input.count),background=!!input.background;
+    const active=background?0:(count?Math.min(Math.max(1,integer(input.active,1)||1),count):0);
     const opacity=Math.max(0,Math.min(100,integer(input.opacity,100)));
     return Object.freeze({
-      count,active,visible:input.visible!==false,opacity,
+      count,active,background,visible:input.visible!==false,opacity,
       blend:safeText(input.blend),canInteract:input.canInteract!==false,
-      canSelectAbove:count>0&&active<count,canSelectBelow:count>0&&active>1,
-      canMoveUp:count>0&&active<count,canMoveDown:count>0&&active>1,
-      canDelete:count>1,canMergeDown:count>1&&active>1,
+      canSelectAbove:count>0&&(background||active<count),
+      canSelectBelow:count>0&&!background&&active>=1,
+      canMoveUp:!background&&count>0&&active<count,
+      canMoveDown:!background&&count>0&&active>1,
+      canDelete:!background&&count>1,
+      canMergeDown:!background&&count>1&&active>1,
     });
   }
-  function layerLabel(state){return state.count?`${state.active} / ${state.count}`:'—';}
+  function layerLabel(state){return state.background?'Static BG':(state.count?`${state.active} / ${state.count}`:'—');}
+  function countLabel(state){return `${state.count} frame layer${state.count===1?'':'s'} + BG`;}
   function visibilityLabel(state){return state.visible?'Visible':'Hidden';}
 
   function environment(){
@@ -74,7 +79,7 @@
 #inkframeLayerWorkspace{display:grid;gap:8px;padding:10px;border-radius:19px;background:linear-gradient(155deg,rgba(247,202,201,.12),rgba(0,0,0,.28));border:1px solid rgba(247,202,201,.22);box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
 #inkframeLayerWorkspace[hidden]{display:none}#inkframeLayerWorkspace header{display:flex;align-items:center;gap:8px}#inkframeLayerWorkspace h3{margin:0;flex:1;font:900 11px/1.1 var(--font-ui);letter-spacing:.11em;text-transform:uppercase;color:var(--text)}#inkframeLayerWorkspace .layer-count{padding:5px 8px;border-radius:999px;background:rgba(255,240,243,.08);border:1px solid rgba(247,202,201,.18);font:850 9px/1 var(--font-ui);color:var(--dim)}
 #inkframeLayerWorkspace .layer-state{display:grid;grid-template-columns:1fr 1fr;gap:6px}#inkframeLayerWorkspace .layer-state div{min-width:0;padding:8px 9px;border-radius:12px;background:rgba(0,0,0,.20);border:1px solid rgba(247,202,201,.13)}#inkframeLayerWorkspace .layer-state b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:850 10px/1.2 var(--font-ui);color:var(--text)}#inkframeLayerWorkspace .layer-state span{display:block;margin-top:3px;font:750 8px/1.1 var(--font-ui);letter-spacing:.07em;text-transform:uppercase;color:var(--dim)}
-#inkframeLayerWorkspace .layer-navigation,#inkframeLayerWorkspace .layer-properties{display:grid;grid-template-columns:1fr 1fr;gap:6px}#inkframeLayerWorkspace .layer-opacity{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}#inkframeLayerWorkspace .layer-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#inkframeLayerWorkspace .layer-navigation{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}#inkframeLayerWorkspace .layer-properties{display:grid;grid-template-columns:1fr 1fr;gap:6px}#inkframeLayerWorkspace .layer-opacity{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}#inkframeLayerWorkspace .layer-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 #inkframeLayerWorkspace button{min-height:48px;padding:6px;border-radius:14px;border:1px solid rgba(247,202,201,.24);background:rgba(255,240,243,.06);color:var(--text);font:850 9px/1.1 var(--font-ui);letter-spacing:.06em;text-transform:uppercase;touch-action:manipulation}#inkframeLayerWorkspace button.active{background:linear-gradient(160deg,var(--accent-deep),var(--accent));border-color:var(--rim);box-shadow:0 0 12px rgba(187,0,55,.28)}#inkframeLayerWorkspace button:disabled{opacity:.38;filter:saturate(.45)}#inkframeLayerWorkspace button[data-layer-command="delete"],#inkframeLayerWorkspace button[data-layer-command="mergeDown"]{border-color:rgba(255,145,165,.38)}
 @media(max-width:820px),(orientation:portrait){#inkframeLayerWorkspace .layer-state{grid-template-columns:repeat(4,1fr)}#inkframeLayerWorkspace .layer-actions{grid-template-columns:repeat(4,1fr)}}
 `;
@@ -114,7 +119,7 @@
   function updateState(){
     const document=root.document;if(!document)return false;installStyle(document);if(!ensurePanel(document))return false;
     const current=state();panel.hidden=!layersOpen(document);
-    setText(panel.querySelector('[data-layer-state="count"]'),`${current.count} layer${current.count===1?'':'s'}`);
+    setText(panel.querySelector('[data-layer-state="count"]'),countLabel(current));
     setText(panel.querySelector('[data-layer-state="position"]'),layerLabel(current));
     setText(panel.querySelector('[data-layer-state="visibility"]'),visibilityLabel(current));
     setText(panel.querySelector('[data-layer-state="opacity"]'),`${current.opacity}%`);
@@ -123,15 +128,16 @@
     for(const button of panel.querySelectorAll('button[data-layer-command]')){
       const command=button.dataset.layerCommand,value=Number(button.dataset.layerValue);
       let allowed=current.canInteract&&current.count>0;
-      if(command==='selectAbove')allowed=allowed&&current.canSelectAbove;
+      if(command==='background')allowed=current.canInteract;
+      else if(command==='selectAbove')allowed=allowed&&current.canSelectAbove;
       else if(command==='selectBelow')allowed=allowed&&current.canSelectBelow;
       else if(command==='moveUp')allowed=allowed&&current.canMoveUp;
       else if(command==='moveDown')allowed=allowed&&current.canMoveDown;
       else if(command==='delete')allowed=allowed&&current.canDelete;
       else if(command==='mergeDown')allowed=allowed&&current.canMergeDown;
-      else if(command==='add')allowed=current.canInteract;
+      else if(command==='add'||command==='duplicate')allowed=allowed&&!current.background;
       button.disabled=!allowed;
-      button.classList.toggle('active',command==='opacity'&&value===current.opacity);
+      button.classList.toggle('active',(command==='opacity'&&value===current.opacity)||(command==='background'&&current.background));
     }
     return true;
   }
@@ -142,6 +148,6 @@
     if(root.document&&typeof root.MutationObserver==='function'){observer=new root.MutationObserver(()=>{if(!panel||!panel.isConnected)scheduleInstall();else queueState();});observer.observe(root.document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class']});}
   }
   scheduleInstall();
-  const api={COMMANDS,normalizeLayerState,layerLabel,visibilityLabel,runCommand,updateState,install,onNotice:null,directLayerWrites:0,directCanvasWrites:0,directOrderWrites:0,directProjectSchemaWrites:0,archiveWrites:0,storageWrites:0,networkWrites:0,delegatedLayerCommands:true,artworkReads:0,layerNameReads:0,projectNameReads:0};
+  const api={COMMANDS,normalizeLayerState,layerLabel,countLabel,visibilityLabel,runCommand,updateState,install,onNotice:null,directLayerWrites:0,directCanvasWrites:0,directOrderWrites:0,directProjectSchemaWrites:0,archiveWrites:0,storageWrites:0,networkWrites:0,delegatedLayerCommands:true,artworkReads:0,layerNameReads:0,projectNameReads:0};
   root.InkFrameLayerWorkspace=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

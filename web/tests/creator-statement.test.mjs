@@ -55,4 +55,5 @@ await import('./timeline-workspace-release.test.mjs');
 await import('./layer-workspace.test.mjs');
 await import('./layer-workspace-boot.test.mjs');
 await import('./layer-workspace-release.test.mjs');
+await import('./static-background-release.test.mjs');
 await import('./brush-engine-v2-profile-history-boot.test.mjs');
