@@ -5,6 +5,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { injectCanvasShape } from './inject-canvas-shape.mjs';
+import { injectViewportGestures } from './inject-viewport-gestures.mjs';
 import { injectOnionSkinStudio } from './inject-onion-skin-studio.mjs';
 import { injectFeedbackReport } from './inject-feedback-report.mjs';
 import { injectStaticBackground } from './inject-static-background.mjs';
@@ -163,6 +164,7 @@ const upHook = `  const up=e=>{
 html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 
 html = injectCanvasShape(html, replaceOnce);
+html = injectViewportGestures(html, replaceOnce);
 html = injectOnionSkinStudio(html, replaceOnce);
 html = injectFeedbackReport(html, replaceOnce);
 html = injectStaticBackground(html, replaceOnce);
@@ -174,6 +176,8 @@ const requiredMarkers = [
   `"diagnostics":${diagnostics}`,
   `"defaultBrushEngine":"${defaultBrushEngine}"`,
   'creator-statement.js',
+  'viewport-gestures.js',
+  'InkFrameViewportEnvironment',
   'onion-skin-studio.js',
   'InkFrameOnionStudioEnvironment',
   'feedback-report.js',
