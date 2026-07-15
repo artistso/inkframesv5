@@ -183,8 +183,8 @@
   function updateState(){
     const document=root.document;if(!document||!deck||!deck.isConnected)return false;const current=snapshot();
     const values={brush:`${current.brush.engine} · ${current.brush.id}`,frame:`${current.timeline.currentFrame||0} / ${current.timeline.frameCount||0}`,layers:current.layers.count?`${current.layers.active||0} / ${current.layers.count}`:'—',timing:`${current.timeline.fps} fps · ${current.timeline.playing?'playing':'paused'}${current.onion.enabled?' · onion':''}`};
-    for(const [key,value] of Object.entries(values)){const element=deck.querySelector(`[data-status="${key}"]`);if(element)element.textContent=value;}
-    const play=deck.querySelector('[data-action="play"]');if(play)play.textContent=current.timeline.playing?'Pause':'Play';
+    for(const [key,value] of Object.entries(values)){const element=deck.querySelector(`[data-status="${key}"]`);if(element&&element.textContent!==value)element.textContent=value;}
+    const play=deck.querySelector('[data-action="play"]'),playLabel=current.timeline.playing?'Pause':'Play';if(play&&play.textContent!==playLabel)play.textContent=playLabel;
     for(const button of deck.querySelectorAll('[data-mode]')){const node=nodeByLabel(document,button.dataset.target);button.classList.toggle('active',!!(node&&node.classList.contains('open')));}
     deck.classList.toggle('obscured',modalOpen(document));return true;
   }
