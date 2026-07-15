@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   docs-links:
-    name: Validate local Markdown links
+    name: Validate documentation contracts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -28,8 +28,11 @@ jobs:
         run: |
           node --check tools/check-doc-links.mjs
           node --check tools/tests/check-doc-links.test.mjs
+          node --check tools/tests/release-operator-docs-contract.test.mjs
       - name: Run checker fixtures
-        run: node tools/tests/check-doc-links.test.mjs
+        run: |
+          node tools/tests/check-doc-links.test.mjs
+          node tools/tests/release-operator-docs-contract.test.mjs
       - name: Validate repository documentation
         shell: bash
         run: |

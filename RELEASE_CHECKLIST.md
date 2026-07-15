@@ -25,10 +25,13 @@ Required green jobs:
 - **Web and Brush Engine V2**
 - **Unit tests (JVM)**
 - **Build debug APK**
+- **Verify signed production APK and AAB**
 
 The web job must include core geometry, ribbon coverage, radius continuity,
 contact boundaries, session continuity, discontinuity segmentation, coalesced
 input, runtime policy, debug assets, release assets, and generated-index boot.
+The production verification job must assemble both formats with a disposable
+CI-only key, verify signatures, and inspect the packaged production assets.
 
 ## 3. Install the debug RC APK
 
@@ -110,21 +113,24 @@ Verify:
 
 ## 7. Version and generated notes
 
-For a normal release, update `CHANGELOG.md` `[Unreleased]`. A large version may
-instead use `release-notes/<version>.md`.
+For a normal release, add accepted user-facing changes under `CHANGELOG.md`
+`[Unreleased]`. A large release may instead use
+`release-notes/<next-version>.md`. The version command fails before modifying
+metadata when neither source contains release notes.
 
-Align the metadata and regenerate notes:
+Replace the placeholders and run:
 
 ```bash
-node tools/bump-version.mjs 0.2.0 --date 2026-07-12 --force
+./inkframe-cli bump <next-version> --date YYYY-MM-DD
 node tools/update-release-notes.mjs --check
 node web/tests/version-smoke.mjs
 ```
 
-Review `RELEASE_NOTES.md`, commit the changes, and run:
+Review `RELEASE_NOTES.md`, commit the changes, wait for every required CI gate,
+and run:
 
 ```bash
-node tools/prepare-release.mjs
+./inkframe-cli release-check
 ```
 
 ## 8. Signing prerequisites
@@ -143,22 +149,24 @@ GitHub. See `RELEASING.md` for setup and recovery requirements.
 
 ## 9. Publish and verify the signed release
 
-After the approved release candidate is merged to `main`:
+After the approved release candidate is merged to `main`, derive the tag from the
+committed metadata rather than typing a historical version:
 
 ```bash
-git tag -a v0.2.0 -m "InkFrame Studio 0.2.0"
-git push origin main v0.2.0
+VERSION="$(node -p "require('./web/metadata.json').version")"
+git tag -a "v${VERSION}" -m "InkFrame Studio ${VERSION}"
+git push origin main "v${VERSION}"
 ```
 
 Watch:
 
 <https://github.com/artistso/inkframesv5/actions/workflows/release.yml>
 
-The workflow must pass signature verification and publish:
+The workflow must pass signature and packaged-asset verification and publish:
 
 ```text
-InkFrame-v0.2.0-signed.apk
-InkFrame-v0.2.0-signed.aab
+InkFrame-v${VERSION}-signed.apk
+InkFrame-v${VERSION}-signed.aab
 SHA256SUMS.txt
 ```
 

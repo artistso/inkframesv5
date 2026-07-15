@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_version:
-        description: Version expected in web/metadata.json, for example 0.2.0
+        description: Exact version from web/metadata.json
         required: true
         type: string
 
