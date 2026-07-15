@@ -31,6 +31,8 @@ const nextBlend=surface.classifyDescriptor({tag:'button',dataset:{layerCommand:'
 assert.equal(nextBlend.transport,false);
 const clearSelection=surface.classifyDescriptor({tag:'button',dataset:{timelineCommand:'clearSelection'},text:'Clear selection'});
 assert.equal(clearSelection.danger,false);
+const ariaDisabled=surface.classifyDescriptor({tag:'div',className:'custom',ariaDisabled:'true'});
+assert.equal(ariaDisabled.disabled,true);
 
 const standard=surface.classifyDescriptor({tag:'button',text:'Brush Lab'});
 assert.equal(standard.radial,false);
