@@ -5,9 +5,10 @@
 //   * release-notes/<version>.md, when present; or
 //   * CHANGELOG.md [Unreleased] as the normal fallback.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { releaseChanges } from './release-notes-contract.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -17,35 +18,13 @@ const CHECK = args.has('--check');
 const read = p => readFileSync(resolve(root, p), 'utf8');
 const normalize = s => s.replace(/\r\n/g, '\n').trimEnd() + '\n';
 
-function extractUnreleased(changelog) {
-  const marker = /^## \[Unreleased\]\s*$/m;
-  const m = marker.exec(changelog);
-  if (!m) throw new Error('CHANGELOG.md is missing a "## [Unreleased]" section');
-  const start = m.index + m[0].length;
-  const rest = changelog.slice(start);
-  const next = /^## (?!\[Unreleased\])/m.exec(rest);
-  const body = (next ? rest.slice(0, next.index) : rest).trim();
-  if (!body) return '_No user-facing changes since the last release._';
-  return body;
-}
-
-function releaseChanges(version) {
-  const versionSource = resolve(root, 'release-notes', `${version}.md`);
-  const body = existsSync(versionSource)
-    ? readFileSync(versionSource, 'utf8').trim()
-    : extractUnreleased(read('CHANGELOG.md'));
-  return body
-    .replace(/^### /gm, '## ')
-    .trim();
-}
-
 function generatedNotes() {
   const meta = JSON.parse(read('web/metadata.json'));
   const date = meta.releaseDate || new Date().toISOString().slice(0, 10);
   const name = meta.name || 'InkFrame Studio';
   const version = meta.version || 'dev';
   const desc = meta.description || 'Offline-first 2D drawing and frame-by-frame animation.';
-  const changes = releaseChanges(version);
+  const changes = releaseChanges(root, version);
 
   return normalize(`# ${name} ${version} Release Notes
 
