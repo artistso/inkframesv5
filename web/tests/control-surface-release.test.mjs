@@ -30,8 +30,10 @@ try{
   assert.equal((html.match(/control-surface\.js/g)||[]).length,1,'Control Surface runtime must load exactly once');
 }finally{rmSync(temp,{recursive:true,force:true});}
 
-const injector=readFileSync(resolve(root,'tools/inject-feedback-report.mjs'),'utf8');
-assert.ok(injector.includes("'control-surface.js'"),'tablet workspace injector must verify Control Surface');
+const coordinator=readFileSync(resolve(root,'tools/inject-static-background.mjs'),'utf8');
+assert.ok(coordinator.includes('function injectControlSurface'),'final generated-index coordinator must inject Control Surface');
+assert.ok(coordinator.includes('<script src="control-surface.js"></script>'),'coordinator must emit the Control Surface script');
 const gradle=readFileSync(resolve(root,'app/build.gradle.kts'),'utf8');
+assert.ok(gradle.includes('rootProject.file("tools/inject-static-background.mjs")'),'Gradle must track the final generated-index coordinator');
 assert.ok(gradle.includes('"**/*.js", "**/*.css"'),'Gradle stage task must package the Control Surface runtime');
 console.log('✅ generated Android Control Surface ordering, uniqueness, staging, and presentation-only release contract passed');
