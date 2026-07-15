@@ -49,4 +49,7 @@ await import('./feedback-report-release.test.mjs');
 await import('./tablet-command-deck.test.mjs');
 await import('./tablet-command-deck-boot.test.mjs');
 await import('./tablet-command-deck-release.test.mjs');
+await import('./timeline-workspace.test.mjs');
+await import('./timeline-workspace-boot.test.mjs');
+await import('./timeline-workspace-release.test.mjs');
 await import('./brush-engine-v2-profile-history-boot.test.mjs');
