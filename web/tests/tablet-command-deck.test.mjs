@@ -37,7 +37,13 @@ assert.equal(deck.savePreferences({visible:false,expanded:true}),true);
 assert.equal(store.size,1);
 assert.equal(store.has(deck.PREF_KEY),true);
 assert.deepEqual(deck.loadPreferences(),{visible:false,expanded:true});
-assert.deepEqual([...deck.MODE_LABELS],['Brushes','Frames','Layers','Actions']);
+assert.deepEqual([...deck.MODE_LABELS],['Draw','Frames','Layers','Actions']);
+assert.deepEqual(deck.MODE_DEFINITIONS.map(item=>({...item})),[
+  {label:'Draw',target:'Tools'},
+  {label:'Frames',target:'Frames'},
+  {label:'Layers',target:'Layers'},
+  {label:'Actions',target:'Actions'},
+]);
 
 assert.equal(deck.projectCanvasWrites,0);
 assert.equal(deck.artworkUndoWrites,0);
@@ -48,4 +54,4 @@ assert.equal(deck.storageWrites,'device-ui-preference-only');
 assert.equal(deck.networkWrites,0);
 assert.equal(deck.artworkReads,0);
 assert.equal(deck.projectNameReads,0);
-console.log('✅ Tablet Command Deck normalization, device-only preference, bounds, and zero-project-write contract passed');
+console.log('✅ Tablet Command Deck normalization, Draw-to-Tools mapping, device-only preference, bounds, and zero-project-write contract passed');
