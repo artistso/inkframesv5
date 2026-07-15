@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 
 const here=dirname(fileURLToPath(import.meta.url)),root=resolve(here,'..','..');
+const metadata=JSON.parse(readFileSync(resolve(root,'web/metadata.json'),'utf8'));
 const temp=mkdtempSync(resolve(tmpdir(),'inkframe-feedback-release-')),generated=resolve(temp,'index.html');
 try{
   execFileSync(process.execPath,[resolve(root,'tools/inject-brush-v2-index.mjs'),resolve(root,'web/index.html'),generated,'--variant=release','--diagnostics=false','--default-engine=v2'],{cwd:root,stdio:'pipe'});
@@ -16,8 +17,8 @@ try{
   assert.ok(html.indexOf('feedback-report.js')<html.indexOf('brush-engine-v2/sample.js'),'Feedback Report must initialize before the modular brush runtime');
   assert.ok(html.includes('window.InkFrameFeedbackEnvironment'),'release index must expose the bounded feedback environment');
   assert.ok(html.includes('feedbackReportSnapshot'),'release index must expose deterministic report facts');
-  assert.ok(html.includes('version:"0.4.0"'),'release feedback bridge must embed metadata version');
-  assert.ok(html.includes('packageName:"com.inkframe.studio"'),'release feedback bridge must embed package name');
+  assert.ok(html.includes(`version:${JSON.stringify(metadata.version)}`),'release feedback bridge must embed canonical metadata version');
+  assert.ok(html.includes(`packageName:${JSON.stringify(metadata.packageName)}`),'release feedback bridge must embed canonical package name');
   assert.ok(source.includes('Nothing is uploaded.'));assert.ok(source.includes('projectNameReads:0'));assert.ok(source.includes('artworkReads:0'));
   assert.ok(source.includes("copyTesterReport==='function'"),'Android copy must reuse the existing bridge');
   assert.ok(source.includes("saveDataUrl==='function'"),'Android save must reuse the existing export bridge');
@@ -30,6 +31,6 @@ try{
   for(const path of ['tools/inject-feedback-report.mjs'])assert.ok(gradle.includes(`rootProject.file("${path}")`),`missing Gradle input for ${path}`);
   assert.ok(gradle.includes('webMetadataFile'),'metadata must invalidate generated Android indexes');
   assert.ok(mainActivity.includes('fun copyTesterReport(report: String)'),'native clipboard bridge must remain available');
-  assert.ok(mainActivity.includes('fun saveDataUrl(dataUrl: String'),'native text-save bridge must remain available');
-  console.log('✅ generated release Feedback Report asset, metadata bridge, copy/save paths, Gradle inputs, redaction, and offline contract passed');
+  assert.ok(mainActivity.includes('fun saveDataUrl(dataUrl: String, suggestedName: String?, mimeType: String?)'),'native text-save bridge must remain available');
+  console.log(`✅ generated release Feedback Report asset, ${metadata.version} metadata bridge, copy/save paths, Gradle inputs, redaction, and offline contract passed`);
 }finally{rmSync(temp,{recursive:true,force:true});}

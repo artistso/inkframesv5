@@ -35,6 +35,7 @@ jobs:
           node --check tools/prepare-release.mjs
           node --check tools/bump-version.mjs
           node --check tools/inject-brush-v2-index.mjs
+          node --check web/canvas-navigation.js
           node --check web/brush-engine-v2/batch.js
           node --check web/brush-engine-v2/validator.js
           node --check web/brush-engine-v2/stabilizer.js
@@ -62,6 +63,10 @@ jobs:
           node --check web/brush-engine-v2/brush-coach.js
           node tools/update-release-notes.mjs --check
           node web/tests/version-smoke.mjs
+      - name: Canvas pinch navigation
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+        run: node web/tests/canvas-navigation.test.mjs
       - name: Brush V2 core geometry and replay
         run: node web/tests/brush-engine-v2.test.mjs
       - name: Brush V2 adaptive stabilizer
@@ -253,6 +258,8 @@ jobs:
           grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'canvas-navigation.js' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'InkFrameCanvasNavigationEnvironment' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/ghost-trail.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/ghost-runtime.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F 'brush-engine-v2/user-presets.js' "$RUNNER_TEMP/inkframe-release-index.html"
@@ -262,6 +269,7 @@ jobs:
           grep -F 'brush-engine-v2/preview-pad.js' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F "script.src='brush-engine-v2/preview-replay.js'" "$RUNNER_TEMP/preview-compare.js"
           grep -F "script.src='brush-engine-v2/brush-coach.js'" "$RUNNER_TEMP/preview-compare.js"
+          unzip -l "$APK" | grep -F 'assets/canvas-navigation.js'
           unzip -l "$APK" | grep -F 'assets/brush-engine-v2/preview-replay.js'
           unzip -l "$APK" | grep -F 'assets/brush-engine-v2/brush-coach.js'
           if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then

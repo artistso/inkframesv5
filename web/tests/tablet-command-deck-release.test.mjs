@@ -22,15 +22,22 @@ try{
   assert.ok(injector.includes('Tablet Command Deck must load after Feedback Report'));
   assert.ok(gradle.includes('"**/*.js", "**/*.css"'),'web staging must include the deck runtime');
   assert.ok(gradle.includes('rootProject.file("tools/inject-feedback-report.mjs")'),'deck injection path must remain an explicit Gradle input');
-  assert.ok(source.includes('min-height:48px'),'tablet deck controls must meet the 48 CSS px target');
-  assert.ok(source.includes('.deck-icon{width:48px;height:48px;min-height:48px'),'header controls must meet the 48 CSS px target');
-  assert.ok(source.includes('.frameSlot{width:26px!important'),'coarse-pointer perimeter frames must be enlarged');
+  assert.ok(source.includes("UI_REVISION='studio-controls-v2'"),'release must identify the modern control contract');
+  assert.ok(source.includes('--ink-control-min:48px'),'base controls must meet the 48 CSS px target');
+  assert.ok(source.includes('--ink-control-min-coarse:56px'),'coarse-pointer controls must meet the 56 CSS px target');
+  assert.ok(source.includes('.deck-icon{width:50px;height:50px;min-height:50px'),'header controls must exceed the 48 CSS px target');
+  assert.ok(source.includes('min-height:52px'),'mode and transport controls must exceed the base target');
+  assert.ok(source.includes('.frameSlot{width:28px!important'),'coarse-pointer perimeter frames must be enlarged');
   assert.ok(source.includes('.frameSlot::before'),'perimeter frames must receive an expanded coarse-pointer hit area');
+  assert.ok(source.includes('button:focus-visible'),'release controls must expose visible keyboard focus');
+  assert.ok(source.includes('@media(prefers-reduced-motion:reduce)'),'release controls must honor reduced-motion preferences');
+  assert.ok(source.includes("button.setAttribute('aria-pressed','false')"),'mode buttons must expose selection semantics');
+  assert.ok(source.includes("kid.setAttribute('role','button')"),'custom Deck toggle must expose button semantics');
   assert.ok(source.includes('inkframe-tablet-deck-toggle'),'Actions must expose a Deck toggle');
   assert.ok(source.includes("Object.freeze({label:'Draw',target:'Tools'})"),'Draw must target the established Tools node');
   assert.ok(source.includes("PREF_KEY='inkframe.ui.tabletDeck.v1'"),'UI state must use a dedicated device preference key');
   assert.ok(source.includes("storageWrites:'device-ui-preference-only'"));
   for(const marker of ['projectCanvasWrites:0','artworkUndoWrites:0','timingHistoryWrites:0','projectSchemaWrites:0','archiveWrites:0','networkWrites:0'])assert.ok(source.includes(marker),`missing isolation marker ${marker}`);
   for(const forbidden of ['fetch(','XMLHttpRequest','WebSocket','sendBeacon'])assert.equal(source.includes(forbidden),false,`Tablet Command Deck must remain offline: ${forbidden}`);
-  console.log('✅ generated release Tablet Command Deck ordering, real control bridge, touch targets, tracked injection, device-only state, and offline isolation passed');
+  console.log('✅ generated release Tablet Command Deck ordering, modern controls, accessibility, real control bridge, tracked injection, device-only state, and offline isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}

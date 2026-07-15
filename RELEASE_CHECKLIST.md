@@ -27,11 +27,12 @@ Required green jobs:
 - **Build debug APK**
 - **Verify signed production APK and AAB**
 
-The web job must include core geometry, ribbon coverage, radius continuity,
-contact boundaries, session continuity, discontinuity segmentation, coalesced
-input, runtime policy, debug assets, release assets, and generated-index boot.
-The production verification job must assemble both formats with a disposable
-CI-only key, verify signatures, and inspect the packaged production assets.
+The web job must include the Canvas pinch navigation contract plus core geometry,
+ribbon coverage, radius continuity, contact boundaries, session continuity,
+discontinuity segmentation, coalesced input, runtime policy, debug assets, release
+assets, and generated-index boot. The production verification job must assemble both
+formats with a disposable CI-only key, verify signatures, and inspect the packaged
+production assets, including `canvas-navigation.js`.
 
 ## 3. Install the debug RC APK
 
@@ -84,7 +85,23 @@ independent and usable.
 If any spike survives, stop immediately and export the debug trace before drawing
 again. Do not tag the release until the trace is reviewed.
 
-## 5. General browser/PWA smoke test
+## 5. Canvas pan and pinch-zoom release gate
+
+Use the physical tablet screen rather than a mouse or emulator:
+
+- Draw with the S Pen immediately after touching down; pen input must remain immediate.
+- Place two fingers on the canvas and spread/pinch them. Zoom must remain anchored under the gesture midpoint.
+- Move both fingers together. The canvas must pan with the midpoint.
+- Change the angle between both fingers while keeping roughly the same span. The canvas must not rotate or wobble.
+- Begin several pinches with one finger landing slightly before the other. No unwanted dot or short stroke may remain.
+- Lift one finger while the other remains down. The remaining finger must not start drawing.
+- Exercise the minimum and maximum zoom limits. The transform must remain finite and enough canvas must remain visible to recover it.
+- After panning and zooming, draw with the S Pen. The stroke must land directly beneath the nib on the transformed canvas.
+- Repeat after pause/resume and display rotation.
+
+Complete this physical gate before approving the Play candidate.
+
+## 6. General browser/PWA smoke test
 
 Verify:
 
@@ -97,7 +114,7 @@ Verify:
 - Stylus diagnostics reports pressure/tilt/button data where supported.
 - Barrel mode cycles **Pick → Erase → Off**.
 
-## 6. General APK smoke test
+## 7. General APK smoke test
 
 Verify:
 
@@ -111,7 +128,7 @@ Verify:
 - App pause/resume does not lose work.
 - Rotation/background/lock-screen recovery behaves acceptably.
 
-## 7. Version and generated notes
+## 8. Version and generated notes
 
 For a normal release, add accepted user-facing changes under `CHANGELOG.md`
 `[Unreleased]`. A large release may instead use
@@ -133,7 +150,7 @@ and run:
 ./inkframe-cli release-check
 ```
 
-## 8. Signing prerequisites
+## 9. Signing prerequisites
 
 Confirm all Actions secrets exist:
 
@@ -147,7 +164,7 @@ INKFRAME_KEY_PASSWORD
 Confirm the original `.jks`, alias, and passwords are stored securely outside
 GitHub. See `RELEASING.md` for setup and recovery requirements.
 
-## 9. Publish and verify the signed release
+## 10. Publish and verify the signed release
 
 After the approved release candidate is merged to `main`, derive the tag from the
 committed metadata rather than typing a historical version:
@@ -171,4 +188,4 @@ SHA256SUMS.txt
 ```
 
 Install the signed APK on a clean device and repeat the minimum Brush Engine V2,
-offline launch, archive, PNG, and GIF tests before distributing it broadly.
+canvas navigation, offline launch, archive, PNG, and GIF tests before distributing it broadly.

@@ -31,17 +31,19 @@ w.eval(source);await new Promise(resolvePromise=>setTimeout(resolvePromise,80));
 
 const api=w.InkFrameTabletDeck,deck=d.getElementById('inkframeTabletDeck'),toggle=actions._kids.querySelector('.inkframe-tablet-deck-toggle');
 assert.ok(api&&deck&&toggle,'Tablet Command Deck must install with an Actions toggle');
+assert.equal(api.UI_REVISION,'studio-controls-v2');assert.equal(deck.dataset.uiRevision,'studio-controls-v2');assert.equal(d.documentElement.classList.contains('inkframe-modern-ui'),true);
 assert.equal(deck.hidden,false);assert.equal(deck.classList.contains('expanded'),true);assert.equal(toggle.getAttribute('aria-pressed'),'true');
+assert.equal(toggle.getAttribute('role'),'button');assert.equal(toggle.getAttribute('tabindex'),'0');
 assert.equal(deck.querySelector('[data-status="brush"]').textContent,'v2 · ink');
 assert.equal(deck.querySelector('[data-status="frame"]').textContent,'4 / 12');
 assert.equal(deck.querySelector('[data-status="layers"]').textContent,'2 / 3');
 assert.match(deck.querySelector('[data-status="timing"]').textContent,/12 fps · paused · onion/);
 
 const button=text=>Array.from(deck.querySelectorAll('button')).find(item=>item.textContent===text);
-button('Draw').click();api.updateState();assert.equal(tools.classList.contains('open'),true);assert.equal(button('Draw').classList.contains('active'),true);
+button('Draw').click();api.updateState();assert.equal(tools.classList.contains('open'),true);assert.equal(button('Draw').classList.contains('active'),true);assert.equal(button('Draw').getAttribute('aria-pressed'),'true');
 button('Frames').click();button('Actions').click();assert.equal(frames.classList.contains('open'),true);assert.equal(actions.classList.contains('open'),true);
 deck.querySelector('[data-action="prev"]').click();deck.querySelector('[data-action="next"]').click();assert.equal(prevClicks,1);assert.equal(nextClicks,1);
-deck.querySelector('[data-action="play"]').click();assert.equal(playClicks,1);api.updateState();assert.equal(deck.querySelector('[data-action="play"]').textContent,'Pause');
+deck.querySelector('[data-action="play"]').click();assert.equal(playClicks,1);api.updateState();assert.equal(deck.querySelector('[data-action="play"]').textContent,'Pause');assert.equal(deck.querySelector('[data-action="play"]').getAttribute('aria-pressed'),'true');
 button('Brush Lab').click();assert.equal(labOpens,1);
 button('Collapse').click();assert.equal(collapseCalls,1);assert.equal(tools.classList.contains('open'),false);assert.equal(frames.classList.contains('open'),false);
 
@@ -52,6 +54,6 @@ deck.querySelector('[title="Hide deck"]').click();assert.equal(deck.hidden,true)
 
 d.getElementById('studio').classList.add('show');api.updateState();assert.equal(deck.classList.contains('obscured'),true);d.getElementById('studio').classList.remove('show');api.updateState();assert.equal(deck.classList.contains('obscured'),false);
 const feedback=d.querySelector('.inkframe-feedback');feedback.hidden=false;api.updateState();assert.equal(deck.classList.contains('obscured'),true);feedback.hidden=true;api.updateState();assert.equal(deck.classList.contains('obscured'),false);
-const css=d.querySelector('style[data-inkframe-tablet-deck-style]').textContent;assert.match(css,/\.frameSlot\{width:26px!important/);assert.match(css,/\.deck-icon\{width:48px;height:48px;min-height:48px/);assert.match(css,/min-height:48px/);assert.match(css,/\.inkframe-feedback/);
+const style=d.querySelector('style[data-inkframe-tablet-deck-style]'),css=style.textContent;assert.equal(style.dataset.inkframeUiRevision,'studio-controls-v2');assert.match(css,/--ink-control-min:48px/);assert.match(css,/--ink-control-min-coarse:56px/);assert.match(css,/\.frameSlot\{width:28px!important/);assert.match(css,/\.deck-icon\{width:50px;height:50px;min-height:50px/);assert.match(css,/min-height:52px/);assert.match(css,/min-height:56px/);assert.match(css,/button:focus-visible/);assert.match(css,/prefers-reduced-motion/);assert.match(css,/\.inkframe-feedback/);
 assert.equal(api.projectCanvasWrites,0);assert.equal(api.artworkUndoWrites,0);assert.equal(api.timingHistoryWrites,0);assert.equal(api.projectSchemaWrites,0);assert.equal(api.networkWrites,0);
-dom.window.close();console.log('✅ Tablet Command Deck Draw/Tools bridge, Brush Lab, transport, state, persistence, panel safety, and active-stroke lockout passed');
+dom.window.close();console.log('✅ Tablet Command Deck v2 controls, Draw/Tools bridge, accessibility, Brush Lab, transport, state, persistence, panel safety, and active-stroke lockout passed');

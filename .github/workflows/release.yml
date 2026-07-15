@@ -29,7 +29,6 @@ jobs:
       INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
       INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
       INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
-      INKFRAME_VERSION_CODE: ${{ github.run_number }}
 
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +40,9 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
+
+      - name: Install jsdom
+        run: npm install --no-save --prefix /tmp/jsdom jsdom
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -57,7 +59,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Resolve release mode and validate version
+      - name: Resolve release mode, version, and version code
         shell: bash
         env:
           EXPECTED_VERSION: ${{ inputs.expected_version }}
@@ -77,6 +79,7 @@ jobs:
             fi
             RELEASE_MODE="dry-run"
             RELEASE_LABEL="v${VERSION}-dry-run"
+            VERSION_CODE_SLOT="90"
           else
             if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
               echo "Non-manual release runs must originate from a v* tag." >&2
@@ -88,9 +91,12 @@ jobs:
             fi
             RELEASE_MODE="tag-release"
             RELEASE_LABEL="v${VERSION}"
+            VERSION_CODE_SLOT="99"
           fi
 
+          VERSION_CODE="$(node tools/android-version-code.mjs "$VERSION" "$VERSION_CODE_SLOT")"
           echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "INKFRAME_RELEASE_MODE=$RELEASE_MODE" >> "$GITHUB_ENV"
           echo "INKFRAME_RELEASE_LABEL=$RELEASE_LABEL" >> "$GITHUB_ENV"
 
@@ -111,11 +117,16 @@ jobs:
           echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
       - name: Verify release and Play metadata
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
         run: |
           node tools/update-release-notes.mjs --check
           node tools/validate-play-release.mjs
+          node tools/tests/android-version-code.test.mjs
           node web/tests/version-smoke.mjs
           node --check tools/inject-brush-v2-index.mjs
+          node --check web/canvas-navigation.js
+          node web/tests/canvas-navigation.test.mjs
           node --check web/brush-engine-v2/runtime.js
           node --check web/brush-engine-v2/input.js
           node web/tests/brush-engine-v2-runtime.test.mjs
@@ -151,6 +162,9 @@ jobs:
           grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
           grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'canvas-navigation.js' "$RUNNER_TEMP/inkframe-release-index.html"
+          grep -F 'InkFrameCanvasNavigationEnvironment' "$RUNNER_TEMP/inkframe-release-index.html"
+          unzip -l "$APK" | grep -F 'assets/canvas-navigation.js'
           if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
             echo "Production index unexpectedly loads native diagnostics" >&2
             exit 1
@@ -163,8 +177,9 @@ jobs:
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
-          BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK")"
+          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
           grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
+          grep -F "versionCode='${INKFRAME_VERSION_CODE}'" <<< "$BADGING"
           grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
 
       - name: Collect signed artifacts
@@ -192,6 +207,7 @@ jobs:
             echo "- Version code: \`${INKFRAME_VERSION_CODE}\`"
             echo "- APK and AAB signatures: verified"
             echo "- Production assets: verified"
+            echo "- Canvas pan/pinch navigation: verified"
             echo "- Brush Engine V2: production default"
             echo "- Debug telemetry: excluded"
             echo

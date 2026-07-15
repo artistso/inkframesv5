@@ -41,6 +41,7 @@ const nativeScript = diagnostics ? '<script src="brush-engine-v2/native.js"></sc
 const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->
 <script>window.InkFrameBuild=Object.freeze(${JSON.stringify(buildConfig)});</script>
+<script src="canvas-navigation.js"></script>
 <script src="creator-statement.js"></script>
 <script src="brush-engine-v2/sample.js"></script>
 <script src="brush-engine-v2/batch.js"></script>
@@ -125,6 +126,19 @@ const helper = `  // Android runtime bridge for Brush Engine V2. This is injecte
   }
   window.InkFrameBrushV2Environment=()=>makeBrushV2Env();
 
+  // Finger drawing is delayed briefly by canvas-navigation.js so a second contact
+  // can convert the interaction into a pinch. If that second contact arrives just
+  // after drawing began, restore the pre-stroke snapshot instead of leaving a dab.
+  window.InkFrameCanvasNavigationEnvironment=()=>({
+    cancelTouchStroke(pointerId){
+      if(!drawing||drawPid!==pointerId||drawPidType!=='touch')return false;
+      drawing=false;drawPid=null;drawPidType=null;hideLens();clearTimeout(qsTimer);clearPredicted();
+      if(pend){restoreSnap(pend);pend=null;}
+      resetHistory();endBarrelEraser();qsActive=false;qsShape=null;strokePath=[];render();
+      return true;
+    }
+  });
+
 ${helperNeedle}`;
 html = replaceOnce(html, helperNeedle, helper, 'V2 environment bridge');
 
@@ -171,6 +185,9 @@ const requiredMarkers = [
   `"variant":"${variant}"`,
   `"diagnostics":${diagnostics}`,
   `"defaultBrushEngine":"${defaultBrushEngine}"`,
+  'canvas-navigation.js',
+  'InkFrameCanvasNavigationEnvironment',
+  'cancelTouchStroke(pointerId)',
   'creator-statement.js',
   'onion-skin-studio.js',
   'InkFrameOnionStudioEnvironment',
