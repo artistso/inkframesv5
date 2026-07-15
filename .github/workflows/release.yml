@@ -164,7 +164,7 @@ jobs:
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
-          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
+          BADGING="$($ANDROID_HOME/build-tools/35.0.0/aapt dump badging "$APK")"
           grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
           grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
 
