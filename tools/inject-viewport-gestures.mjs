@@ -5,8 +5,8 @@ const block=(...lines)=>lines.join('\n');
 
 export function injectViewportGestures(html,replaceOnce){
   html=replaceOnce(html,
-    block('<script src="canvas-shape.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
-    block('<script src="canvas-shape.js"></script>','<script src="viewport-gestures.js"></script>','<!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->'),
+    '<script src="canvas-shape.js"></script>',
+    block('<script src="canvas-shape.js"></script>','<script src="viewport-gestures.js"></script>'),
     'viewport gesture runtime script');
 
   html=replaceOnce(html,
