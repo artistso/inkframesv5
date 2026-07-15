@@ -60,7 +60,9 @@
   }
 
   function stampKey(dab, color) {
-    const radius = Math.max(0.5, Math.round(Math.max(0.05, Number(dab.radius) || 0.05) * 4) / 4);
+    const rawRadius = Math.max(0.05, Number(dab.radius) || 0.05);
+    const radiusStep = rawRadius < 2 ? 0.0625 : (rawRadius < 8 ? 0.125 : 0.25);
+    const radius = Math.max(0.05, Math.round(rawRadius / radiusStep) * radiusStep);
     const hardness = Math.round(clamp(dab.hardness, 0, 1) * 50) / 50;
     const erase = dab.composite === 'destination-out';
     return {
@@ -401,7 +403,9 @@
     }));
   }
 
-  adapter.flushPerformanceQueue = () => stroke ? flushFrame(stroke, true, true) : 0;
+  adapter.flushPerformanceQueue = allowLiveRender => stroke
+    ? flushFrame(stroke, true, allowLiveRender !== false)
+    : 0;
   adapter.performanceStats = performanceStats;
   adapter.__performanceBudgetInstalled = true;
   root.InkFrameBrushV2Performance = Object.freeze({
