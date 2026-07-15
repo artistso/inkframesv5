@@ -38,7 +38,7 @@ assert.equal(store.size,1);
 assert.equal(store.has(deck.PREF_KEY),true);
 assert.deepEqual(deck.loadPreferences(),{visible:false,expanded:true});
 assert.deepEqual([...deck.MODE_LABELS],['Draw','Frames','Layers','Actions']);
-assert.deepEqual(deck.MODE_DEFINITIONS.map(item=>({...item})),[
+assert.deepEqual([...deck.MODE_DEFINITIONS].map(item=>({...item})),[
   {label:'Draw',target:'Tools'},
   {label:'Frames',target:'Frames'},
   {label:'Layers',target:'Layers'},
