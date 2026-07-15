@@ -10,6 +10,44 @@ const workflowFiles=readdirSync(workflowsDir)
   .filter(name=>/\.ya?ml$/i.test(name))
   .sort();
 
+function actionStepBody(lines,index,usesIndent){
+  // `uses:` can either be on the step marker itself (`- uses:`) or be a sibling
+  // of `name:` inside a named step. In both forms the next step begins with a
+  // list marker two spaces shallower than a named-step `uses:` property.
+  const stepIndent=Math.max(0,usesIndent-2);
+  const block=[];
+  for(let cursor=index+1;cursor<lines.length;cursor++){
+    const next=lines[cursor];
+    if(!next.trim()){
+      block.push(next);
+      continue;
+    }
+    const indent=/^\s*/.exec(next)[0].length;
+    const nextStep=/^(\s*)-\s+/.exec(next);
+    if(indent<stepIndent||(nextStep&&nextStep[1].length<=stepIndent)) break;
+    block.push(next);
+  }
+  return block.join('\n');
+}
+
+const namedFixture=[
+  '      - name: Set up Node 24',
+  '        uses: actions/setup-node@v6',
+  '        with:',
+  "          node-version: '24'",
+  '          package-manager-cache: false',
+  '      - name: Next step',
+];
+const unnamedFixture=[
+  '      - uses: actions/setup-node@v6',
+  '        with:',
+  "          node-version: '24'",
+  '          package-manager-cache: false',
+  '      - run: node --version',
+];
+assert.match(actionStepBody(namedFixture,1,8),/node-version:\s*'24'/);
+assert.match(actionStepBody(unnamedFixture,0,6),/package-manager-cache:\s*false/);
+
 assert.ok(workflowFiles.length>=6,'expected the active InkFrame workflow set');
 
 let checkoutCount=0;
@@ -40,19 +78,7 @@ for(const file of workflowFiles){
 
     setupNodeCount++;
     assert.equal(setup[2],'v6',`${file}:${index+1} must pin actions/setup-node@v6`);
-    const baseIndent=setup[1].length;
-    const block=[];
-    for(let cursor=index+1;cursor<lines.length;cursor++){
-      const next=lines[cursor];
-      if(!next.trim()){
-        block.push(next);
-        continue;
-      }
-      const indent=/^\s*/.exec(next)[0].length;
-      if(indent<=baseIndent) break;
-      block.push(next);
-    }
-    const text=block.join('\n');
+    const text=actionStepBody(lines,index,setup[1].length);
     assert.match(text,/node-version:\s*['"]?24['"]?/,
       `${file}:${index+1} must explicitly select Node 24`);
     assert.match(text,/package-manager-cache:\s*false/,
