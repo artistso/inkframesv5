@@ -17,7 +17,8 @@
   let fields = null;
   let statusNode = null;
   let baseline = null;
-  let timer = 0;
+  let listenersInstalled = false;
+  let refreshScheduled = false;
 
   function performanceSnapshot() {
     const api = adapter();
@@ -94,7 +95,7 @@
   }
 
   function render(snapshot) {
-    if (!card || !fields) return false;
+    if (!card || !fields || !statusNode) return false;
     const formatted = formatStats(snapshot || capture(), baseline);
     for (const [key, node] of Object.entries(fields)) node.textContent = formatted[key] || '—';
     statusNode.textContent = formatted.status;
@@ -116,12 +117,45 @@
     try {
       if (root.navigator && root.navigator.clipboard && typeof root.navigator.clipboard.writeText === 'function') {
         await root.navigator.clipboard.writeText(payload);
-        statusNode.textContent = 'Snapshot copied';
+        if (statusNode) statusNode.textContent = 'Snapshot copied';
         return true;
       }
     } catch (_) {}
-    statusNode.textContent = 'Clipboard unavailable';
+    if (statusNode) statusNode.textContent = 'Clipboard unavailable';
     return false;
+  }
+
+  function visible() {
+    if (!card || !card.isConnected) return false;
+    const section = card.closest && card.closest('.inkframe-v2-lab-section');
+    const lab = root.document && root.document.getElementById('inkframe-v2-tuning');
+    return !!section && !section.hidden && !!lab && !lab.hidden;
+  }
+
+  function refreshAfterInput() {
+    refreshScheduled = false;
+    if (!card || !card.isConnected) install();
+    const stats = performanceSnapshot();
+    if (visible() && !stats.active) render(capture());
+  }
+
+  function scheduleRefresh() {
+    if (refreshScheduled || !root.setTimeout) return false;
+    refreshScheduled = true;
+    root.setTimeout(refreshAfterInput, 0);
+    return true;
+  }
+
+  function installListeners() {
+    if (listenersInstalled || !root.document) return;
+    listenersInstalled = true;
+    for (const type of ['pointerup','pointercancel','lostpointercapture']) {
+      root.document.addEventListener(type, scheduleRefresh, true);
+    }
+    root.document.addEventListener('visibilitychange', () => {
+      if (!root.document.hidden) scheduleRefresh();
+    });
+    if (root.addEventListener) root.addEventListener('blur', scheduleRefresh);
   }
 
   function install() {
@@ -193,34 +227,25 @@
 
     const note = root.document.createElement('p');
     note.className = 'inkframe-v2-perf-note';
-    note.textContent = 'Display refresh pauses during active strokes so diagnostics do not compete with S Pen input. Set a baseline immediately before each Original/V2 comparison.';
+    note.textContent = 'Metrics refresh after stroke termination and when Diagnostics is opened, so the display never polls or competes with S Pen input. Set a baseline immediately before each Original/V2 comparison.';
     card.append(head, grid, actions, note);
     primary.appendChild(card);
+
+    const diagnosticsTab = root.document.querySelector('[data-lab-tab="diagnostics"]');
+    if (diagnosticsTab) diagnosticsTab.addEventListener('click', scheduleRefresh);
+    installListeners();
     setBaseline();
     return true;
   }
 
-  function visible() {
-    if (!card || !card.isConnected) return false;
-    const section = card.closest && card.closest('.inkframe-v2-lab-section');
-    const lab = root.document && root.document.getElementById('inkframe-v2-tuning');
-    return !!section && !section.hidden && !!lab && !lab.hidden;
-  }
-
-  function tick() {
-    timer = 0;
-    if (!card || !card.isConnected) install();
-    const stats = performanceSnapshot();
-    if (visible() && !stats.active) render(capture());
-    timer = root.setTimeout(tick, 350);
-  }
-
-  const api = Object.freeze({ enabled, capture, counterDelta, formatStats, install, render, setBaseline, copySnapshot });
+  const api = Object.freeze({
+    enabled, capture, counterDelta, formatStats, install, render,
+    setBaseline, copySnapshot, scheduleRefresh,
+  });
   root.InkFrameBrushV2PerformanceUI = api;
   if (enabled() && root.document) {
     const start = () => {
       if (!install()) return void root.setTimeout(start, 0);
-      if (!timer) timer = root.setTimeout(tick, 350);
     };
     if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', start, { once:true });
     else start();
