@@ -1,4 +1,4 @@
-// InkFrame viewport gestures — anchored pinch, event ownership, and zoom UI
+// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, and zoom UI
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -26,14 +26,18 @@ function pureApi(){
   assert.equal(next.scale,1.6);
   assert.equal(next.panX,240);
   assert.equal(next.panY,150);
+  const translated=api.translatedViewport(base,{x:20,y:30},{x:55,y:12});
+  assert.equal(translated.scale,1);
+  assert.equal(translated.panX,35);
+  assert.equal(translated.panY,-18);
   const capped=api.zoomAt(base,10,500,400);
   assert.equal(capped.scale,2.2,'button and wheel zoom must obey the host maximum');
 }
 
-function pointer(window,type,id,x,y){
+function pointer(window,type,id,x,y,pointerType='touch'){
   const event=new window.Event(type,{bubbles:true,cancelable:true});
   Object.defineProperties(event,{
-    pointerId:{value:id},pointerType:{value:'touch'},clientX:{value:x},clientY:{value:y},
+    pointerId:{value:id},pointerType:{value:pointerType},clientX:{value:x},clientY:{value:y},
     pressure:{value:.5},buttons:{value:type==='pointerup'?0:1},button:{value:type==='pointerup'?0:-1},
   });
   return event;
@@ -71,17 +75,60 @@ function pointer(window,type,id,x,y){
   assert.equal(cancelCalls,1,'joining a second finger rolls back the provisional touch stroke');
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),true);
 
+  const hud=document.getElementById('inkframe-viewport-hud');
+  assert.ok(hud,'gesture HUD must install');
+  assert.equal(hud.classList.contains('show'),true);
+  assert.match(hud.textContent,/^Zoom · 100%$/);
+
   canvas.dispatchEvent(pointer(window,'pointermove',2,260,200));
   assert.equal(raf.length,1,'pinch writes are coalesced into one animation frame');
   raf.shift()(16);
   assert.equal(viewport.scale,1.6);
   assert.equal(viewport.panX,240,'pinch centroid movement pans while preserving the anchored canvas point');
   assert.equal(viewport.panY,120);
+  assert.match(hud.textContent,/^Zoom · 160%$/);
 
   canvas.dispatchEvent(pointer(window,'pointerup',2,260,200));
   canvas.dispatchEvent(pointer(window,'pointerup',1,100,200));
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
+  assert.equal(hud.classList.contains('show'),false);
   assert.match(flashes.at(-1),/^Canvas 160%$/);
+
+  const dock=document.getElementById('inkframe-viewport-dock');
+  assert.ok(dock,'tablet zoom dock must install');
+  assert.equal(dock.querySelectorAll('button').length,6);
+  assert.equal(dock.querySelector('.inkframe-viewport-percent').textContent,'160%');
+
+  // Hand mode consumes the first touch before drawing and turns it into
+  // one-finger canvas navigation. Pen input remains untouched.
+  const panButton=dock.querySelector('.inkframe-viewport-pan');
+  assert.ok(panButton,'hand tool must be available from the viewport dock');
+  panButton.click();
+  assert.equal(api.panMode,true);
+  assert.equal(panButton.getAttribute('aria-pressed'),'true');
+  assert.equal(document.body.classList.contains('inkframe-viewport-pan-mode'),true);
+  const beforePan=Object.assign({},viewport);
+  canvas.dispatchEvent(pointer(window,'pointerdown',10,300,300));
+  assert.equal(canvasDowns,1,'hand mode must consume the first touch before drawing');
+  assert.equal(hud.classList.contains('show'),true);
+  canvas.dispatchEvent(pointer(window,'pointermove',10,340,325));
+  assert.equal(raf.length,1,'one-finger pan is frame-coalesced');
+  raf.shift()(32);
+  assert.equal(viewport.scale,beforePan.scale);
+  assert.equal(viewport.panX,beforePan.panX+40);
+  assert.equal(viewport.panY,beforePan.panY+25);
+  assert.match(hud.textContent,/^Pan · 160%$/);
+  canvas.dispatchEvent(pointer(window,'pointerup',10,340,325));
+  assert.equal(undoCalls,0,'hand-tool release never performs history actions');
+  assert.equal(hud.classList.contains('show'),false);
+
+  canvas.dispatchEvent(pointer(window,'pointerdown',11,320,320,'pen'));
+  assert.equal(canvasDowns,2,'S Pen still reaches the drawing engine while hand mode is enabled');
+  canvas.dispatchEvent(pointer(window,'pointerup',11,320,320,'pen'));
+
+  panButton.click();
+  assert.equal(api.panMode,false);
+  assert.equal(panButton.getAttribute('aria-pressed'),'false');
 
   // Natural tap jitter remains inside the dead zone: it performs Undo without
   // also shifting or scaling the viewport.
@@ -115,19 +162,19 @@ function pointer(window,type,id,x,y){
   assert.equal(undoCalls,historyBeforeCancel.undo);
   assert.equal(redoCalls,historyBeforeCancel.redo);
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
-
-  const dock=document.getElementById('inkframe-viewport-dock');
-  assert.ok(dock,'tablet zoom dock must install');
-  assert.equal(dock.querySelectorAll('button').length,5);
-  assert.equal(dock.querySelector('.inkframe-viewport-percent').textContent,'160%');
+  assert.equal(hud.classList.contains('show'),false);
   dom.window.close();
 }
 
 assert.match(source,/inkframe-viewport-dock/);
+assert.match(source,/inkframe-viewport-hud/);
+assert.match(source,/inkframe-viewport-pan-mode/);
+assert.match(source,/aria-pressed/);
+assert.match(source,/translatedViewport/);
 assert.match(source,/stopImmediatePropagation/);
 assert.match(source,/requestAnimationFrame/);
 assert.match(source,/pointercancel/);
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/touchstart|touchmove/,'Pointer Events remain the single gesture input model');
 
-console.log('✅ anchored pinch, two-finger pan, ownership, tap dead zone, cancellation, Undo\/Redo, and zoom UI tests passed');
+console.log('✅ anchored pinch, hand pan, gesture HUD, ownership, tap dead zone, cancellation, Undo/Redo, and zoom UI tests passed');
