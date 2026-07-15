@@ -32,11 +32,11 @@ assert.equal(Object.isFrozen(normalized),true);
 assert.equal(Object.isFrozen(normalized.timeline),true);
 
 const defaults=deck.loadPreferences();
-assert.deepEqual(defaults,{visible:true,expanded:true});
+assert.deepEqual({...defaults},{visible:true,expanded:true});
 assert.equal(deck.savePreferences({visible:false,expanded:true}),true);
 assert.equal(store.size,1);
 assert.equal(store.has(deck.PREF_KEY),true);
-assert.deepEqual(deck.loadPreferences(),{visible:false,expanded:true});
+assert.deepEqual({...deck.loadPreferences()},{visible:false,expanded:true});
 assert.deepEqual([...deck.MODE_LABELS],['Draw','Frames','Layers','Actions']);
 assert.deepEqual([...deck.MODE_DEFINITIONS].map(item=>({...item})),[
   {label:'Draw',target:'Tools'},
