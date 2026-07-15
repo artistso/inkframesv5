@@ -106,6 +106,16 @@ function pointer(window,type,id,x,y){
   canvas.dispatchEvent(pointer(window,'pointerup',5,120,220));
   assert.equal(redoCalls,1);
 
+  // Android/system cancellation clears ownership but never mutates artwork history.
+  const historyBeforeCancel={undo:undoCalls,redo:redoCalls};
+  canvas.dispatchEvent(pointer(window,'pointerdown',8,130,230));
+  canvas.dispatchEvent(pointer(window,'pointerdown',9,230,230));
+  canvas.dispatchEvent(pointer(window,'pointercancel',9,230,230));
+  canvas.dispatchEvent(pointer(window,'pointercancel',8,130,230));
+  assert.equal(undoCalls,historyBeforeCancel.undo);
+  assert.equal(redoCalls,historyBeforeCancel.redo);
+  assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
+
   const dock=document.getElementById('inkframe-viewport-dock');
   assert.ok(dock,'tablet zoom dock must install');
   assert.equal(dock.querySelectorAll('button').length,5);
@@ -116,7 +126,8 @@ function pointer(window,type,id,x,y){
 assert.match(source,/inkframe-viewport-dock/);
 assert.match(source,/stopImmediatePropagation/);
 assert.match(source,/requestAnimationFrame/);
+assert.match(source,/pointercancel/);
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/touchstart|touchmove/,'Pointer Events remain the single gesture input model');
 
-console.log('✅ anchored pinch, two-finger pan, gesture ownership, dead-zone taps, Undo\/Redo, and zoom UI tests passed');
+console.log('✅ anchored pinch, two-finger pan, ownership, tap dead zone, cancellation, Undo\/Redo, and zoom UI tests passed');
