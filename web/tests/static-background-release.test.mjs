@@ -28,7 +28,9 @@ try{
   ])assert.ok(html.includes(marker),`generated static-background contract missing ${marker}`);
 
   assert.match(indexInjector,/import \{ injectStaticBackground \} from '\.\/inject-static-background\.mjs';/,'index generator must import the static-background coordinator');
-  assert.ok(indexInjector.indexOf('html = injectStaticBackground(html)')>indexInjector.indexOf('html = injectFeedbackReport(html, replaceOnce)'),'static background must run after feedback and tablet bridge generation');
+  const feedbackCall=indexInjector.search(/html\s*=\s*injectFeedbackReport\(html,\s*replaceOnce\);/);
+  const backgroundCall=indexInjector.search(/html\s*=\s*injectStaticBackground\(html,\s*replaceOnce\);/);
+  assert.ok(feedbackCall>=0&&backgroundCall>feedbackCall,'static background must run after feedback and tablet bridge generation');
   assert.match(coordinator,/injectGeneratedBackground/,'coordinator must delegate to the deterministic background core');
   assert.match(coordinator,/injectStaticBackgroundLayerBridge/,'coordinator must apply the contextual Layer Workspace bridge');
   assert.match(layerBridge,/command==='background'/,'Layer Workspace bridge must expose Static BG selection');
