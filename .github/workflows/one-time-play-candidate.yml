@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: one-time-play-candidate-v0.5.0
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   candidate:
@@ -31,6 +31,13 @@ jobs:
       INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
 
     steps:
+      - name: Report candidate run start to PR 111
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 111 --repo "$GITHUB_REPOSITORY" --body "Signed Play candidate workflow **started**. Run ID: \`${GITHUB_RUN_ID}\`. Immutable source: \`${SOURCE_SHA}\`. Version: \`${EXPECTED_VERSION}\`; versionCode: \`${EXPECTED_VERSION_CODE}\`."
+
       - name: Check out exact release candidate
         uses: actions/checkout@v7
         with:
@@ -171,7 +178,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Report candidate run to PR 111
+      - name: Report candidate run outcome to PR 111
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
