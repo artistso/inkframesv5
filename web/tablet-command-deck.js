@@ -23,10 +23,7 @@
     const onion=input.onion&&typeof input.onion==='object'?input.onion:{};
     return Object.freeze({
       brush:Object.freeze({id:safeText(brush.id),engine:safeText(brush.engine),activeStroke:!!brush.activeStroke}),
-      timeline:Object.freeze({
-        frameCount:integer(timeline.frameCount),currentFrame:integer(timeline.currentFrame),
-        fps:Math.max(1,Math.min(60,integer(timeline.fps,12)||12)),playing:!!timeline.playing,
-      }),
+      timeline:Object.freeze({frameCount:integer(timeline.frameCount),currentFrame:integer(timeline.currentFrame),fps:Math.max(1,Math.min(60,integer(timeline.fps,12)||12)),playing:!!timeline.playing}),
       layers:Object.freeze({count:integer(layers.count),active:integer(layers.active)}),
       onion:Object.freeze({enabled:!!onion.enabled}),
     });
@@ -35,12 +32,8 @@
   function fallbackSnapshot(document){
     const count=document&&document.getElementById('railCount');
     const match=count&&/(\d+)\s*\/\s*(\d+)/.exec(String(count.textContent||''));
-    return normalizeSnapshot({
-      timeline:{currentFrame:match?Number(match[1]):0,frameCount:match?Number(match[2]):0,fps:12,playing:false},
-      layers:{count:0,active:0},brush:{id:'ink',engine:'original',activeStroke:false},onion:{enabled:false},
-    });
+    return normalizeSnapshot({timeline:{currentFrame:match?Number(match[1]):0,frameCount:match?Number(match[2]):0,fps:12,playing:false},layers:{count:0,active:0},brush:{id:'ink',engine:'original',activeStroke:false},onion:{enabled:false}});
   }
-
   function environment(){
     try{
       if(typeof root.InkFrameTabletDeckEnvironment==='function')return root.InkFrameTabletDeckEnvironment();
@@ -67,10 +60,8 @@
   function loadPreferences(){
     const defaults=defaultPreferences();
     try{
-      const raw=root.localStorage&&root.localStorage.getItem(PREF_KEY);
-      if(!raw)return defaults;
-      const parsed=JSON.parse(raw);
-      return {visible:parsed.visible!==false,expanded:typeof parsed.expanded==='boolean'?parsed.expanded:defaults.expanded};
+      const raw=root.localStorage&&root.localStorage.getItem(PREF_KEY);if(!raw)return defaults;
+      const parsed=JSON.parse(raw);return {visible:parsed.visible!==false,expanded:typeof parsed.expanded==='boolean'?parsed.expanded:defaults.expanded};
     }catch(_){return defaults;}
   }
   function savePreferences(value){
@@ -78,7 +69,12 @@
     catch(_){return false;}
   }
 
-  let prefs=loadPreferences(),deck=null,toggle=null,styleInstalled=false,observer=null,installTimer=0,stateTimer=0;
+  let prefs=loadPreferences(),deck=null,toggle=null,styleInstalled=false,observer=null,installTimer=0,refreshQueued=false;
+  function queueState(){
+    if(refreshQueued)return;refreshQueued=true;
+    const run=()=>{refreshQueued=false;updateState();};
+    if(typeof root.requestAnimationFrame==='function')root.requestAnimationFrame(run);else root.setTimeout(run,0);
+  }
 
   function installStyle(document){
     if(styleInstalled||!document||!document.head)return;
@@ -103,10 +99,7 @@
   function nodeByLabel(document,label){return nodes(document).find(node=>nodeLabel(node).toLowerCase()===String(label).toLowerCase())||null;}
   function kidByLabels(node,labels){
     if(!node)return null;const wanted=labels.map(value=>String(value).toLowerCase());
-    return Array.from(node.querySelectorAll('.kid')).find(kid=>{
-      const sub=kid.querySelector('.sub'),text=safeText(sub&&sub.textContent||kid.title||kid.getAttribute('aria-label')||'','').toLowerCase();
-      return wanted.includes(text);
-    })||null;
+    return Array.from(node.querySelectorAll('.kid')).find(kid=>{const sub=kid.querySelector('.sub'),text=safeText(sub&&sub.textContent||kid.title||kid.getAttribute('aria-label')||'','').toLowerCase();return wanted.includes(text);})||null;
   }
   function fire(element){
     if(!element)return false;
@@ -117,40 +110,38 @@
   function safeInteraction(){
     const env=environment();
     try{if(env&&typeof env.canInteract==='function'&&env.canInteract()===false){notify('Finish the active stroke before changing the interface');return false;}}catch(_){}
-    if(snapshot().brush.activeStroke){notify('Finish the active stroke before changing the interface');return false;}
-    return true;
+    if(snapshot().brush.activeStroke){notify('Finish the active stroke before changing the interface');return false;}return true;
   }
   function openNodeFallback(target){
     const node=nodeByLabel(root.document,target);if(!node)return false;
-    if(!node.classList.contains('open')){node.classList.add('open');if(typeof node._relayout==='function')root.requestAnimationFrame(()=>node._relayout());}
-    return true;
+    if(!node.classList.contains('open')){node.classList.add('open');if(typeof node._relayout==='function')root.requestAnimationFrame(()=>node._relayout());}return true;
   }
   function activateMode(label){
     if(!safeInteraction())return false;const definition=modeDefinition(label);if(!definition)return false;const env=environment();let opened=false;
     try{if(env&&typeof env.openMode==='function')opened=env.openMode(definition.target)!==false;}catch(_){}
-    if(!opened)opened=openNodeFallback(definition.target);
-    if(!opened){notify(`${definition.label} controls unavailable`);return false;}updateState();return true;
+    if(!opened)opened=openNodeFallback(definition.target);if(!opened){notify(`${definition.label} controls unavailable`);return false;}queueState();return true;
   }
   function openBrushLab(){
     if(!safeInteraction())return false;const env=environment();
-    try{if(env&&typeof env.openBrushLab==='function'&&env.openBrushLab()!==false){updateState();return true;}}catch(_){}
+    try{if(env&&typeof env.openBrushLab==='function'&&env.openBrushLab()!==false){queueState();return true;}}catch(_){}
     notify('Brush Lab unavailable');return false;
   }
   function transport(action){
-    if(!safeInteraction())return false;const document=root.document,env=environment();
-    if(action==='prev')return fire(document.getElementById('railPrev'));
-    if(action==='next')return fire(document.getElementById('railNext'));
-    if(action==='play'){
-      try{if(env&&typeof env.togglePlayback==='function'&&env.togglePlayback()!==false){updateState();return true;}}catch(_){}
-      const frameNode=nodeByLabel(document,'Frames'),kid=kidByLabels(frameNode,['Play','Pause']);if(kid)return fire(kid);
-      notify('Playback control unavailable');return false;
+    if(!safeInteraction())return false;const document=root.document,env=environment();let result=false;
+    if(action==='prev')result=fire(document.getElementById('railPrev'));
+    else if(action==='next')result=fire(document.getElementById('railNext'));
+    else if(action==='play'){
+      try{if(env&&typeof env.togglePlayback==='function'&&env.togglePlayback()!==false)result=true;}catch(_){}
+      if(!result){const frameNode=nodeByLabel(document,'Frames'),kid=kidByLabels(frameNode,['Play','Pause']);if(kid)result=fire(kid);}
+      if(!result)notify('Playback control unavailable');
     }
-    return false;
+    queueState();return result;
   }
   function collapseNodes(){
-    if(!safeInteraction())return false;const env=environment();
-    try{if(env&&typeof env.collapseModes==='function'&&env.collapseModes()!==false){updateState();return true;}}catch(_){}
-    let changed=false;for(const node of nodes(root.document)){if(node.classList.contains('open')){node.classList.remove('open');changed=true;}}updateState();return changed;
+    if(!safeInteraction())return false;const env=environment();let changed=false;
+    try{if(env&&typeof env.collapseModes==='function')changed=env.collapseModes()!==false;}catch(_){}
+    if(!changed){for(const node of nodes(root.document)){if(node.classList.contains('open')){node.classList.remove('open');changed=true;}}}
+    queueState();return changed;
   }
 
   function makeButton(document,label,className,handler){
@@ -186,18 +177,12 @@
     node._kids.appendChild(kid);if(node.classList.contains('open')&&typeof node._relayout==='function')node._relayout();toggle=kid;return true;
   }
   function modalOpen(document){
-    if(['studio','projectPanel','startPanel','helpPanel'].some(id=>{const element=document.getElementById(id);return !!(element&&element.classList.contains('show'));}))return true;
-    if(['blab','stylusPanel'].some(id=>{const element=document.getElementById(id);return !!(element&&element.classList.contains('show'));}))return true;
+    if(['studio','projectPanel','startPanel','helpPanel','blab','stylusPanel'].some(id=>{const element=document.getElementById(id);return !!(element&&element.classList.contains('show'));}))return true;
     return Array.from(document.querySelectorAll('.inkframe-onion-studio,.inkframe-feedback')).some(panel=>!panel.hidden);
   }
   function updateState(){
     const document=root.document;if(!document||!deck||!deck.isConnected)return false;const current=snapshot();
-    const values={
-      brush:`${current.brush.engine} · ${current.brush.id}`,
-      frame:`${current.timeline.currentFrame||0} / ${current.timeline.frameCount||0}`,
-      layers:current.layers.count?`${current.layers.active||0} / ${current.layers.count}`:'—',
-      timing:`${current.timeline.fps} fps · ${current.timeline.playing?'playing':'paused'}${current.onion.enabled?' · onion':''}`,
-    };
+    const values={brush:`${current.brush.engine} · ${current.brush.id}`,frame:`${current.timeline.currentFrame||0} / ${current.timeline.frameCount||0}`,layers:current.layers.count?`${current.layers.active||0} / ${current.layers.count}`:'—',timing:`${current.timeline.fps} fps · ${current.timeline.playing?'playing':'paused'}${current.onion.enabled?' · onion':''}`};
     for(const [key,value] of Object.entries(values)){const element=deck.querySelector(`[data-status="${key}"]`);if(element)element.textContent=value;}
     const play=deck.querySelector('[data-action="play"]');if(play)play.textContent=current.timeline.playing?'Pause':'Play';
     for(const button of deck.querySelectorAll('[data-mode]')){const node=nodeByLabel(document,button.dataset.target);button.classList.toggle('active',!!(node&&node.classList.contains('open')));}
@@ -205,25 +190,18 @@
   }
   function renderVisibility(){
     if(!deck)return false;deck.hidden=!prefs.visible;deck.classList.toggle('expanded',prefs.visible&&prefs.expanded);
-    if(toggle){toggle.classList.toggle('on',prefs.visible);toggle.setAttribute('aria-pressed',prefs.visible?'true':'false');}
-    updateState();return true;
+    if(toggle){toggle.classList.toggle('on',prefs.visible);toggle.setAttribute('aria-pressed',prefs.visible?'true':'false');}updateState();return true;
   }
   function install(){
-    const document=root.document;if(!document)return false;installStyle(document);ensureDeck(document);const toggleReady=installToggle(document);renderVisibility();
-    if(!stateTimer)stateTimer=root.setInterval(updateState,250);return toggleReady;
+    const document=root.document;if(!document)return false;installStyle(document);ensureDeck(document);const toggleReady=installToggle(document);renderVisibility();return toggleReady;
   }
   function scheduleInstall(){if(installTimer)return;const run=()=>{installTimer=0;if(!install())installTimer=root.setTimeout(run,60);};installTimer=root.setTimeout(run,0);}
   if(root&&typeof root.addEventListener==='function'){
-    root.addEventListener('load',scheduleInstall);root.addEventListener('resize',updateState);root.addEventListener('orientationchange',updateState);
-    if(root.document&&typeof root.MutationObserver==='function'){observer=new root.MutationObserver(()=>{if(!deck||!deck.isConnected||!toggle||!toggle.isConnected)scheduleInstall();else updateState();});observer.observe(root.document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden']});}
+    root.addEventListener('load',scheduleInstall);root.addEventListener('resize',queueState);root.addEventListener('orientationchange',queueState);root.addEventListener('inkframe:onion-settings',queueState);
+    if(root.document&&typeof root.MutationObserver==='function'){observer=new root.MutationObserver(()=>{if(!deck||!deck.isConnected||!toggle||!toggle.isConnected)scheduleInstall();else queueState();});observer.observe(root.document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','hidden']});}
   }
   scheduleInstall();
 
-  const api={
-    PREF_KEY,MODE_DEFINITIONS,MODE_LABELS,normalizeSnapshot,fallbackSnapshot,loadPreferences,savePreferences,activateMode,openBrushLab,transport,collapseNodes,updateState,install,
-    setVisible,setExpanded,onNotice:null,
-    projectCanvasWrites:0,artworkUndoWrites:0,timingHistoryWrites:0,projectSchemaWrites:0,archiveWrites:0,
-    storageWrites:'device-ui-preference-only',networkWrites:0,artworkReads:0,projectNameReads:0,
-  };
+  const api={PREF_KEY,MODE_DEFINITIONS,MODE_LABELS,normalizeSnapshot,fallbackSnapshot,loadPreferences,savePreferences,activateMode,openBrushLab,transport,collapseNodes,updateState,install,setVisible,setExpanded,onNotice:null,projectCanvasWrites:0,artworkUndoWrites:0,timingHistoryWrites:0,projectSchemaWrites:0,archiveWrites:0,storageWrites:'device-ui-preference-only',networkWrites:0,artworkReads:0,projectNameReads:0};
   root.InkFrameTabletDeck=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
