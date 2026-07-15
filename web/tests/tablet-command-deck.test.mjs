@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
 
 const here=dirname(fileURLToPath(import.meta.url));
+const source=readFileSync(resolve(here,'..','tablet-command-deck.js'),'utf8');
 const store=new Map();
 const box={
   console,Math,Number,String,Object,Array,Map,Set,WeakMap,JSON,
@@ -15,7 +16,7 @@ const box={
   module:{exports:{}},
 };
 box.globalThis=box;vm.createContext(box);
-vm.runInContext(readFileSync(resolve(here,'..','tablet-command-deck.js'),'utf8'),box,{filename:'tablet-command-deck.js'});
+vm.runInContext(source,box,{filename:'tablet-command-deck.js'});
 const deck=box.InkFrameTabletDeck;
 assert.ok(deck,'Tablet Command Deck runtime did not install');
 
@@ -37,6 +38,7 @@ assert.equal(deck.savePreferences({visible:false,expanded:true}),true);
 assert.equal(store.size,1);
 assert.equal(store.has(deck.PREF_KEY),true);
 assert.deepEqual({...deck.loadPreferences()},{visible:false,expanded:true});
+assert.equal(deck.UI_REVISION,'studio-controls-v2');
 assert.deepEqual([...deck.MODE_LABELS],['Draw','Frames','Layers','Actions']);
 assert.deepEqual([...deck.MODE_DEFINITIONS].map(item=>({...item})),[
   {label:'Draw',target:'Tools'},
@@ -44,6 +46,20 @@ assert.deepEqual([...deck.MODE_DEFINITIONS].map(item=>({...item})),[
   {label:'Layers',target:'Layers'},
   {label:'Actions',target:'Actions'},
 ]);
+
+for(const contract of [
+  "document.documentElement.classList.add('inkframe-modern-ui')",
+  '--ink-control-min:48px',
+  '--ink-control-min-coarse:56px',
+  'button:focus-visible',
+  '@media(pointer:coarse)',
+  '@media(prefers-reduced-motion:reduce)',
+  "button.setAttribute('aria-pressed','false')",
+  "kid.setAttribute('role','button')",
+  "deck.dataset.uiRevision=UI_REVISION",
+]){
+  assert.ok(source.includes(contract),`Missing modern control contract: ${contract}`);
+}
 
 assert.equal(deck.projectCanvasWrites,0);
 assert.equal(deck.artworkUndoWrites,0);
@@ -54,4 +70,4 @@ assert.equal(deck.storageWrites,'device-ui-preference-only');
 assert.equal(deck.networkWrites,0);
 assert.equal(deck.artworkReads,0);
 assert.equal(deck.projectNameReads,0);
-console.log('✅ Tablet Command Deck normalization, Draw-to-Tools mapping, device-only preference, bounds, and zero-project-write contract passed');
+console.log('✅ Tablet Command Deck normalization, modern control UI, accessibility, device-only preference, bounds, and zero-project-write contract passed');
