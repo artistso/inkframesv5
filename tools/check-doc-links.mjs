@@ -17,7 +17,7 @@ import {fileURLToPath} from 'node:url';
 
 const URI_SCHEME=/^[a-z][a-z0-9+.-]*:/i;
 const TEMPLATE_TOKEN=/\{\{[^}]+\}\}|\$\{[^}]+\}|<[^>]+>/;
-const HTML_LINK=/<(?:a|img)\b[^>]*?\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+const HTML_LINK=/<(?:a|img)\b[^>]*?\s(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 const REFERENCE_DEFINITION=/^\s{0,3}\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/;
 const compareText=(a,b)=>a<b?-1:a>b?1:0;
 
@@ -27,7 +27,7 @@ function insideRoot(root,path){
 }
 
 function lineWithoutInlineCode(line){
-  const chars=[...line];
+  const chars=String(line).split('');
   for(let i=0;i<chars.length;){
     if(chars[i]!=='`'){i++;continue;}
     let width=1;while(chars[i+width]==='`')width++;
@@ -163,7 +163,7 @@ function walkMarkdown(root,current=root,result=[]){
 
 export function trackedMarkdownFiles(root=process.cwd()){
   try{
-    return execFileSync('git',['ls-files','-z','--','*.md'],{cwd:root,encoding:'utf8'})
+    return execFileSync('git',['ls-files','-z','--',':(icase)*.md'],{cwd:root,encoding:'utf8'})
       .split('\0').filter(Boolean).sort(compareText);
   }catch{
     return walkMarkdown(resolve(root));
