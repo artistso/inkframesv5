@@ -2,7 +2,6 @@
 import {execFileSync} from 'node:child_process';
 import {
   existsSync,
-  lstatSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -16,10 +15,11 @@ import {
 } from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const EXTERNAL_SCHEME=/^(?:https?|mailto|tel|data|javascript):/i;
+const URI_SCHEME=/^[a-z][a-z0-9+.-]*:/i;
 const TEMPLATE_TOKEN=/\{\{[^}]+\}\}|\$\{[^}]+\}|<[^>]+>/;
 const HTML_LINK=/<(?:a|img)\b[^>]*?\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 const REFERENCE_DEFINITION=/^\s{0,3}\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/;
+const compareText=(a,b)=>a<b?-1:a>b?1:0;
 
 function insideRoot(root,path){
   const rel=relative(root,path);
@@ -94,7 +94,7 @@ export function collectMarkdownTargets(text){
 
 function normalizeTarget(raw){
   let target=String(raw||'').trim();
-  if(!target||target.startsWith('#')||target.startsWith('//')||EXTERNAL_SCHEME.test(target))return {skip:true};
+  if(!target||target.startsWith('#')||target.startsWith('//')||URI_SCHEME.test(target))return {skip:true};
   target=target.replace(/\\([\\()[\]<> ])/g,'$1');
   if(TEMPLATE_TOKEN.test(target))return {skip:true};
   const cut=[target.indexOf('#'),target.indexOf('?')].filter(value=>value>=0).sort((a,b)=>a-b)[0];
@@ -109,18 +109,15 @@ function resolveLocalTarget(root,source,target){
   if(!insideRoot(root,resolved))return {error:'outside-root',resolved};
   if(!existsSync(resolved))return {error:'missing',resolved};
   try{
-    const stat=lstatSync(resolved);
-    if(stat.isSymbolicLink()){
-      const real=realpathSync(resolved);
-      if(!insideRoot(root,real))return {error:'unsafe-symlink',resolved:real};
-    }
+    const real=realpathSync(resolved);
+    if(!insideRoot(root,real))return {error:'unsafe-symlink',resolved:real};
   }catch{return {error:'unreadable',resolved};}
   return {resolved};
 }
 
 export function validateMarkdownFiles({root=process.cwd(),files}){
   const absoluteRoot=realpathSync(resolve(root));
-  const sorted=[...files].map(file=>String(file)).sort((a,b)=>a.localeCompare(b));
+  const sorted=[...files].map(file=>String(file)).sort(compareText);
   const failures=[];
   for(const file of sorted){
     const source=resolve(absoluteRoot,file);
@@ -128,7 +125,18 @@ export function validateMarkdownFiles({root=process.cwd(),files}){
       failures.push({file,line:1,target:file,code:'missing-source',resolved:source});
       continue;
     }
-    const text=readFileSync(source,'utf8');
+    let readableSource=source;
+    try{
+      readableSource=realpathSync(source);
+      if(!insideRoot(absoluteRoot,readableSource)){
+        failures.push({file,line:1,target:file,code:'unsafe-source',resolved:readableSource});
+        continue;
+      }
+    }catch{
+      failures.push({file,line:1,target:file,code:'unreadable-source',resolved:source});
+      continue;
+    }
+    const text=readFileSync(readableSource,'utf8');
     for(const item of collectMarkdownTargets(text)){
       const normalized=normalizeTarget(item.target);
       if(normalized.skip)continue;
@@ -136,15 +144,15 @@ export function validateMarkdownFiles({root=process.cwd(),files}){
         failures.push({file,line:item.line,target:item.target,code:normalized.error,resolved:''});
         continue;
       }
-      const result=resolveLocalTarget(absoluteRoot,source,normalized.target);
+      const result=resolveLocalTarget(absoluteRoot,readableSource,normalized.target);
       if(result.error)failures.push({file,line:item.line,target:item.target,code:result.error,resolved:result.resolved||''});
     }
   }
-  return failures.sort((a,b)=>a.file.localeCompare(b.file)||a.line-b.line||a.target.localeCompare(b.target)||a.code.localeCompare(b.code));
+  return failures.sort((a,b)=>compareText(a.file,b.file)||a.line-b.line||compareText(a.target,b.target)||compareText(a.code,b.code));
 }
 
 function walkMarkdown(root,current=root,result=[]){
-  for(const entry of readdirSync(current,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))){
+  for(const entry of readdirSync(current,{withFileTypes:true}).sort((a,b)=>compareText(a.name,b.name))){
     if(entry.name==='.git'||entry.name==='node_modules'||entry.name==='build'||entry.name==='dist')continue;
     const path=resolve(current,entry.name);
     if(entry.isDirectory())walkMarkdown(root,path,result);
@@ -156,7 +164,7 @@ function walkMarkdown(root,current=root,result=[]){
 export function trackedMarkdownFiles(root=process.cwd()){
   try{
     return execFileSync('git',['ls-files','-z','--','*.md'],{cwd:root,encoding:'utf8'})
-      .split('\0').filter(Boolean).sort((a,b)=>a.localeCompare(b));
+      .split('\0').filter(Boolean).sort(compareText);
   }catch{
     return walkMarkdown(resolve(root));
   }
