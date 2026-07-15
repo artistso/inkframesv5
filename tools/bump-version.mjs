@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { releaseChanges } from './release-notes-contract.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -67,6 +68,9 @@ if (!dateish.test(releaseDate || '')) throw new Error(`--date must be YYYY-MM-DD
 if (!force && metadata.version === version && pkg.version === version) {
   throw new Error(`Version is already ${version}. Use --force to rewrite releaseDate/notes anyway.`);
 }
+
+// Fail before mutating either version file when the target release has no notes.
+if (!noNotes) releaseChanges(root, version);
 
 metadata.version = version;
 metadata.releaseDate = releaseDate;
