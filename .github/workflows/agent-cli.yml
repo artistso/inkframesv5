@@ -8,6 +8,7 @@ on:
       - README.md
       - AGENT.md
       - tools/tests/inkframe-cli-contract.test.mjs
+      - tools/tests/actions-runtime-contract.test.mjs
       - .github/workflows/agent-cli.yml
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - README.md
       - AGENT.md
       - tools/tests/inkframe-cli-contract.test.mjs
+      - tools/tests/actions-runtime-contract.test.mjs
       - .github/workflows/agent-cli.yml
   workflow_dispatch:
 
@@ -30,17 +32,21 @@ jobs:
     name: Validate agent CLI safety
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
+          package-manager-cache: false
       - name: Validate shell and contract-test syntax
         run: |
           bash -n inkframe-cli
           node --check tools/tests/inkframe-cli-contract.test.mjs
+          node --check tools/tests/actions-runtime-contract.test.mjs
       - name: Validate CLI and documentation contract
-        run: node tools/tests/inkframe-cli-contract.test.mjs
+        run: |
+          node tools/tests/inkframe-cli-contract.test.mjs
+          node tools/tests/actions-runtime-contract.test.mjs
       - name: Validate help and metadata access
         run: |
           chmod +x inkframe-cli
