@@ -114,7 +114,7 @@
   }
   function updateState(){
     const document=root.document;if(!document)return false;installStyle(document);if(!ensurePanel(document))return false;
-    const current=state(),visible=framesOpen(document);panel.hidden=!visible;
+    const current=state(),visible=framesOpen(document),canPingPong=current.selectedCount?current.selectedCount>=2:current.frameCount>=2;panel.hidden=!visible;
     setText(panel.querySelector('[data-timeline-state="count"]'),`${current.frameCount} / ${current.maxFrames}`);
     setText(panel.querySelector('[data-timeline-state="selection"]'),selectionLabel(current));
     setText(panel.querySelector('[data-timeline-state="hold"]'),holdLabel(current));
@@ -122,7 +122,7 @@
     setText(panel.querySelector('[data-timeline-state="loop"]'),current.loopEnabled?'On':'Off');
     for(const button of panel.querySelectorAll('button[data-timeline-command]')){
       const command=button.dataset.timelineCommand,value=Number(button.dataset.timelineValue);
-      button.disabled=!current.canInteract||(command==='reverse'&&current.selectedCount<2)||(command==='pingPong'&&current.frameCount<2);
+      button.disabled=!current.canInteract||(command==='reverse'&&current.selectedCount<2)||(command==='pingPong'&&!canPingPong);
       button.classList.toggle('active',command==='hold'&&!current.mixedHold&&value===current.hold);
     }
     return true;
