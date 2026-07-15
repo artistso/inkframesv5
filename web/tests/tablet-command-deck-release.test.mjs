@@ -16,16 +16,21 @@ try{
   assert.ok(html.indexOf('feedback-report.js')<html.indexOf('tablet-command-deck.js'),'Tablet Command Deck must load after Feedback Report');
   assert.ok(html.indexOf('tablet-command-deck.js')<html.indexOf('brush-engine-v2/sample.js'),'Tablet Command Deck must initialize before modular brush UI');
   assert.ok(html.includes('window.InkFrameFeedbackEnvironment'),'deck must reuse the bounded feedback snapshot environment');
+  assert.ok(html.includes('window.InkFrameTabletDeckEnvironment'),'release index must expose the UI command bridge');
+  for(const marker of ['tabletDeckCanInteract','tabletDeckOpenMode','openBrushLab();return true','kPlay.click();return true','tabletDeckCollapseModes'])assert.ok(html.includes(marker),`release UI bridge missing ${marker}`);
   assert.ok(injector.includes('<script src="tablet-command-deck.js"></script>'),'tracked feedback injector must add the deck runtime');
   assert.ok(injector.includes('Tablet Command Deck must load after Feedback Report'));
   assert.ok(gradle.includes('"**/*.js", "**/*.css"'),'web staging must include the deck runtime');
   assert.ok(gradle.includes('rootProject.file("tools/inject-feedback-report.mjs")'),'deck injection path must remain an explicit Gradle input');
   assert.ok(source.includes('min-height:48px'),'tablet deck controls must meet the 48 CSS px target');
+  assert.ok(source.includes('.deck-icon{width:48px;height:48px;min-height:48px'),'header controls must meet the 48 CSS px target');
   assert.ok(source.includes('.frameSlot{width:26px!important'),'coarse-pointer perimeter frames must be enlarged');
+  assert.ok(source.includes('.frameSlot::before'),'perimeter frames must receive an expanded coarse-pointer hit area');
   assert.ok(source.includes('inkframe-tablet-deck-toggle'),'Actions must expose a Deck toggle');
+  assert.ok(source.includes("Object.freeze({label:'Draw',target:'Tools'})"),'Draw must target the established Tools node');
   assert.ok(source.includes("PREF_KEY='inkframe.ui.tabletDeck.v1'"),'UI state must use a dedicated device preference key');
   assert.ok(source.includes("storageWrites:'device-ui-preference-only'"));
   for(const marker of ['projectCanvasWrites:0','artworkUndoWrites:0','timingHistoryWrites:0','projectSchemaWrites:0','archiveWrites:0','networkWrites:0'])assert.ok(source.includes(marker),`missing isolation marker ${marker}`);
   for(const forbidden of ['fetch(','XMLHttpRequest','WebSocket','sendBeacon'])assert.equal(source.includes(forbidden),false,`Tablet Command Deck must remain offline: ${forbidden}`);
-  console.log('✅ generated release Tablet Command Deck ordering, touch targets, tracked injection, device-only state, and offline isolation passed');
+  console.log('✅ generated release Tablet Command Deck ordering, real control bridge, touch targets, tracked injection, device-only state, and offline isolation passed');
 }finally{rmSync(temp,{recursive:true,force:true});}
