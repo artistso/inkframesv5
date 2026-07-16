@@ -180,7 +180,8 @@ assert.match(applicationSource,/private val contextMirror = StudioContextMirror\
 assert.match(applicationSource,/contextMirror\.update\(snapshot\)/);
 assert.match(applicationSource,/contextMirror\.validate\(binding\)/);
 assert.match(applicationSource,/Native stroke rejected by Kotlin studio mirror/);
-assert.match(applicationSource,/if \(schema == 1\)/,'the physically accepted overlay remains compatible during typed-mirror rollout');
+assert.match(applicationSource,/private fun promoteStrokeEnvelope/,'the physically accepted overlay must be promoted into typed schema-2 context');
+assert.match(applicationSource,/bindingRegistry\.resolve\(token\)/,'schema-1 compatibility must resolve the frozen token, not trust current state');
 assert.match(applicationSource,/bridgeVersion\(\): Int = 2/);
 
 // Golden-master product boundary: stable selectors and runtimes that define the
@@ -219,4 +220,4 @@ assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.c
 // Node exit naturally; forcibly closing the window races its RAF implementation on Node 24.
 modal.remove();
 await new Promise(resolveWait=>window.requestAnimationFrame(resolveWait));
-console.log('✅ Kotlin studio context mirror, native S Pen binding, golden-master chrome, and original commit-path tests passed');
+console.log('✅ Kotlin studio context mirror, schema-2 promotion, native S Pen binding, golden-master chrome, and original commit-path tests passed');
