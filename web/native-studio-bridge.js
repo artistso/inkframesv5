@@ -7,6 +7,7 @@
 
   const CONFIG_SCHEMA = 2;
   const STROKE_SCHEMA = 2;
+  const PROJECT_RECONCILIATION_SCHEMA = 1;
   const MAX_SAMPLES = 262144;
   let canvas = null;
   let resizeObserver = null;
@@ -53,8 +54,22 @@
     return Number.isFinite(number) ? Math.max(0, Math.min(1000000, Math.round(number))) : fallback;
   }
 
+  function boundedOpacity(value, fallback){
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    const normalized = number > 1 ? number / 100 : number;
+    return Math.max(0, Math.min(1, normalized));
+  }
+
+  function safeText(value, fallback){
+    const text = String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g,'').trim();
+    return text.slice(0,48) || fallback;
+  }
+
   function layerSnapshot(){
-    const fallback = Object.freeze({count:0, active:0, background:false});
+    const fallback = Object.freeze({
+      count:0, active:0, background:false, visible:true, opacity:1, blend:'Normal'
+    });
     try {
       if (typeof root.InkFrameTabletDeckEnvironment !== 'function') return fallback;
       const deck = root.InkFrameTabletDeckEnvironment();
@@ -63,7 +78,51 @@
       const count = boundedInteger(raw.count, 0);
       const background = !!raw.background;
       const active = background ? 0 : Math.min(count, boundedInteger(raw.active, 0));
-      return Object.freeze({count, active, background});
+      return Object.freeze({
+        count,
+        active,
+        background,
+        visible:raw.visible !== false,
+        opacity:boundedOpacity(raw.opacity, 1),
+        blend:safeText(raw.blend, 'Normal'),
+      });
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function timelineSnapshot(){
+    const fallback = Object.freeze({
+      frameCount:0, currentFrame:1, maxFrames:0, selected:Object.freeze([]),
+      hold:1, fps:12, playing:false, loopEnabled:false
+    });
+    try {
+      if (typeof root.InkFrameTabletDeckEnvironment !== 'function') return fallback;
+      const deck = root.InkFrameTabletDeckEnvironment();
+      if (!deck || typeof deck.timelineSnapshot !== 'function') return fallback;
+      const raw = deck.timelineSnapshot() || {};
+      const frameCount = boundedInteger(raw.frameCount, 0);
+      const currentFrame = Math.min(
+        Math.max(1, boundedInteger(raw.currentFrame, 1) || 1),
+        Math.max(1, frameCount),
+      );
+      const maxFrames = Math.max(frameCount, boundedInteger(raw.maxFrames, frameCount));
+      const selected = Array.isArray(raw.selected)
+        ? Array.from(new Set(raw.selected
+          .map(value => boundedInteger(value, 0))
+          .filter(value => value >= 1 && value <= Math.max(1, frameCount))))
+          .slice(0,120)
+        : [];
+      return Object.freeze({
+        frameCount,
+        currentFrame,
+        maxFrames,
+        selected:Object.freeze(selected),
+        hold:Math.max(1, Math.min(8, boundedInteger(raw.hold, 1) || 1)),
+        fps:Math.max(1, Math.min(120, boundedInteger(raw.fps, 12) || 12)),
+        playing:!!raw.playing,
+        loopEnabled:!!raw.loopEnabled,
+      });
     } catch (_) {
       return fallback;
     }
@@ -85,10 +144,17 @@
       (!style || (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0));
     const paper = style && style.backgroundColor || '#fff0f3';
     const layers = layerSnapshot();
+    const timeline = timelineSnapshot();
     const baseToken = String(env.contextToken || '');
     const projectIndex = boundedInteger(env.projectIndex, 0);
     const frameIndex = boundedInteger(env.frameIndex, 0);
     const layerIndex = layers.background ? -1 : Math.max(0, layers.active - 1);
+    const frameCount = Math.max(1, timeline.frameCount, frameIndex + 1);
+    const activeFrameIndex = Math.min(frameCount - 1, frameIndex);
+    const maxFrames = Math.max(frameCount, timeline.maxFrames);
+    const selectedFrames = timeline.selected
+      .map(value => value - 1)
+      .filter(value => value >= 0 && value < frameCount);
     const geometryToken = [rect.left, rect.top, rect.width, rect.height].map(geometryPart).join(',');
     const token = [
       'native-studio-v2',
@@ -125,6 +191,24 @@
       layerCount:layers.count,
       backgroundActive:layers.background,
       brushId:String(env.brushId || ''),
+
+      // Read-only Project -> Scene -> Layer -> Cel reconciliation payload.
+      projectReconciliationSchema:PROJECT_RECONCILIATION_SCHEMA,
+      projectRevision:contextRevision,
+      sceneIndex:0,
+      frameCount,
+      activeFrameIndex,
+      maxFrames,
+      playbackStartFrame:0,
+      playbackEndFrame:frameCount - 1,
+      fps:timeline.fps,
+      playing:timeline.playing,
+      loopEnabled:timeline.loopEnabled,
+      holdFrames:timeline.hold,
+      selectedFrames,
+      layerVisible:layers.visible,
+      layerOpacity:layers.opacity,
+      layerBlend:layers.blend,
     };
   }
 
