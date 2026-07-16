@@ -7,6 +7,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -27,6 +28,14 @@ class SplashActivity : ComponentActivity() {
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    finishAffinity()
+                }
+            },
+        )
 
         val splashArt = ImageView(this).apply {
             setImageResource(R.drawable.inkframe_splash)
@@ -60,11 +69,6 @@ class SplashActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
-    }
-
-    @Deprecated("Deprecated in Android API 33; retained for the minimum SDK surface.")
-    override fun onBackPressed() {
-        finishAffinity()
     }
 
     private fun launchStudio(root: View) {
