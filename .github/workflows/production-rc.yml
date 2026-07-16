@@ -1,0 +1,152 @@
+name: Android Production RC
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'core-*/**'
+      - 'engine-gl/**'
+      - 'feature-*/**'
+      - 'gradle/**'
+      - 'gradlew*'
+      - 'web/**'
+      - 'tools/**'
+      - 'release-notes/**'
+      - 'RELEASE_NOTES.md'
+      - '.github/workflows/production-rc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-rc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-rc:
+    name: API 36 lint, test, APK, and AAB
+    runs-on: ubuntu-latest
+    env:
+      INKFRAME_KEYSTORE_PASSWORD: inkframe-ci-verification-only
+      INKFRAME_KEY_ALIAS: inkframe-ci
+      INKFRAME_KEY_PASSWORD: inkframe-ci-verification-only
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate canonical release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./web/metadata.json').version")"
+          VERSION_CODE="$(node -p "require('./web/metadata.json').versionCode")"
+          TARGET_SDK="$(node -p "require('./web/metadata.json').targetSdk")"
+          test -n "$VERSION"
+          test "$VERSION_CODE" -gt 0
+          test "$TARGET_SDK" = "36"
+          echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          node tools/update-release-notes.mjs --check
+          node tools/validate-play-release.mjs
+          node web/tests/version-smoke.mjs
+
+      - name: Create disposable verification keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/inkframe-ci-verification.jks"
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$INKFRAME_KEYSTORE_PASSWORD" \
+            -alias "$INKFRAME_KEY_ALIAS" \
+            -keypass "$INKFRAME_KEY_PASSWORD" \
+            -dname "CN=InkFrame CI Verification, OU=CI, O=InkFrame, C=US" \
+            -keyalg RSA -keysize 2048 -validity 2
+          chmod 600 "$KEYSTORE_PATH"
+          echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Run complete Kotlin and studio regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          node web/tests/brush-engine-v2-lab-layout.test.mjs
+          ./gradlew test :app:lintRelease --stacktrace --console=plain
+
+      - name: Assemble debug APK and signed verification release
+        run: ./gradlew :app:assembleDebug :app:assembleRelease :app:bundleRelease --stacktrace --console=plain
+
+      - name: Verify package, API, versions, signatures, and production exclusions
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
+          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
+          RELEASE_AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$DEBUG_APK"
+          test -s "$RELEASE_APK"
+          test -s "$RELEASE_AAB"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$RELEASE_APK"
+          jarsigner -verify -certs "$RELEASE_AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$RELEASE_APK")"
+          grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
+          grep -F "versionCode='${INKFRAME_VERSION_CODE}'" <<< "$BADGING"
+          grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
+          grep -F "targetSdkVersion:'36'" <<< "$BADGING"
+          unzip -p "$RELEASE_APK" assets/index.html > "$RUNNER_TEMP/release-index.html"
+          grep -F '"variant":"release"' "$RUNNER_TEMP/release-index.html"
+          grep -F '"diagnostics":false' "$RUNNER_TEMP/release-index.html"
+          if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/release-index.html"; then exit 1; fi
+          if unzip -l "$RELEASE_APK" | grep -F 'assets/brush-engine-v2/native.js'; then exit 1; fi
+          if unzip -l "$RELEASE_APK" | grep -F 'libgraphics-core.so'; then exit 1; fi
+          if "$ANDROID_HOME/build-tools/36.0.0/aapt" dump xmltree "$RELEASE_APK" AndroidManifest.xml | grep -F 'NativeInkLabActivity'; then exit 1; fi
+
+      - name: Upload testable RC and verification reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-${{ env.INKFRAME_VERSION }}-${{ env.INKFRAME_VERSION_CODE }}-production-rc
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/reports/lint-results-release.html
+            app/build/reports/lint-results-release.sarif
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Explain verification artifact scope
+        run: |
+          {
+            echo "## InkFrame ${INKFRAME_VERSION} production RC"
+            echo
+            echo "- Package: \`com.inkframe.studio\`"
+            echo "- Version code: \`${INKFRAME_VERSION_CODE}\`"
+            echo "- Target SDK: \`36\`"
+            echo "- API 36 lint/tests: passed"
+            echo "- Release APK/AAB: signed with disposable CI verification key"
+            echo "- Play-ready signing: requires the separate protected signed-release workflow"
+            echo "- Google Play upload: not performed"
+          } >> "$GITHUB_STEP_SUMMARY"
