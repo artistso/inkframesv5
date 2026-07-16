@@ -5,12 +5,15 @@
   const android = root.InkFrameStudioNativeBridge;
   if (!android || typeof android.configureCanvas !== 'function') return;
 
+  const CONFIG_SCHEMA = 2;
+  const STROKE_SCHEMA = 2;
   const MAX_SAMPLES = 262144;
   let canvas = null;
   let resizeObserver = null;
   let mutationObserver = null;
   let publishQueued = false;
   let lastPublished = '';
+  let contextRevision = 0;
 
   function environment(){
     if (typeof root.InkFrameNativeStudioEnvironment !== 'function') return null;
@@ -45,6 +48,32 @@
     }
   }
 
+  function boundedInteger(value, fallback){
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.min(1000000, Math.round(number))) : fallback;
+  }
+
+  function layerSnapshot(){
+    const fallback = Object.freeze({count:0, active:0, background:false});
+    try {
+      if (typeof root.InkFrameTabletDeckEnvironment !== 'function') return fallback;
+      const deck = root.InkFrameTabletDeckEnvironment();
+      if (!deck || typeof deck.layerSnapshot !== 'function') return fallback;
+      const raw = deck.layerSnapshot() || {};
+      const count = boundedInteger(raw.count, 0);
+      const background = !!raw.background;
+      const active = background ? 0 : Math.min(count, boundedInteger(raw.active, 0));
+      return Object.freeze({count, active, background});
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function geometryPart(value){
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(3) : '0.000';
+  }
+
   function computeState(){
     const env = environment();
     canvas = env && env.canvas || document.getElementById('c');
@@ -55,12 +84,28 @@
     const visible = rect.width > 1 && rect.height > 1 &&
       (!style || (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0));
     const paper = style && style.backgroundColor || '#fff0f3';
-    const token = String(env.contextToken || '');
+    const layers = layerSnapshot();
+    const baseToken = String(env.contextToken || '');
+    const projectIndex = boundedInteger(env.projectIndex, 0);
+    const frameIndex = boundedInteger(env.frameIndex, 0);
+    const layerIndex = layers.background ? -1 : Math.max(0, layers.active - 1);
+    const geometryToken = [rect.left, rect.top, rect.width, rect.height].map(geometryPart).join(',');
+    const token = [
+      'native-studio-v2',
+      baseToken,
+      `project:${projectIndex}`,
+      `frame:${frameIndex}`,
+      layers.background ? 'layer:background' : `layer:${layerIndex}/${layers.count}`,
+      `geometry:${geometryToken}`,
+      `revision:${contextRevision}`,
+    ].join('|');
 
     return {
-      schema:1,
+      schema:CONFIG_SCHEMA,
       enabled:!!env.supported && visible && !blockingSurfaceOpen() && !document.hidden,
       contextToken:token,
+      baseContextToken:baseToken,
+      contextRevision,
       left:Number(rect.left)||0,
       top:Number(rect.top)||0,
       width:Number(rect.width)||0,
@@ -74,8 +119,11 @@
       brushSize:Number(env.size)||1,
       opacity:Number(env.opacity == null ? 1 : env.opacity),
       shape:env.canvasShape === 'circle' ? 'circle' : 'square',
-      projectIndex:Number(env.projectIndex)||0,
-      frameIndex:Number(env.frameIndex)||0,
+      projectIndex,
+      frameIndex,
+      layerIndex,
+      layerCount:layers.count,
+      backgroundActive:layers.background,
       brushId:String(env.brushId || ''),
     };
   }
@@ -101,12 +149,17 @@
     (root.requestAnimationFrame || function(fn){ Promise.resolve().then(fn); })(publish);
   }
 
+  function markContextChanged(){
+    contextRevision = (contextRevision + 1) % 2147483647;
+    queuePublish();
+  }
+
   function eventFor(sample, payload, type, rect, baseTime){
     const eraser = !!payload.eraser;
     const ending = type === 'pointerup' || type === 'pointercancel';
     const buttons = ending ? 0 : (eraser ? 32 : 1);
     const button = type === 'pointerdown' || ending ? (eraser ? 5 : 0) : -1;
-    const event = {
+    return {
       type,
       pointerId:Number(payload.pointerId)||1,
       pointerType:'pen',
@@ -131,7 +184,16 @@
       releasePointerCapture(){},
       getCoalescedEvents(){ return []; },
     };
-    return event;
+  }
+
+  function sameExplicitContext(payload, state){
+    if (Number(payload.schema) < STROKE_SCHEMA) return true;
+    return Number(payload.projectIndex) === state.projectIndex &&
+      Number(payload.frameIndex) === state.frameIndex &&
+      Number(payload.layerIndex) === state.layerIndex &&
+      Number(payload.layerCount) === state.layerCount &&
+      !!payload.backgroundActive === state.backgroundActive &&
+      Number(payload.contextRevision) === state.contextRevision;
   }
 
   function replayStroke(payloadJson){
@@ -139,20 +201,22 @@
     try { payload = typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson; }
     catch (error) { return JSON.stringify({ok:false, reason:'invalid-json', error:String(error)}); }
 
-    if (!payload || Number(payload.schema) !== 1 || !Array.isArray(payload.samples)) {
+    const schema = Number(payload && payload.schema);
+    if (!payload || (schema !== 1 && schema !== STROKE_SCHEMA) || !Array.isArray(payload.samples)) {
       return JSON.stringify({ok:false, reason:'invalid-schema'});
     }
     if (!payload.samples.length || payload.samples.length > MAX_SAMPLES) {
       return JSON.stringify({ok:false, reason:'invalid-sample-count'});
     }
 
+    const state = computeState();
     const env = environment();
     const input = root.InkFrameBrushV2InputBridge;
-    if (!env || !env.brushEnvironment || !input) {
+    if (!state || !env || !env.brushEnvironment || !input) {
       return JSON.stringify({ok:false, reason:'bridge-unavailable'});
     }
-    if (!env.supported) return JSON.stringify({ok:false, reason:'brush-not-supported'});
-    if (String(payload.contextToken || '') !== String(env.contextToken || '')) {
+    if (!state.enabled || !env.supported) return JSON.stringify({ok:false, reason:'brush-not-supported'});
+    if (String(payload.contextToken || '') !== String(state.contextToken || '') || !sameExplicitContext(payload, state)) {
       queuePublish();
       return JSON.stringify({ok:false, reason:'studio-context-changed'});
     }
@@ -176,7 +240,14 @@
       const last = samples.length === 1 ? samples[0] : samples[samples.length-1];
       input.end(eventFor(last, payload, 'pointerup', rect, baseTime));
       queuePublish();
-      return JSON.stringify({ok:true, samples:samples.length});
+      return JSON.stringify({
+        ok:true,
+        samples:samples.length,
+        projectIndex:state.projectIndex,
+        frameIndex:state.frameIndex,
+        layerIndex:state.layerIndex,
+        backgroundActive:state.backgroundActive,
+      });
     } catch (error) {
       try {
         input.end(eventFor(samples[samples.length-1], payload, 'pointercancel', rect, baseTime));
@@ -216,8 +287,12 @@
   }
   root.addEventListener('resize', queuePublish, {passive:true});
   root.addEventListener('inkframe:viewportchange', queuePublish);
+  root.addEventListener('inkframe:layers', markContextChanged);
+  root.addEventListener('inkframe:frames', markContextChanged);
+  root.addEventListener('inkframe:timeline', markContextChanged);
+  root.addEventListener('inkframe:project', markContextChanged);
   document.addEventListener('visibilitychange', queuePublish);
-  document.addEventListener('click', queuePublish, true);
-  document.addEventListener('change', queuePublish, true);
-  document.addEventListener('input', queuePublish, true);
+  document.addEventListener('click', markContextChanged, true);
+  document.addEventListener('change', markContextChanged, true);
+  document.addEventListener('input', markContextChanged, true);
 })(typeof globalThis !== 'undefined' ? globalThis : this);
