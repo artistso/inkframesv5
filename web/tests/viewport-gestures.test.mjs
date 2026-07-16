@@ -1,4 +1,4 @@
-// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, compact UI, and modal isolation
+// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, compact UI, modal isolation, and guidance
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -43,7 +43,7 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   return event;
 }
 
-{
+function installHarness(){
   const dom=new JSDOM('<!doctype html><html><head></head><body><div id="stage"><div id="frameGlass"><canvas id="c"></canvas></div></div></body></html>',{
     runScripts:'outside-only',url:'http://localhost/'
   });
@@ -65,28 +65,54 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   window.eval(source);
   const api=window.InkFrameViewportGestures;
   assert.equal(api.install(),true);
+  return {
+    dom,window,document,api,raf,flashes,
+    get viewport(){return viewport;},
+    get cancelCalls(){return cancelCalls;},
+    get undoCalls(){return undoCalls;},
+    get redoCalls(){return redoCalls;},
+  };
+}
+
+{
+  const harness=installHarness();
+  const {dom,window,document,api,raf,flashes}=harness;
   const canvas=document.getElementById('c');
   let canvasDowns=0;canvas.addEventListener('pointerdown',()=>{canvasDowns++;});
+
+  const hud=document.getElementById('inkframe-viewport-hud');
+  assert.ok(hud,'gesture HUD must install');
+  assert.equal(hud.getAttribute('aria-hidden'),'true','per-frame visual HUD must stay out of the accessibility tree');
+  assert.equal(hud.hasAttribute('aria-live'),false,'per-frame HUD updates must not create screen-reader chatter');
+
+  const guidance=document.getElementById('inkframe-viewport-guidance');
+  assert.ok(guidance,'session-only navigation guidance must install');
+  assert.equal(guidance.hidden,false);
+  assert.equal(guidance.getAttribute('role'),'note');
+  assert.equal(guidance.hasAttribute('aria-live'),false);
+  assert.match(guidance.textContent,/2 fingers: pinch \+ pan/);
+  assert.equal(api.guidanceDismissed,false);
 
   canvas.dispatchEvent(pointer(window,'pointerdown',1,100,200));
   assert.equal(canvasDowns,1,'one-finger touch remains available to drawing');
   canvas.dispatchEvent(pointer(window,'pointerdown',2,200,200));
   assert.equal(canvasDowns,1,'the second touch must be consumed before the drawing listener');
-  assert.equal(cancelCalls,1,'joining a second finger rolls back the provisional touch stroke');
+  assert.equal(harness.cancelCalls,1,'joining a second finger rolls back the provisional touch stroke');
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),true);
-
-  const hud=document.getElementById('inkframe-viewport-hud');
-  assert.ok(hud,'gesture HUD must install');
   assert.equal(hud.classList.contains('show'),true);
   assert.match(hud.textContent,/^Zoom · 100%$/);
+  assert.equal(guidance.hidden,false,'a touch-down alone is not successful navigation');
 
   canvas.dispatchEvent(pointer(window,'pointermove',2,260,200));
   assert.equal(raf.length,1,'pinch writes are coalesced into one animation frame');
   raf.shift()(16);
-  assert.equal(viewport.scale,1.6);
-  assert.equal(viewport.panX,240,'pinch centroid movement pans while preserving the anchored canvas point');
-  assert.equal(viewport.panY,120);
+  assert.equal(harness.viewport.scale,1.6);
+  assert.equal(harness.viewport.panX,240,'pinch centroid movement pans while preserving the anchored canvas point');
+  assert.equal(harness.viewport.panY,120);
   assert.match(hud.textContent,/^Zoom · 160%$/);
+  assert.equal(api.guidanceDismissed,true,'first successful navigation dismisses the session-only hint');
+  assert.equal(guidance.hidden,true);
+  assert.equal(guidance.dataset.dismissed,'true');
 
   canvas.dispatchEvent(pointer(window,'pointerup',2,260,200));
   canvas.dispatchEvent(pointer(window,'pointerup',1,100,200));
@@ -98,6 +124,7 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.ok(dock,'tablet zoom dock must install');
   assert.equal(dock.querySelectorAll('button').length,7);
   assert.equal(dock.querySelector('.inkframe-viewport-percent').textContent,'160%');
+  assert.match(dock.querySelector('.inkframe-viewport-percent').getAttribute('aria-label'),/Canvas zoom 160% of fit/);
   assert.equal(api.dockOccluded,false);
   assert.equal(dock.getAttribute('aria-hidden'),'false');
   assert.equal(dock.hasAttribute('inert'),false);
@@ -124,15 +151,15 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.equal(dockControls.getAttribute('aria-hidden'),'false');
 
   // N toggles compact navigation without affecting artwork or viewport state.
-  const beforeKeyboardCollapse=Object.assign({},viewport);
+  const beforeKeyboardCollapse=Object.assign({},harness.viewport);
   window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'n',bubbles:true,cancelable:true}));
   assert.equal(api.dockCollapsed,true);
-  assert.deepEqual(viewport,beforeKeyboardCollapse);
+  assert.deepEqual(harness.viewport,beforeKeyboardCollapse);
   window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'N',bubbles:true,cancelable:true}));
   assert.equal(api.dockCollapsed,false);
 
   // Modal surfaces suspend the dock and its shortcuts without mutating Hand,
-  // compact, artwork, or viewport state. Closing restores the prior presentation.
+  // compact, artwork, viewport, or dismissed-guidance state.
   const projectPanel=document.createElement('section');projectPanel.id='projectPanel';document.body.appendChild(projectPanel);
   projectPanel.classList.add('show');
   await Promise.resolve();
@@ -142,12 +169,12 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.equal(dock.dataset.occluded,'true');
   assert.equal(dock.getAttribute('aria-hidden'),'true');
   assert.equal(dock.hasAttribute('inert'),true);
-  const beforeModalShortcuts={collapsed:api.dockCollapsed,pan:api.panMode,viewport:Object.assign({},viewport)};
+  const beforeModalShortcuts={collapsed:api.dockCollapsed,pan:api.panMode,viewport:Object.assign({},harness.viewport)};
   window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'h',bubbles:true,cancelable:true}));
   window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'n',bubbles:true,cancelable:true}));
   assert.equal(api.panMode,beforeModalShortcuts.pan);
   assert.equal(api.dockCollapsed,beforeModalShortcuts.collapsed);
-  assert.deepEqual(viewport,beforeModalShortcuts.viewport);
+  assert.deepEqual(harness.viewport,beforeModalShortcuts.viewport);
   projectPanel.classList.remove('show');
   await Promise.resolve();
   assert.equal(api.dockOccluded,false);
@@ -155,6 +182,7 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.equal(dock.getAttribute('aria-hidden'),'false');
   assert.equal(dock.hasAttribute('inert'),false);
   assert.equal(api.dockCollapsed,beforeModalShortcuts.collapsed);
+  assert.equal(guidance.hidden,true,'dismissed guidance never reappears after a modal closes');
 
   // Brush Lab and the generated offline Feedback panel are injected later and
   // use hidden-state visibility rather than the host .show convention.
@@ -180,20 +208,21 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   panButton.click();
   assert.equal(api.panMode,true);
   assert.equal(panButton.getAttribute('aria-pressed'),'true');
+  assert.match(panButton.getAttribute('aria-label'),/Hand tool on/);
   assert.equal(document.body.classList.contains('inkframe-viewport-pan-mode'),true);
-  const beforePan=Object.assign({},viewport);
+  const beforePan=Object.assign({},harness.viewport);
   canvas.dispatchEvent(pointer(window,'pointerdown',10,300,300));
   assert.equal(canvasDowns,1,'hand mode must consume the first touch before drawing');
   assert.equal(hud.classList.contains('show'),true);
   canvas.dispatchEvent(pointer(window,'pointermove',10,340,325));
   assert.equal(raf.length,1,'one-finger pan is frame-coalesced');
   raf.shift()(32);
-  assert.equal(viewport.scale,beforePan.scale);
-  assert.equal(viewport.panX,beforePan.panX+40);
-  assert.equal(viewport.panY,beforePan.panY+25);
+  assert.equal(harness.viewport.scale,beforePan.scale);
+  assert.equal(harness.viewport.panX,beforePan.panX+40);
+  assert.equal(harness.viewport.panY,beforePan.panY+25);
   assert.match(hud.textContent,/^Pan · 160%$/);
   canvas.dispatchEvent(pointer(window,'pointerup',10,340,325));
-  assert.equal(undoCalls,0,'hand-tool release never performs history actions');
+  assert.equal(harness.undoCalls,0,'hand-tool release never performs history actions');
   assert.equal(hud.classList.contains('show'),false);
 
   canvas.dispatchEvent(pointer(window,'pointerdown',11,320,320,'pen'));
@@ -203,20 +232,21 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   panButton.click();
   assert.equal(api.panMode,false);
   assert.equal(panButton.getAttribute('aria-pressed'),'false');
+  assert.match(panButton.getAttribute('aria-label'),/Hand tool off/);
 
   // Natural tap jitter remains inside the dead zone: it performs Undo without
   // also shifting or scaling the viewport.
-  const beforeTap=Object.assign({},viewport);
+  const beforeTap=Object.assign({},harness.viewport);
   canvas.dispatchEvent(pointer(window,'pointerdown',3,120,220));
   canvas.dispatchEvent(pointer(window,'pointerdown',4,220,220));
   canvas.dispatchEvent(pointer(window,'pointermove',4,221,221));
   assert.equal(raf.length,0,'sub-threshold tap jitter must not schedule a viewport write');
   canvas.dispatchEvent(pointer(window,'pointerup',4,221,221));
   canvas.dispatchEvent(pointer(window,'pointerup',3,120,220));
-  assert.equal(undoCalls,1);
-  assert.equal(viewport.scale,beforeTap.scale);
-  assert.equal(viewport.panX,beforeTap.panX);
-  assert.equal(viewport.panY,beforeTap.panY);
+  assert.equal(harness.undoCalls,1);
+  assert.equal(harness.viewport.scale,beforeTap.scale);
+  assert.equal(harness.viewport.panX,beforeTap.panX);
+  assert.equal(harness.viewport.panY,beforeTap.panY);
 
   // Quick three-finger tap keeps the established Redo gesture.
   canvas.dispatchEvent(pointer(window,'pointerdown',5,120,220));
@@ -225,16 +255,16 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   canvas.dispatchEvent(pointer(window,'pointerup',7,170,280));
   canvas.dispatchEvent(pointer(window,'pointerup',6,220,220));
   canvas.dispatchEvent(pointer(window,'pointerup',5,120,220));
-  assert.equal(redoCalls,1);
+  assert.equal(harness.redoCalls,1);
 
   // Android/system cancellation clears ownership but never mutates artwork history.
-  const historyBeforeCancel={undo:undoCalls,redo:redoCalls};
+  const historyBeforeCancel={undo:harness.undoCalls,redo:harness.redoCalls};
   canvas.dispatchEvent(pointer(window,'pointerdown',8,130,230));
   canvas.dispatchEvent(pointer(window,'pointerdown',9,230,230));
   canvas.dispatchEvent(pointer(window,'pointercancel',9,230,230));
   canvas.dispatchEvent(pointer(window,'pointercancel',8,130,230));
-  assert.equal(undoCalls,historyBeforeCancel.undo);
-  assert.equal(redoCalls,historyBeforeCancel.redo);
+  assert.equal(harness.undoCalls,historyBeforeCancel.undo);
+  assert.equal(harness.redoCalls,historyBeforeCancel.redo);
   assert.equal(document.body.classList.contains('inkframe-viewport-gesture'),false);
   assert.equal(hud.classList.contains('show'),false);
 
@@ -243,12 +273,51 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   await Promise.resolve();
   assert.equal(api.dockCollapsed,true);
   assert.equal(dock.classList.contains('collapsed'),true);
+  assert.equal(guidance.hidden,true);
+
+  dom.window.close();
+}
+
+// Before first navigation, modal and Zen states suppress rather than dismiss the
+// session-only guidance. Explicit dismissal is stable for the rest of the runtime.
+{
+  const harness=installHarness();
+  const {dom,document,api}=harness;
+  const guidance=document.getElementById('inkframe-viewport-guidance');
+  const dismiss=guidance.querySelector('.inkframe-viewport-guidance-dismiss');
+  assert.equal(guidance.hidden,false);
+  assert.equal(api.guidanceDismissed,false);
+
+  const help=document.createElement('section');help.id='helpPanel';document.body.appendChild(help);help.classList.add('show');
+  await Promise.resolve();
+  assert.equal(guidance.hidden,true);
+  assert.equal(guidance.dataset.suppressed,'true');
+  assert.equal(api.guidanceDismissed,false);
+  help.classList.remove('show');
+  await Promise.resolve();
+  assert.equal(guidance.hidden,false,'unused guidance returns after the modal closes');
+
+  document.body.classList.add('zen');
+  await Promise.resolve();
+  assert.equal(guidance.hidden,true);
+  assert.equal(api.guidanceDismissed,false);
+  document.body.classList.remove('zen');
+  await Promise.resolve();
+  assert.equal(guidance.hidden,false,'unused guidance returns after leaving Zen mode');
+
+  dismiss.click();
+  assert.equal(api.guidanceDismissed,true);
+  assert.equal(guidance.hidden,true);
+  assert.equal(guidance.dataset.dismissed,'true');
+  assert.equal(api.dismissGuidance(),false,'dismissal is idempotent');
 
   dom.window.close();
 }
 
 assert.match(source,/inkframe-viewport-dock/);
 assert.match(source,/inkframe-viewport-hud/);
+assert.match(source,/inkframe-viewport-guidance/);
+assert.match(source,/prefers-reduced-motion/);
 assert.match(source,/inkframe-viewport-pan-mode/);
 assert.match(source,/inkframe-viewport-collapse/);
 assert.match(source,/inkframe-viewport-dock\.occluded/);
@@ -260,7 +329,9 @@ assert.match(source,/translatedViewport/);
 assert.match(source,/stopImmediatePropagation/);
 assert.match(source,/requestAnimationFrame/);
 assert.match(source,/pointercancel/);
+assert.doesNotMatch(source,/aria-live/,'per-frame viewport UI must not use live regions');
+assert.doesNotMatch(source,/localStorage|sessionStorage/,'navigation guidance remains session-only and project-neutral');
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/touchstart|touchmove/,'Pointer Events remain the single gesture input model');
 
-console.log('✅ anchored pinch, hand pan, compact dock, modal isolation, gesture HUD, ownership, cancellation, Undo/Redo, and zoom UI tests passed');
+console.log('✅ anchored pinch, hand pan, compact dock, modal isolation, accessible HUD, session guidance, ownership, cancellation, Undo/Redo, and zoom UI tests passed');
