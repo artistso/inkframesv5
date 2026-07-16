@@ -15,7 +15,7 @@ data class NativeStroke(
     val eraser: Boolean,
 )
 
-/** Read-only document state used by the artist UI and export path. */
+/** Read-only document state used by the artist UI, persistence, and export paths. */
 data class NativeCanvasSnapshot(
     val strokes: List<NativeStroke>,
     val strokeCount: Int,
@@ -54,15 +54,27 @@ class NativeCanvasDocument(
             retainedSamples -= redo.removeLast().samples.size
         }
 
-        val stroke = NativeStroke(
-            samples = samples.toList(),
-            style = style.copy(sizePx = style.sizePx.coerceAtLeast(0.5f)),
-            eraser = eraser,
-        )
+        val stroke = sanitizeStroke(NativeStroke(samples, style, eraser))
         committed.addLast(stroke)
         retainedSamples += stroke.samples.size
         trimToBounds()
         return true
+    }
+
+    /** Replace the editable document with a validated persisted generation. */
+    fun replaceAll(strokes: List<NativeStroke>) {
+        require(strokes.size <= maximumStrokes) { "persisted document exceeds stroke bound" }
+        require(strokes.sumOf { it.samples.size } <= maximumSamples) {
+            "persisted document exceeds sample bound"
+        }
+        committed.clear()
+        redo.clear()
+        retainedSamples = 0
+        strokes.forEach { source ->
+            val stroke = sanitizeStroke(source)
+            committed.addLast(stroke)
+            retainedSamples += stroke.samples.size
+        }
     }
 
     fun undo(): Boolean {
@@ -91,6 +103,16 @@ class NativeCanvasDocument(
             sampleCount = visible.sumOf { it.samples.size },
             canUndo = committed.isNotEmpty(),
             canRedo = redo.isNotEmpty(),
+        )
+    }
+
+    private fun sanitizeStroke(source: NativeStroke): NativeStroke {
+        require(source.samples.isNotEmpty()) { "stroke must contain at least one sample" }
+        require(source.samples.size <= maximumSamples) { "stroke exceeds sample bound" }
+        return NativeStroke(
+            samples = source.samples.toList(),
+            style = source.style.copy(sizePx = source.style.sizePx.coerceAtLeast(0.5f)),
+            eraser = source.eraser,
         )
     }
 
