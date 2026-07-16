@@ -105,7 +105,8 @@ private class NativeStudioController private constructor(
             Log.w(TAG, "Ignoring invalid studio canvas configuration", error)
             return
         }
-        if (value.optInt("schema", 0) != 1) return
+        val schema = value.optInt("schema", 0)
+        if (schema != 1 && schema != 2) return
 
         val viewportWidth = value.optDouble("viewportWidth", 0.0)
         val viewportHeight = value.optDouble("viewportHeight", 0.0)
@@ -177,7 +178,7 @@ private class NativeStudioController private constructor(
 
     private inner class StudioBridge {
         @JavascriptInterface
-        fun bridgeVersion(): Int = 1
+        fun bridgeVersion(): Int = 2
 
         @JavascriptInterface
         fun configureCanvas(serialized: String) {
