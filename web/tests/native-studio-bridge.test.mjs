@@ -1,6 +1,6 @@
 // InkFrame full-studio native canvas bridge contract
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -15,6 +15,8 @@ const source=readFileSync(resolve(web,'native-studio-bridge.js'),'utf8');
 const injector=readFileSync(resolve(root,'tools/inject-brush-v2-index.mjs'),'utf8');
 const studioSource=readFileSync(resolve(web,'index.html'),'utf8');
 const manifest=readFileSync(resolve(root,'app/src/main/AndroidManifest.xml'),'utf8');
+const radialPath=resolve(web,'radial-timeline.js');
+const radialSource=readFileSync(radialPath,'utf8');
 
 const dom=new JSDOM('<!doctype html><html><body><canvas id="c" width="1000" height="500"></canvas></body></html>',{
   runScripts:'outside-only',
@@ -128,7 +130,8 @@ for(const marker of [
   assert.ok(studioSource.includes(marker),`original studio golden-master selector missing: ${marker}`);
 }
 assert.ok(studioSource.includes('Circular Canvas')||injector.includes('inject-canvas-shape'),'square/circular canvas support must remain');
-assert.ok(injector.includes('radial-timeline'),'the circular timeline must remain in generated Android assets');
+assert.ok(existsSync(radialPath),'the circular timeline runtime must remain checked in');
+assert.ok(radialSource.includes('InkFrameRadialTimeline'),'the established circular timeline API must remain');
 assert.ok(injector.includes('viewport-gestures'),'the established viewport controls must remain in generated Android assets');
 
 assert.ok(manifest.includes('android:name=".InkFrameStudioApplication"'),'production must use the full-studio Kotlin application host');
