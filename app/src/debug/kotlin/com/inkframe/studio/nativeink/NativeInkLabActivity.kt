@@ -190,7 +190,7 @@ class NativeInkLabActivity : ComponentActivity() {
             }
         }
         surfaceHost.addView(
-            installedSurface.rootView,
+            installedSurface.displayView,
             FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
