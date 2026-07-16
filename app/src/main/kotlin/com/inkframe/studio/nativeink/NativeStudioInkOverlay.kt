@@ -2,8 +2,10 @@ package com.inkframe.studio.nativeink
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -38,6 +40,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         val brushSizeDisplayPx: Float,
         val opacity: Float,
         val circularCanvas: Boolean,
+        val artistStatusLabel: String,
     )
 
     private data class Sample(
@@ -57,6 +60,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
     val hasActiveStroke: Boolean
         get() = activePointerId != null || awaitingReplay
 
+    private val density = resources.displayMetrics.density.coerceAtLeast(1f)
     private var configuration = Configuration(
         enabled = false,
         contextToken = "",
@@ -67,11 +71,15 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         brushSizeDisplayPx = 10f,
         opacity = 1f,
         circularCanvas = false,
+        artistStatusLabel = "",
     )
     private val samples = ArrayList<Sample>(512)
     private var activePointerId: Int? = null
     private var activeEraser = false
     private var awaitingReplay = false
+    private var hoverX: Float? = null
+    private var hoverY: Float? = null
+    private var hoverEraser = false
 
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -81,10 +89,35 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
     private val pointPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
+    private val hoverOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        color = Color.BLACK
+    }
+    private val hoverInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val hudBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = 0xD9160715.toInt()
+    }
+    private val hudBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = density
+        color = 0x99FFD0DC.toInt()
+    }
+    private val hudTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+        textSize = 11.5f * density
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    }
     private val circularClip = Path()
+    private val hudRect = RectF()
 
     init {
-        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        setBackgroundColor(Color.TRANSPARENT)
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -99,9 +132,16 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
             canvasHeight = next.canvasHeight.coerceAtLeast(1),
             brushSizeDisplayPx = next.brushSizeDisplayPx.coerceAtLeast(0.75f),
             opacity = next.opacity.coerceIn(0f, 1f),
+            artistStatusLabel = next.artistStatusLabel
+                .replace(Regex("[\\u0000-\\u001f\\u007f]"), "")
+                .trim()
+                .take(MAX_STATUS_LABEL_LENGTH),
         )
         studioEnabled = configuration.enabled
-        if (!studioEnabled && hasActiveStroke) cancelStroke()
+        if (!studioEnabled) {
+            clearHover()
+            if (hasActiveStroke) cancelStroke()
+        }
         postInvalidateOnAnimation()
     }
 
@@ -134,6 +174,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.actionIndex == stylusIndex || activePointerId == null) {
+                    clearHover()
                     beginStroke(event, stylusIndex, pointerId)
                 }
             }
@@ -153,12 +194,33 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         return true
     }
 
-    override fun onHoverEvent(event: MotionEvent): Boolean =
-        studioEnabled && findStylusPointerIndex(event) != null
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (!studioEnabled) {
+            clearHover()
+            return false
+        }
+        val stylusIndex = findStylusPointerIndex(event)
+        if (stylusIndex == null) {
+            clearHover()
+            return false
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER,
+            MotionEvent.ACTION_HOVER_MOVE -> {
+                hoverX = event.getX(stylusIndex).coerceIn(0f, width.coerceAtLeast(1).toFloat())
+                hoverY = event.getY(stylusIndex).coerceIn(0f, height.coerceAtLeast(1).toFloat())
+                hoverEraser = event.getToolType(stylusIndex) == MotionEvent.TOOL_TYPE_ERASER
+                postInvalidateOnAnimation()
+            }
+
+            MotionEvent.ACTION_HOVER_EXIT -> clearHover()
+        }
+        return true
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (samples.isEmpty()) return
+        if (samples.isEmpty() && hoverX == null) return
 
         val restore = canvas.save()
         if (configuration.circularCanvas) {
@@ -172,6 +234,22 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
             canvas.clipPath(circularClip)
         }
 
+        drawStroke(canvas)
+        if (samples.isEmpty() && activePointerId == null && !awaitingReplay) {
+            drawHoverCursor(canvas)
+        }
+        canvas.restoreToCount(restore)
+    }
+
+    override fun onDetachedFromWindow() {
+        clearHover()
+        cancelStroke()
+        onStrokeComplete = null
+        super.onDetachedFromWindow()
+    }
+
+    private fun drawStroke(canvas: Canvas) {
+        if (samples.isEmpty()) return
         val color = if (activeEraser) configuration.paperColor else configuration.brushColor
         val alpha = (configuration.opacity * 255f).toInt().coerceIn(0, 255)
         strokePaint.color = color
@@ -192,13 +270,58 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
                 previous = current
             }
         }
-        canvas.restoreToCount(restore)
     }
 
-    override fun onDetachedFromWindow() {
-        cancelStroke()
-        onStrokeComplete = null
-        super.onDetachedFromWindow()
+    private fun drawHoverCursor(canvas: Canvas) {
+        val x = hoverX ?: return
+        val y = hoverY ?: return
+        val diameter = max(8f * density, configuration.brushSizeDisplayPx)
+        val radius = diameter / 2f
+        hoverOuterPaint.strokeWidth = max(2.5f * density, diameter * 0.08f)
+        hoverOuterPaint.alpha = 185
+        hoverInnerPaint.strokeWidth = max(1.25f * density, diameter * 0.045f)
+        hoverInnerPaint.color = if (hoverEraser) configuration.paperColor else configuration.brushColor
+        hoverInnerPaint.alpha = 245
+        canvas.drawCircle(x, y, radius, hoverOuterPaint)
+        canvas.drawCircle(x, y, radius, hoverInnerPaint)
+
+        val arm = minOf(10f * density, max(4f * density, radius * 0.55f))
+        canvas.drawLine(x - arm, y, x + arm, y, hoverOuterPaint)
+        canvas.drawLine(x, y - arm, x, y + arm, hoverOuterPaint)
+        canvas.drawLine(x - arm, y, x + arm, y, hoverInnerPaint)
+        canvas.drawLine(x, y - arm, x, y + arm, hoverInnerPaint)
+        drawArtistStatus(canvas)
+    }
+
+    private fun drawArtistStatus(canvas: Canvas) {
+        val label = configuration.artistStatusLabel
+        if (label.isBlank()) return
+        val paddingX = 10f * density
+        val paddingY = 7f * density
+        val left = 10f * density
+        val top = 10f * density
+        val metrics = hudTextPaint.fontMetrics
+        val textHeight = metrics.descent - metrics.ascent
+        val desiredWidth = hudTextPaint.measureText(label) + paddingX * 2f
+        val right = minOf(width.toFloat() - left, left + desiredWidth)
+        if (right <= left + paddingX * 2f) return
+        val bottom = top + textHeight + paddingY * 2f
+        hudRect.set(left, top, right, bottom)
+        val radius = 12f * density
+        canvas.drawRoundRect(hudRect, radius, radius, hudBackgroundPaint)
+        canvas.drawRoundRect(hudRect, radius, radius, hudBorderPaint)
+        canvas.save()
+        canvas.clipRect(hudRect)
+        canvas.drawText(label, left + paddingX, top + paddingY - metrics.ascent, hudTextPaint)
+        canvas.restore()
+    }
+
+    private fun clearHover() {
+        if (hoverX == null && hoverY == null) return
+        hoverX = null
+        hoverY = null
+        hoverEraser = false
+        postInvalidateOnAnimation()
     }
 
     private fun beginStroke(event: MotionEvent, pointerIndex: Int, pointerId: Int) {
@@ -338,6 +461,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
     private companion object {
         const val DEFAULT_PAPER_COLOR = 0xFFFFF0F3.toInt()
         const val DEFAULT_INK_COLOR = 0xFF100A12.toInt()
+        const val MAX_STATUS_LABEL_LENGTH = 96
     }
 }
 
