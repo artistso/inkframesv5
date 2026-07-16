@@ -1,5 +1,6 @@
 package com.inkframe.studio
 
+import com.inkframe.core.model.StudioArtistCanvasStatus
 import com.inkframe.core.model.StudioContextSnapshot
 import com.inkframe.core.model.StudioLayerReconciliationSnapshot
 import com.inkframe.core.model.StudioPlaybackSnapshot
@@ -33,6 +34,12 @@ internal class StudioProjectReconciliationController {
     fun snapshot(): StudioProjectReconciliationSnapshot? = mirror.snapshot()
 
     fun timelineSnapshot(): StudioTimelineExposureSnapshot? = timelineMirror.snapshot()
+
+    fun artistCanvasStatus(): StudioArtistCanvasStatus? {
+        val project = mirror.snapshot() ?: return null
+        val timeline = timelineMirror.snapshot() ?: return null
+        return StudioArtistCanvasStatus.from(project, timeline)
+    }
 
     @Synchronized
     fun clear() {
