@@ -8,12 +8,13 @@ import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.min
 
 /**
  * Production native artist canvas using Android's hardware-accelerated View/HWUI pipeline.
  *
- * This is the physically accepted renderer path from the native laboratory. The high-frequency
- * sample stream remains entirely Kotlin/Android and requests unbuffered stylus dispatch.
+ * Ink is stored in fixed project-pixel coordinates. The View applies a fit transform for display
+ * and maps S Pen input back into project space, keeping persisted geometry device-independent.
  */
 class NativeArtistCanvasView @JvmOverloads constructor(
     context: Context,
@@ -30,6 +31,14 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         val brushSizePx: Float,
         val inkColor: Int,
         val paperColor: Int,
+        val projectWidth: Int,
+        val projectHeight: Int,
+    )
+
+    private data class ProjectTransform(
+        val scale: Float,
+        val offsetX: Float,
+        val offsetY: Float,
     )
 
     private val document = NativeCanvasDocument()
@@ -39,6 +48,8 @@ class NativeArtistCanvasView @JvmOverloads constructor(
     private var activeStyle = NativeBrushStyle(DEFAULT_INK_COLOR, dp(DEFAULT_BRUSH_DP))
     private var activeEraser = false
     private var hoverSample: InkSample? = null
+    private var projectWidth = DEFAULT_PROJECT_WIDTH
+    private var projectHeight = DEFAULT_PROJECT_HEIGHT
 
     private val hoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -47,6 +58,7 @@ class NativeArtistCanvasView @JvmOverloads constructor(
     }
 
     var stateListener: ((State) -> Unit)? = null
+    var documentMutationListener: (() -> Unit)? = null
 
     var inkColor: Int = DEFAULT_INK_COLOR
         private set
@@ -56,7 +68,7 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         private set
 
     init {
-        setBackgroundColor(paperColor)
+        setBackgroundColor(OUTSIDE_COLOR)
         isFocusable = true
         isFocusableInTouchMode = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
@@ -64,28 +76,89 @@ class NativeArtistCanvasView @JvmOverloads constructor(
     }
 
     fun setInkColor(color: Int) {
+        if (inkColor == color) return
         inkColor = color
         dispatchState()
+        notifyMutation()
     }
 
     fun setPaperColor(color: Int) {
         if (paperColor == color) return
         cancelActiveInput()
         paperColor = color
-        setBackgroundColor(color)
+        postInvalidateOnAnimation()
+        dispatchState()
+        notifyMutation()
+    }
+
+    fun setBrushSizePx(sizePx: Float) {
+        val bounded = sizePx.coerceIn(0.5f, NativeProject.MAX_BRUSH_SIZE_PX)
+        if (brushSizePx == bounded) return
+        brushSizePx = bounded
+        dispatchState()
+        notifyMutation()
+    }
+
+    fun loadProject(project: NativeProject) {
+        cancelActiveInput()
+        projectWidth = project.width
+        projectHeight = project.height
+        paperColor = project.paperColor
+        inkColor = project.inkColor
+        brushSizePx = project.brushSizePx
+        document.replaceAll(project.strokes)
+        hoverSample = null
         postInvalidateOnAnimation()
         dispatchState()
     }
 
-    fun setBrushSizePx(sizePx: Float) {
-        brushSizePx = sizePx.coerceIn(dp(1f), dp(96f))
+    fun startBlankProject(
+        width: Int,
+        height: Int,
+        paperColor: Int = DEFAULT_PAPER_COLOR,
+        inkColor: Int = DEFAULT_INK_COLOR,
+        brushSizePx: Float = dp(DEFAULT_BRUSH_DP),
+    ) {
+        require(width in NativeProject.MIN_DIMENSION..NativeProject.MAX_DIMENSION)
+        require(height in NativeProject.MIN_DIMENSION..NativeProject.MAX_DIMENSION)
+        cancelActiveInput()
+        projectWidth = width
+        projectHeight = height
+        this.paperColor = paperColor
+        this.inkColor = inkColor
+        this.brushSizePx = brushSizePx.coerceIn(0.5f, NativeProject.MAX_BRUSH_SIZE_PX)
+        document.clear()
+        hoverSample = null
+        postInvalidateOnAnimation()
         dispatchState()
+    }
+
+    fun createProjectSnapshot(
+        id: String,
+        name: String,
+        updatedAtMillis: Long,
+    ): NativeProject {
+        val snapshot = document.snapshot()
+        return NativeProject(
+            id = id,
+            name = name,
+            width = projectWidth,
+            height = projectHeight,
+            paperColor = paperColor,
+            inkColor = inkColor,
+            brushSizePx = brushSizePx,
+            updatedAtMillis = updatedAtMillis,
+            strokes = snapshot.strokes,
+        )
     }
 
     fun undo(): Boolean {
         cancelActiveInput()
         val changed = document.undo()
-        if (changed) postInvalidateOnAnimation()
+        if (changed) {
+            postInvalidateOnAnimation()
+            notifyMutation()
+        }
         dispatchState()
         return changed
     }
@@ -93,17 +166,22 @@ class NativeArtistCanvasView @JvmOverloads constructor(
     fun redo(): Boolean {
         cancelActiveInput()
         val changed = document.redo()
-        if (changed) postInvalidateOnAnimation()
+        if (changed) {
+            postInvalidateOnAnimation()
+            notifyMutation()
+        }
         dispatchState()
         return changed
     }
 
     fun clearCanvas() {
         cancelActiveInput()
+        if (document.snapshot().strokeCount == 0) return
         document.clear()
         hoverSample = null
         postInvalidateOnAnimation()
         dispatchState()
+        notifyMutation()
     }
 
     fun cancelActiveInput() {
@@ -117,17 +195,14 @@ class NativeArtistCanvasView @JvmOverloads constructor(
 
     fun snapshotState(): State = buildState()
 
-    fun renderBitmap(): Bitmap {
-        val bitmapWidth = width.coerceAtLeast(1)
-        val bitmapHeight = height.coerceAtLeast(1)
-        return Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
+    fun renderBitmap(): Bitmap =
+        Bitmap.createBitmap(projectWidth, projectHeight, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
             canvas.drawColor(paperColor)
             document.snapshot().strokes.forEach { stroke ->
                 painter.drawStroke(canvas, stroke, paperColor)
             }
         }
-    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -145,7 +220,9 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (event.actionIndex == stylusIndex || activePointerId == null) {
+                if ((event.actionIndex == stylusIndex || activePointerId == null) &&
+                    isInsideProject(event.getX(stylusIndex), event.getY(stylusIndex))
+                ) {
                     beginStroke(event, stylusIndex, pointerId)
                 }
             }
@@ -175,7 +252,11 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER,
             MotionEvent.ACTION_HOVER_MOVE -> {
-                hoverSample = sampleAt(event, stylusIndex, null, InkPhase.HOVER)
+                hoverSample = if (isInsideProject(event.getX(stylusIndex), event.getY(stylusIndex))) {
+                    sampleAt(event, stylusIndex, null, InkPhase.HOVER, clampToProject = false)
+                } else {
+                    null
+                }
                 postInvalidateOnAnimation()
             }
 
@@ -194,6 +275,12 @@ class NativeArtistCanvasView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        canvas.drawColor(OUTSIDE_COLOR)
+        val transform = projectTransform()
+        val checkpoint = canvas.save()
+        canvas.translate(transform.offsetX, transform.offsetY)
+        canvas.scale(transform.scale, transform.scale)
+        canvas.clipRect(0f, 0f, projectWidth.toFloat(), projectHeight.toFloat())
         canvas.drawColor(paperColor)
         document.snapshot().strokes.forEach { stroke ->
             painter.drawStroke(canvas, stroke, paperColor)
@@ -205,12 +292,14 @@ class NativeArtistCanvasView @JvmOverloads constructor(
                 paperColor,
             )
         }
-        hoverSample?.let { drawHover(canvas, it) }
+        canvas.restoreToCount(checkpoint)
+        hoverSample?.let { drawHover(canvas, it, transform) }
     }
 
     override fun onDetachedFromWindow() {
         cancelActiveInput()
         stateListener = null
+        documentMutationListener = null
         super.onDetachedFromWindow()
     }
 
@@ -243,12 +332,13 @@ class NativeArtistCanvasView @JvmOverloads constructor(
 
     private fun finishStroke() {
         if (activePointerId == null) return
-        document.commit(activeSamples, activeStyle, activeEraser)
+        val changed = document.commit(activeSamples, activeStyle, activeEraser)
         activeSamples.clear()
         activePointerId = null
         parent?.requestDisallowInterceptTouchEvent(false)
         postInvalidateOnAnimation()
         dispatchState()
+        if (changed) notifyMutation()
     }
 
     private fun sampleAt(
@@ -256,18 +346,20 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         pointerIndex: Int,
         historyIndex: Int?,
         phase: InkPhase,
+        clampToProject: Boolean = true,
     ): InkSample {
         val historical = historyIndex != null
-        val x = if (historical) {
+        val viewX = if (historical) {
             event.getHistoricalX(pointerIndex, historyIndex!!)
         } else {
             event.getX(pointerIndex)
         }
-        val y = if (historical) {
+        val viewY = if (historical) {
             event.getHistoricalY(pointerIndex, historyIndex!!)
         } else {
             event.getY(pointerIndex)
         }
+        val projectPoint = viewToProject(viewX, viewY, clampToProject)
         val pressure = if (historical) {
             event.getHistoricalPressure(pointerIndex, historyIndex!!)
         } else {
@@ -275,8 +367,8 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         }
         val eventTime = if (historical) event.getHistoricalEventTime(historyIndex!!) else event.eventTime
         return InkSample(
-            x = x,
-            y = y,
+            x = projectPoint.first,
+            y = projectPoint.second,
             pressure = pressure.coerceIn(0f, 1f),
             tiltRadians = axisValue(event, MotionEvent.AXIS_TILT, pointerIndex, historyIndex),
             orientationRadians = axisValue(event, MotionEvent.AXIS_ORIENTATION, pointerIndex, historyIndex),
@@ -319,11 +411,50 @@ class NativeArtistCanvasView @JvmOverloads constructor(
         else -> InkTool.UNKNOWN
     }
 
-    private fun drawHover(canvas: Canvas, sample: InkSample) {
+    private fun projectTransform(): ProjectTransform {
+        val availableWidth = width.coerceAtLeast(1).toFloat()
+        val availableHeight = height.coerceAtLeast(1).toFloat()
+        val scale = min(
+            availableWidth / projectWidth.toFloat(),
+            availableHeight / projectHeight.toFloat(),
+        ).coerceAtLeast(0.0001f)
+        return ProjectTransform(
+            scale = scale,
+            offsetX = (availableWidth - projectWidth * scale) / 2f,
+            offsetY = (availableHeight - projectHeight * scale) / 2f,
+        )
+    }
+
+    private fun isInsideProject(viewX: Float, viewY: Float): Boolean {
+        val transform = projectTransform()
+        val right = transform.offsetX + projectWidth * transform.scale
+        val bottom = transform.offsetY + projectHeight * transform.scale
+        return viewX >= transform.offsetX && viewX <= right &&
+            viewY >= transform.offsetY && viewY <= bottom
+    }
+
+    private fun viewToProject(viewX: Float, viewY: Float, clamp: Boolean): Pair<Float, Float> {
+        val transform = projectTransform()
+        val x = (viewX - transform.offsetX) / transform.scale
+        val y = (viewY - transform.offsetY) / transform.scale
+        return if (clamp) {
+            x.coerceIn(0f, projectWidth.toFloat()) to y.coerceIn(0f, projectHeight.toFloat())
+        } else {
+            x to y
+        }
+    }
+
+    private fun drawHover(canvas: Canvas, sample: InkSample, transform: ProjectTransform) {
+        val x = transform.offsetX + sample.x * transform.scale
+        val y = transform.offsetY + sample.y * transform.scale
         val radius = dp(8f) + sample.distance.coerceAtLeast(0f) * dp(2f)
-        canvas.drawCircle(sample.x, sample.y, radius, hoverPaint)
-        canvas.drawLine(sample.x - radius, sample.y, sample.x + radius, sample.y, hoverPaint)
-        canvas.drawLine(sample.x, sample.y - radius, sample.x, sample.y + radius, hoverPaint)
+        canvas.drawCircle(x, y, radius, hoverPaint)
+        canvas.drawLine(x - radius, y, x + radius, y, hoverPaint)
+        canvas.drawLine(x, y - radius, x, y + radius, hoverPaint)
+    }
+
+    private fun notifyMutation() {
+        documentMutationListener?.invoke()
     }
 
     private fun dispatchState() {
@@ -341,6 +472,8 @@ class NativeArtistCanvasView @JvmOverloads constructor(
             brushSizePx = brushSizePx,
             inkColor = inkColor,
             paperColor = paperColor,
+            projectWidth = projectWidth,
+            projectHeight = projectHeight,
         )
     }
 
@@ -349,8 +482,11 @@ class NativeArtistCanvasView @JvmOverloads constructor(
     private companion object {
         const val RENDERER_LABEL = "NATIVE VIEW · HWUI"
         const val DEFAULT_BRUSH_DP = 10f
+        const val DEFAULT_PROJECT_WIDTH = 2560
+        const val DEFAULT_PROJECT_HEIGHT = 1600
         const val DEFAULT_PAPER_COLOR = 0xFF100A12.toInt()
         const val DEFAULT_INK_COLOR = 0xFFFFE9F0.toInt()
         const val HOVER_COLOR = 0xFF71E6FF.toInt()
+        const val OUTSIDE_COLOR = 0xFF09070B.toInt()
     }
 }
