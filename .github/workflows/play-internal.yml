@@ -1,0 +1,157 @@
+name: Google Play Internal Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: Exact version from web/metadata.json
+        required: true
+        type: string
+      expected_version_code:
+        description: Exact versionCode from web/metadata.json
+        required: true
+        type: string
+      confirm_internal_upload:
+        description: Type UPLOAD TO INTERNAL to authorize the Play API call
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inkframe-play-internal
+  cancel-in-progress: false
+
+jobs:
+  publish-internal:
+    name: Test, sign, verify, and upload Internal draft
+    runs-on: ubuntu-latest
+    environment: google-play-internal
+    env:
+      INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
+      INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
+      INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
+      PLAY_TRACK: internal
+      PLAY_RELEASE_STATUS: draft
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install isolated JSDOM
+        run: npm install --no-save --prefix /tmp/jsdom jsdom
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Confirm committed release identity
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          EXPECTED_VERSION_CODE: ${{ inputs.expected_version_code }}
+          CONFIRM_INTERNAL_UPLOAD: ${{ inputs.confirm_internal_upload }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./web/metadata.json').version")"
+          VERSION_CODE="$(node -p "require('./web/metadata.json').versionCode")"
+          test "$EXPECTED_VERSION" = "$VERSION"
+          test "$EXPECTED_VERSION_CODE" = "$VERSION_CODE"
+          test "$CONFIRM_INTERNAL_UPLOAD" = "UPLOAD TO INTERNAL"
+          echo "INKFRAME_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+
+      - name: Prepare signing and Play credentials
+        shell: bash
+        env:
+          INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
+          PLAY_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$INKFRAME_KEYSTORE_BASE64"
+          test -n "$INKFRAME_KEYSTORE_PASSWORD"
+          test -n "$INKFRAME_KEY_ALIAS"
+          test -n "$INKFRAME_KEY_PASSWORD"
+          test -n "$PLAY_SERVICE_ACCOUNT_JSON_BASE64"
+          KEYSTORE_PATH="$RUNNER_TEMP/inkframe-upload.jks"
+          SERVICE_ACCOUNT_PATH="$RUNNER_TEMP/play-service-account.json"
+          printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON_BASE64" | base64 --decode > "$SERVICE_ACCOUNT_PATH"
+          test -s "$KEYSTORE_PATH"
+          test -s "$SERVICE_ACCOUNT_PATH"
+          chmod 600 "$KEYSTORE_PATH" "$SERVICE_ACCOUNT_PATH"
+          echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "PLAY_SERVICE_ACCOUNT_JSON_FILE=$SERVICE_ACCOUNT_PATH" >> "$GITHUB_ENV"
+
+      - name: Validate release metadata and regressions
+        env:
+          NODE_PATH: /tmp/jsdom/node_modules
+          JSDOM_PATH: /tmp/jsdom/node_modules/jsdom
+        run: |
+          chmod +x ./gradlew
+          node tools/update-release-notes.mjs --check
+          node tools/validate-play-release.mjs
+          node web/tests/version-smoke.mjs
+          node web/tests/brush-engine-v2-lab-layout.test.mjs
+          ./gradlew test :app:lintRelease --stacktrace --console=plain
+
+      - name: Build signed APK and AAB
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace --console=plain
+
+      - name: Verify signed artifacts and release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          jarsigner -verify -certs "$AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
+          BADGING="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$APK")"
+          grep -F "package: name='com.inkframe.studio'" <<< "$BADGING"
+          grep -F "versionCode='${INKFRAME_VERSION_CODE}'" <<< "$BADGING"
+          grep -F "versionName='${INKFRAME_VERSION}'" <<< "$BADGING"
+          grep -F "targetSdkVersion:'36'" <<< "$BADGING"
+
+      - name: Upload AAB to Google Play Internal as draft
+        run: ./gradlew :app:publishReleaseBundle --track internal --release-status draft --stacktrace --console=plain
+
+      - name: Retain signed Internal release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-${{ env.INKFRAME_VERSION }}-${{ env.INKFRAME_VERSION_CODE }}-play-internal
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/reports/lint-results-release.html
+            app/build/reports/lint-results-release.sarif
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Write Internal release summary
+        run: |
+          {
+            echo "## InkFrame ${INKFRAME_VERSION} Internal testing upload"
+            echo
+            echo "- Package: \`com.inkframe.studio\`"
+            echo "- Version code: \`${INKFRAME_VERSION_CODE}\`"
+            echo "- Target SDK: \`36\`"
+            echo "- Track: \`internal\`"
+            echo "- Release status: \`draft\`"
+            echo "- Production rollout: not performed"
+          } >> "$GITHUB_STEP_SUMMARY"

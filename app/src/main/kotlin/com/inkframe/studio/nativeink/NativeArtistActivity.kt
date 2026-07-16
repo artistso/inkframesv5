@@ -39,7 +39,7 @@ import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
-/** Artist-facing production entry point for InkFrame's Kotlin native canvas beta. */
+/** Non-exported engineering harness for InkFrame's Kotlin native canvas. */
 class NativeArtistActivity : ComponentActivity() {
     private lateinit var canvasView: NativeArtistCanvasView
     private lateinit var undoButton: Button
@@ -68,7 +68,6 @@ class NativeArtistActivity : ComponentActivity() {
     private var currentProjectName = freshProjectName()
     private var saveGeneration = 0L
     private var saveStatus = "Loading native project…"
-    private var latestState: NativeArtistCanvasView.State? = null
 
     private val storagePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -118,7 +117,7 @@ class NativeArtistActivity : ComponentActivity() {
         sizeControl = SeekBar(this).apply {
             max = 63
             progress = 9
-            minWidth = dp(220)
+            minimumWidth = dp(220)
             contentDescription = "Native brush size"
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -142,13 +141,13 @@ class NativeArtistActivity : ComponentActivity() {
         )
 
         val title = TextView(this).apply {
-            text = "INKFRAME · NATIVE CANVAS BETA"
+            text = "INKFRAME · NATIVE CANVAS HARNESS"
             textSize = 15f
             setTextColor(Color.WHITE)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         val explanation = TextView(this).apply {
-            text = "Native Kotlin/HWUI · editable project autosave · reverse stylus erases · fingers are ignored as palm contact"
+            text = "Internal Kotlin/HWUI canvas validation · reverse stylus erases · fingers are palm contact"
             textSize = 10f
             setTextColor(0xFFD8BCC9.toInt())
         }
@@ -160,35 +159,53 @@ class NativeArtistActivity : ComponentActivity() {
             setBackgroundColor(0xE81D101B.toInt())
             elevation = dp(8).toFloat()
             addView(title)
-            addView(explanation, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(2) })
-            addView(statusText, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(5) })
-            addView(scrollRow(primaryControls), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(6) })
-            addView(scrollRow(paletteControls), LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48),
-            ).apply { topMargin = dp(2) })
+            addView(
+                explanation,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(2) },
+            )
+            addView(
+                statusText,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(5) },
+            )
+            addView(
+                scrollRow(primaryControls),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(48),
+                ).apply { topMargin = dp(6) },
+            )
+            addView(
+                scrollRow(paletteControls),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(48),
+                ).apply { topMargin = dp(2) },
+            )
         }
 
         val root = FrameLayout(this).apply {
             setBackgroundColor(0xFF09070B.toInt())
-            addView(canvasView, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ))
-            addView(panel, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP,
-            ))
+            addView(
+                canvasView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            addView(
+                panel,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP,
+                ),
+            )
         }
 
         setContentView(root)
@@ -286,7 +303,10 @@ class NativeArtistActivity : ComponentActivity() {
     private fun confirmNewProject() {
         AlertDialog.Builder(this)
             .setTitle("Start a new native project?")
-            .setMessage("The current project will be saved first. The new canvas will replace the active native autosave, while WebView projects remain untouched.")
+            .setMessage(
+                "The current project will be saved first. The new canvas replaces only the " +
+                    "internal native autosave; normal InkFrame projects remain untouched.",
+            )
             .setNegativeButton("Cancel", null)
             .setPositiveButton("New project") { _, _ ->
                 saveCurrentProject(explicit = false)
@@ -335,7 +355,6 @@ class NativeArtistActivity : ComponentActivity() {
     }
 
     private fun renderState(state: NativeArtistCanvasView.State) {
-        latestState = state
         undoButton.isEnabled = state.canUndo
         redoButton.isEnabled = state.canRedo
         val sizeDp = state.brushSizePx / resources.displayMetrics.density
@@ -359,7 +378,9 @@ class NativeArtistActivity : ComponentActivity() {
     private fun cyclePaper() {
         paperIndex = (paperIndex + 1) % paperColors.size
         canvasView.setPaperColor(paperColors[paperIndex])
-        paperButton.backgroundTintList = ColorStateList.valueOf(contrastButtonColor(paperColors[paperIndex]))
+        paperButton.backgroundTintList = ColorStateList.valueOf(
+            contrastButtonColor(paperColors[paperIndex]),
+        )
     }
 
     private fun requestExport() {
@@ -439,7 +460,8 @@ class NativeArtistActivity : ComponentActivity() {
     }
 
     private fun contrastButtonColor(color: Int): Int {
-        val luminance = 0.2126 * Color.red(color) + 0.7152 * Color.green(color) + 0.0722 * Color.blue(color)
+        val luminance =
+            0.2126 * Color.red(color) + 0.7152 * Color.green(color) + 0.0722 * Color.blue(color)
         return if (luminance > 170.0) 0xFF6A1646.toInt() else color
     }
 
@@ -452,10 +474,13 @@ class NativeArtistActivity : ComponentActivity() {
     private fun scrollRow(row: View): HorizontalScrollView = HorizontalScrollView(this).apply {
         isHorizontalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
-        addView(row, ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        ))
+        addView(
+            row,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
     }
 
     private fun controlButton(label: String, action: () -> Unit): Button = Button(this).apply {
@@ -464,8 +489,8 @@ class NativeArtistActivity : ComponentActivity() {
         isAllCaps = false
         setTextColor(Color.WHITE)
         backgroundTintList = ColorStateList.valueOf(0xFF6A1646.toInt())
-        minHeight = dp(40)
-        minWidth = dp(82)
+        minimumHeight = dp(40)
+        minimumWidth = dp(82)
         setPadding(dp(10), 0, dp(10), 0)
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(

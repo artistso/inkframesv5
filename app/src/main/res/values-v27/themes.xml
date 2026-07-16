@@ -1,16 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Bare, no-actionbar theme. The WebView renders the artist UI; these values
-         control only the preload and system-bar surfaces. API-27-only navigation
-         contrast flags live in values-v27/themes.xml. -->
     <style name="Theme.InkFrame" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:statusBarColor">@color/window_background</item>
         <item name="android:navigationBarColor">@color/window_background</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
-    <!-- Pre-Android 12 launch theme for the full-bleed Glass Horizon handoff. -->
     <style name="Theme.InkFrame.Splash" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:windowActionModeOverlay">true</item>
@@ -19,5 +16,6 @@
         <item name="android:statusBarColor">@color/window_background</item>
         <item name="android:navigationBarColor">@color/window_background</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

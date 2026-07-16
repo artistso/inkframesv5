@@ -27,24 +27,18 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import java.io.OutputStream
 
 /**
- * InkFrame Studio — Android wrapper.
+ * InkFrame Studio — Android host for the complete Glass Horizon artist workspace.
  *
- * The full experience is the single-file web app at `web/index.html`.
- * This Activity hosts a WebView that loads that file from the APK's assets
- * so the app looks and behaves identically on device and in a browser.
- *
- * Extras beyond a plain WebView:
- *   • Intercepts exports and saves them to shared MediaStore collections.
- *     Images land in Pictures/InkFrame; videos land in Movies/InkFrame.
- *   • Provides a tiny JavaScript bridge so Blob-based GIF/video exports work
- *     inside Android WebView, where DownloadManager cannot fetch blob: URLs.
- *   • Locks landscape orientation, hides system bars for a true canvas feel.
+ * The restored studio UI remains inside the bundled offline WebView while Kotlin owns Android
+ * lifecycle, native S Pen rendering, context validation, exports, and production integration.
  */
 class MainActivity : ComponentActivity() {
 
@@ -75,10 +69,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Draw behind the status/nav bars for an immersive canvas.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
         WebView.setWebContentsDebuggingEnabled(isDebuggableBuild())
 
         webView = WebView(this).apply {
@@ -86,7 +78,7 @@ class MainActivity : ComponentActivity() {
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
             )
-            setBackgroundColor(0xFF1A001A.toInt()) // match --violet from index.html
+            setBackgroundColor(0xFF1A001A.toInt())
 
             with(settings) {
                 javaScriptEnabled = true
@@ -102,16 +94,10 @@ class MainActivity : ComponentActivity() {
                 displayZoomControls = false
                 cacheMode = WebSettings.LOAD_DEFAULT
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    // Kill flicker on pause/resume and keep external browsing safer.
-                    offscreenPreRaster = true
-                    safeBrowsingEnabled = true
-                }
+                offscreenPreRaster = true
+                safeBrowsingEnabled = true
             }
 
-            // Keep bundled file/data/blob navigation inside the WebView, but hand any
-            // real web link to Android. This prevents a tester from getting stranded
-            // away from the offline studio after tapping About/credit links.
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
@@ -123,7 +109,7 @@ class MainActivity : ComponentActivity() {
 
                 @Deprecated("Deprecated in Android API 24; kept for older WebView callbacks.")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                    return url?.let { openExternalUriIfNeeded(Uri.parse(it)) } ?: false
+                    return url?.let { openExternalUriIfNeeded(it.toUri()) } ?: false
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -134,21 +120,27 @@ class MainActivity : ComponentActivity() {
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
-
-            // Blob URLs are renderer-local and cannot be fetched by Android's
-            // DownloadManager. The web app calls this bridge for Blob exports;
-            // the DownloadListener below also uses it as a fallback.
             addJavascriptInterface(ExportBridge(), "InkFrameAndroidBridge")
             setDownloadListener(exportDownloadListener)
         }
 
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (webView.canGoBack()) {
+                        webView.goBack()
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                }
+            },
+        )
+
         setContentView(webView)
         hideSystemBars()
-
         CookieManager.getInstance().setAcceptCookie(true)
-
-        // The Gradle build mounts the repo's /web directory as the APK assets root,
-        // so index.html sits directly under android_asset/.
         webView.loadUrl("file:///android_asset/index.html")
     }
 
@@ -175,14 +167,13 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, uri))
             true
         } catch (t: Throwable) {
-            Log.w(TAG, "No external handler for ${uri}", t)
+            Log.w(TAG, "No external handler for $uri", t)
             toast("Couldn't open link.")
             true
         }
     }
 
     private fun injectTesterReportTool() {
-        // Keep this debug-only so release builds do not expose tester UI.
         if (!isDebuggableBuild()) return
         val androidLabel = "${Build.MANUFACTURER} ${Build.MODEL} / Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})"
         val js = """
@@ -294,18 +285,7 @@ class MainActivity : ComponentActivity() {
         controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
     }
 
-    override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
-    }
-
-    // ---- Web export bridge -------------------------------------------------
-
     private inner class ExportBridge {
-        /**
-         * Called by web/index.html when it has a Blob export (GIF / MP4 / WebM).
-         * Android WebView can't hand blob: URLs to DownloadManager, so the page
-         * converts the Blob to base64 and passes the bytes through this bridge.
-         */
         @JavascriptInterface
         fun saveBase64(base64: String, suggestedName: String?, mimeType: String?) {
             runOnUiThread {
@@ -331,7 +311,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        /** Fallback for injected blob-url handling and future data-url exports. */
         @JavascriptInterface
         fun saveDataUrl(dataUrl: String, suggestedName: String?, mimeType: String?) {
             runOnUiThread {
@@ -340,7 +319,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        /** Copies a compact tester report generated by the WebView UI. */
         @JavascriptInterface
         fun copyTesterReport(report: String) {
             runOnUiThread {
@@ -351,24 +329,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ---- Export / download plumbing --------------------------------------
-
     private val exportDownloadListener = DownloadListener { url, _, contentDisposition, mimetype, _ ->
         val suggested = guessFileName(url, contentDisposition, mimetype)
         val resolvedMime = resolveMimeType(suggested, mimetype)
         when {
-            url.startsWith("data:") -> {
-                // Classic <a download href="data:…"> path (PNG export). Decode + write.
-                saveDataUrl(url, suggested, resolvedMime)
-            }
-            url.startsWith("blob:") -> {
-                // Fallback for Blob exports if the page did not use the bridge directly.
-                saveBlobUrlFromPage(url, suggested, resolvedMime)
-            }
+            url.startsWith("data:") -> saveDataUrl(url, suggested, resolvedMime)
+            url.startsWith("blob:") -> saveBlobUrlFromPage(url, suggested, resolvedMime)
             else -> {
-                // Any real remote URL — hand off to the system downloader.
                 try {
-                    val req = DownloadManager.Request(Uri.parse(url))
+                    val req = DownloadManager.Request(url.toUri())
                         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                         .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, suggested)
                         .setMimeType(resolvedMime)
@@ -383,7 +352,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun guessFileName(url: String, contentDisposition: String?, mimetype: String?): String {
-        // Prefer whatever the <a download="…"> attribute suggested.
         contentDisposition?.let { cd ->
             Regex("filename\\*?=([^;]+)").find(cd)?.groupValues?.getOrNull(1)?.let {
                 return safeFileName(it.trim().trim('"').substringAfter("''"), mimetype)
@@ -400,8 +368,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun saveBlobUrlFromPage(blobUrl: String, fileName: String, mimeType: String) {
-        // Blob URLs live inside the WebView renderer process. Ask the page to
-        // fetch its own blob, convert to a data URL, then call the bridge above.
         val js = """
             (function(){
               fetch(${jsString(blobUrl)})
@@ -429,7 +395,10 @@ class MainActivity : ComponentActivity() {
         }
         try {
             val comma = dataUrl.indexOf(',')
-            if (comma < 0) { toast("Export failed."); return }
+            if (comma < 0) {
+                toast("Export failed.")
+                return
+            }
             val header = dataUrl.substring(0, comma)
             val payload = dataUrl.substring(comma + 1)
             val bytes = if (header.contains(";base64")) {
@@ -484,7 +453,8 @@ class MainActivity : ComponentActivity() {
                 else -> MediaStore.Files.getContentUri("external")
             }
             val itemUri = resolver.insert(collection, values) ?: run {
-                toast("Couldn't create export file."); return
+                toast("Couldn't create export file.")
+                return
             }
             resolver.openOutputStream(itemUri)?.use { out: OutputStream -> out.write(bytes) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -492,7 +462,6 @@ class MainActivity : ComponentActivity() {
                 resolver.update(itemUri, done, null, null)
             }
             toast("Saved to $destinationLabel")
-            // Also broadcast so galleries pick it up instantly on older devices.
             sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, itemUri))
         } catch (t: Throwable) {
             Log.e(TAG, "saveBytes failed", t)
@@ -570,12 +539,25 @@ class MainActivity : ComponentActivity() {
         append('"')
     }
 
-    private fun toast(msg: String) =
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
-    override fun onPause() { super.onPause(); webView.onPause() }
-    override fun onResume() { super.onResume(); webView.onResume(); hideSystemBars() }
-    override fun onDestroy() { webView.destroy(); super.onDestroy() }
+    override fun onPause() {
+        super.onPause()
+        webView.onPause()
+    }
 
-    private companion object { const val TAG = "InkFrameWebShell" }
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+        hideSystemBars()
+    }
+
+    override fun onDestroy() {
+        webView.destroy()
+        super.onDestroy()
+    }
+
+    private companion object {
+        const val TAG = "InkFrameWebShell"
+    }
 }

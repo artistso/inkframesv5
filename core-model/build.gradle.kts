@@ -5,9 +5,11 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
-// Target JVM 17 bytecode to match the Android modules (and the CI JDK).
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    kotlinOptions.jvmTarget = "17"
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-Xjspecify-annotations=strict")
+    }
 }
 
 dependencies {

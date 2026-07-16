@@ -34,6 +34,14 @@ const metadataVersionCommand = 'VERSION="$(node -p "require(\'./web/metadata.jso
 assert.ok(checklist.includes(metadataVersionCommand), 'release checklist must derive the tag from metadata');
 assert.ok(releasing.includes(metadataVersionCommand), 'release guide must derive the tag from metadata');
 assert.match(workflow, /description: Exact version from web\/metadata\.json/);
-assert.match(workflow, /if \[\[ "\$GITHUB_REF_NAME" != "v\$VERSION" \]\]/);
+assert.match(workflow, /description: Exact versionCode from web\/metadata\.json/);
+assert.match(workflow, /VERSION_CODE="\$\(node -p "require\('\.\/web\/metadata\.json'\)\.versionCode"\)"/);
+assert.match(workflow, /TARGET_SDK="\$\(node -p "require\('\.\/web\/metadata\.json'\)\.targetSdk"\)"/);
+assert.match(workflow, /test "\$TARGET_SDK" = "36"/);
+assert.ok(
+  workflow.includes('test "$GITHUB_REF_NAME" = "v$VERSION"') ||
+    workflow.includes('if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]'),
+  'signed release workflow must require the tag to exactly match metadata',
+);
 
 console.log('✅ Release operator documentation contract passed.');

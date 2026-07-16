@@ -3,32 +3,33 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.inkframe.feature.canvas"
-    compileSdk = 34
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        minSdk = 26
+        minSdk = libs.versions.minSdk.get().toInt()
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
-
-    // Kotlin 1.9.x enables Compose via the compiler extension (the
-    // org.jetbrains.kotlin.plugin.compose plugin only exists for Kotlin 2.x).
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
-    }
 
     buildFeatures { compose = true }
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-Xjspecify-annotations=strict")
     }
 }
 
