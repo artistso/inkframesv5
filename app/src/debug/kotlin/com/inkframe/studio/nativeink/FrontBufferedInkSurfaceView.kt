@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Common controls used by the native ink laboratory's buffered and front-buffered renderers. */
 internal interface InkLabSurface {
-    val rootView: View
+    val displayView: View
     val rendererLabel: String
     var metricsListener: ((InkMetricsSnapshot) -> Unit)?
     var showSamplePoints: Boolean
@@ -48,7 +48,7 @@ internal class FrontBufferedInkSurfaceView(context: Context) : FrameLayout(conte
         val point: Boolean,
     )
 
-    override val rootView: View
+    override val displayView: View
         get() = this
     override val rendererLabel: String = "FRONT BUFFER · GRAPHICS-CORE 1.0.4"
     override var metricsListener: ((InkMetricsSnapshot) -> Unit)? = null
