@@ -71,7 +71,18 @@ jobs:
       - name: Brush V2 Ghost Trail
         run: node web/tests/brush-engine-v2-ghost.test.mjs
       - name: Brush V2 tablet-first Brush Lab
-        run: node web/tests/brush-engine-v2-lab-layout.test.mjs
+        shell: bash
+        run: |
+          set -o pipefail
+          node web/tests/brush-engine-v2-lab-layout.test.mjs 2>&1 | tee native-studio-web-test.log
+      - name: Upload native studio web diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-studio-web-test-log
+          path: native-studio-web-test.log
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Brush V2 custom preset library
         run: node web/tests/brush-engine-v2-user-presets.test.mjs
       - name: Brush V2 non-destructive preview core
