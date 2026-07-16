@@ -58,6 +58,7 @@
   let zoomReadout=null;
   let panButton=null;
   let hud=null;
+  let guidance=null;
   let installed=false;
   let frameRequest=0;
   let pendingViewport=null;
@@ -76,6 +77,7 @@
   let panMode=false;
   let dockCollapsed=false;
   let dockOccluded=false;
+  let guidanceDismissed=false;
 
   const now=()=>root.performance&&typeof root.performance.now==='function'?root.performance.now():Date.now();
   const requestFrame=callback=>typeof root.requestAnimationFrame==='function'
@@ -124,6 +126,19 @@
     try{event.stopImmediatePropagation&&event.stopImmediatePropagation();}catch(_){}
     try{event.stopPropagation&&event.stopPropagation();}catch(_){}
   }
+  function dismissGuidance(){
+    if(guidanceDismissed)return false;
+    guidanceDismissed=true;
+    if(guidance){guidance.hidden=true;guidance.dataset.dismissed='true';}
+    return true;
+  }
+  function syncGuidanceVisibility(){
+    if(!guidance)return false;
+    const hidden=guidanceDismissed||dockOccluded||!!(root.document&&root.document.body&&root.document.body.classList.contains('zen'));
+    guidance.hidden=hidden;
+    guidance.dataset.suppressed=String(!guidanceDismissed&&hidden);
+    return !hidden;
+  }
   function positionHud(anchor){
     if(!hud||!anchor)return;
     const margin=72;
@@ -144,6 +159,7 @@
     if(zoomReadout){
       zoomReadout.textContent=`${percent}%`;
       zoomReadout.title=`Canvas zoom · ${percent}% of fit`;
+      zoomReadout.setAttribute('aria-label',`Canvas zoom ${percent}% of fit · activate to fit canvas`);
     }
     if(dock)dock.dataset.zoom=String(percent);
     if(hud&&hud.classList.contains('show')){
@@ -157,7 +173,7 @@
     if(!pendingViewport||!env||typeof env.setState!=='function')return null;
     const next=pendingViewport,anchor=pendingHudPoint;
     pendingViewport=null;pendingHudPoint=null;
-    const applied=env.setState(next);syncUi(applied,anchor);return applied;
+    const applied=env.setState(next);syncUi(applied,anchor);dismissGuidance();return applied;
   }
   function queueViewport(next,anchor){
     pendingViewport=next;pendingHudPoint=anchor||pendingHudPoint;
@@ -211,6 +227,7 @@
     if(panButton){
       panButton.setAttribute('aria-pressed',String(panMode));
       panButton.title=panMode?'Hand tool on · one-finger touch pans':'Hand tool off · touch draws';
+      panButton.setAttribute('aria-label',panButton.title);
     }
     if(root.document&&root.document.body)root.document.body.classList.toggle('inkframe-viewport-pan-mode',panMode);
     if(env&&typeof env.flash==='function')env.flash(panMode?'Hand tool · touch pans':'Brush touch restored');
@@ -250,6 +267,7 @@
       const active=root.document&&root.document.activeElement;
       if(dockOccluded&&active&&dock.contains(active)&&typeof active.blur==='function')active.blur();
     }
+    syncGuidanceVisibility();
     if(dockOccluded&&consumed)abortGesture();
     return dockOccluded;
   }
@@ -263,10 +281,10 @@
     if(!root.MutationObserver||!root.document||!root.document.body)return false;
     const observer=new root.MutationObserver(mutations=>{
       const relevant=mutations.some(mutation=>{
-        if(mutation.type==='attributes')return isBlockingSurfaceNode(mutation.target);
+        if(mutation.type==='attributes')return isBlockingSurfaceNode(mutation.target)||mutation.target===root.document.body;
         return Array.from(mutation.addedNodes||[]).some(containsBlockingSurface);
       });
-      if(relevant)syncDockOcclusion();
+      if(relevant){syncDockOcclusion();syncGuidanceVisibility();}
     });
     observer.observe(root.document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','aria-hidden']});
     return true;
@@ -341,10 +359,16 @@
   function zoomBy(factor,clientX,clientY){
     const value=state();if(!value||!canGesture())return false;
     const next=zoomAt(value,factor,clientX,clientY);
-    const applied=env.setState(next);syncUi(applied);return true;
+    const applied=env.setState(next);syncUi(applied);dismissGuidance();return true;
   }
-  function fit(){if(!env||typeof env.fit!=='function'||!canGesture())return false;syncUi(env.fit());return true;}
-  function center(){if(!env||typeof env.center!=='function'||!canGesture())return false;syncUi(env.center());return true;}
+  function fit(){
+    if(!env||typeof env.fit!=='function'||!canGesture())return false;
+    syncUi(env.fit());dismissGuidance();return true;
+  }
+  function center(){
+    if(!env||typeof env.center!=='function'||!canGesture())return false;
+    syncUi(env.center());dismissGuidance();return true;
+  }
 
   function button(label,title,handler,className){
     const value=root.document.createElement('button');value.type='button';value.textContent=label;value.title=title;
@@ -357,7 +381,7 @@
       #inkframe-viewport-dock{position:fixed;left:50%;top:max(54px,calc(env(safe-area-inset-top) + 48px));z-index:26;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(255,240,243,.34);border-radius:16px;background:rgba(28,4,24,.78);box-shadow:0 10px 28px rgba(12,0,10,.34),inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);touch-action:manipulation;transition:padding .16s ease,gap .16s ease,opacity .16s ease,transform .16s ease,visibility .16s ease}
       #inkframe-viewport-dock button{min-width:42px;height:40px;padding:0 10px;border:0;border-radius:11px;background:rgba(255,255,255,.07);color:#fff0f3;font:800 15px/1 system-ui;touch-action:manipulation}
       #inkframe-viewport-dock button:active{transform:scale(.95);background:rgba(247,202,201,.18)}
-      #inkframe-viewport-dock button:focus-visible{outline:2px solid #fff0f3;outline-offset:2px}
+      #inkframe-viewport-dock button:focus-visible,#inkframe-viewport-guidance button:focus-visible{outline:2px solid #fff0f3;outline-offset:2px}
       #inkframe-viewport-dock .inkframe-viewport-controls{display:flex;align-items:center;gap:4px}
       #inkframe-viewport-dock.collapsed .inkframe-viewport-controls{display:none}
       #inkframe-viewport-dock.collapsed{gap:3px;padding:4px}
@@ -368,11 +392,17 @@
       #inkframe-viewport-dock .inkframe-viewport-pan[aria-pressed="true"]{background:linear-gradient(145deg,rgba(247,202,201,.30),rgba(187,0,55,.82));box-shadow:inset 0 0 0 1px rgba(255,240,243,.56),0 0 16px rgba(187,0,55,.32)}
       #inkframe-viewport-hud{position:fixed;z-index:27;min-width:92px;padding:8px 12px;border:1px solid rgba(255,240,243,.42);border-radius:999px;background:rgba(28,4,24,.86);color:#fff0f3;box-shadow:0 9px 24px rgba(12,0,10,.36),inset 0 1px 0 rgba(255,255,255,.14);font:800 12px/1 system-ui;letter-spacing:.04em;text-align:center;pointer-events:none;opacity:0;transform:translate(-50%,-100%) scale(.94);transition:opacity .12s ease,transform .12s ease;backdrop-filter:blur(14px) saturate(145%);-webkit-backdrop-filter:blur(14px) saturate(145%)}
       #inkframe-viewport-hud.show{opacity:1;transform:translate(-50%,-100%) scale(1)}
+      #inkframe-viewport-guidance{position:fixed;left:50%;top:max(105px,calc(env(safe-area-inset-top) + 99px));z-index:25;transform:translateX(-50%);display:flex;align-items:center;gap:10px;max-width:min(92vw,520px);padding:8px 9px 8px 13px;border:1px solid rgba(247,202,201,.28);border-radius:999px;background:rgba(28,4,24,.80);color:#fff0f3;box-shadow:0 9px 24px rgba(12,0,10,.28);font:720 11px/1.25 system-ui;letter-spacing:.015em;backdrop-filter:blur(14px) saturate(145%);-webkit-backdrop-filter:blur(14px) saturate(145%);transition:opacity .16s ease,transform .16s ease}
+      #inkframe-viewport-guidance[hidden]{display:none}
+      #inkframe-viewport-guidance span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #inkframe-viewport-guidance button{min-height:30px;padding:0 10px;border:1px solid rgba(247,202,201,.30);border-radius:999px;background:rgba(255,255,255,.08);color:#fff0f3;font:800 10px/1 system-ui;white-space:nowrap;touch-action:manipulation}
       body.inkframe-viewport-gesture #inkframe-viewport-dock{opacity:.56;pointer-events:none}
       body.inkframe-viewport-pan-mode canvas#c{cursor:grab}
       body.inkframe-viewport-pan-mode.inkframe-viewport-gesture canvas#c{cursor:grabbing}
       body.zen #inkframe-viewport-dock{top:max(10px,env(safe-area-inset-top));opacity:.72}
-      @media(max-width:620px){#inkframe-viewport-dock{top:max(48px,calc(env(safe-area-inset-top) + 44px));gap:3px;padding:4px}#inkframe-viewport-dock button{min-width:36px;height:38px;padding:0 7px}#inkframe-viewport-dock .inkframe-viewport-controls{gap:3px}#inkframe-viewport-dock .inkframe-viewport-percent{min-width:54px}#inkframe-viewport-dock .inkframe-viewport-collapse{min-width:30px;width:30px}}
+      body.zen #inkframe-viewport-guidance{display:none}
+      @media(max-width:620px){#inkframe-viewport-dock{top:max(48px,calc(env(safe-area-inset-top) + 44px));gap:3px;padding:4px}#inkframe-viewport-dock button{min-width:36px;height:38px;padding:0 7px}#inkframe-viewport-dock .inkframe-viewport-controls{gap:3px}#inkframe-viewport-dock .inkframe-viewport-percent{min-width:54px}#inkframe-viewport-dock .inkframe-viewport-collapse{min-width:30px;width:30px}#inkframe-viewport-guidance{top:max(94px,calc(env(safe-area-inset-top) + 90px));font-size:10px}}
+      @media(prefers-reduced-motion:reduce){#inkframe-viewport-dock,#inkframe-viewport-hud,#inkframe-viewport-guidance{transition:none!important}}
     `;
     root.document.head.appendChild(style);
     dock=root.document.createElement('nav');dock.id='inkframe-viewport-dock';dock.setAttribute('aria-label','Canvas zoom and navigation controls');
@@ -389,19 +419,25 @@
     dockToggle.setAttribute('aria-controls','inkframe-viewport-controls');
     dockToggle.setAttribute('aria-expanded','true');
     dock.append(dockToggle,zoomReadout,dockControls,panButton);
-    hud=root.document.createElement('output');hud.id='inkframe-viewport-hud';hud.setAttribute('aria-live','polite');hud.setAttribute('aria-atomic','true');
-    root.document.body.append(dock,hud);
+    hud=root.document.createElement('output');hud.id='inkframe-viewport-hud';hud.setAttribute('aria-hidden','true');
+    guidance=root.document.createElement('aside');guidance.id='inkframe-viewport-guidance';guidance.setAttribute('role','note');guidance.dataset.dismissed='false';guidance.dataset.suppressed='false';
+    const guidanceText=root.document.createElement('span');guidanceText.textContent='2 fingers: pinch + pan · Hand: 1-finger pan';
+    const guidanceButton=button('Got it','Dismiss canvas navigation tip',dismissGuidance,'inkframe-viewport-guidance-dismiss');
+    guidance.append(guidanceText,guidanceButton);
+    root.document.body.append(dock,hud,guidance);
     const compactAtStart=!!(root.document.body&&root.document.body.classList.contains('zen'))
       || !!(root.matchMedia&&root.matchMedia('(max-width: 620px)').matches);
     setDockCollapsed(compactAtStart,false);
     if(root.MutationObserver&&root.document.body){
       const observer=new root.MutationObserver(()=>{
         if(root.document.body.classList.contains('zen')&&!dockCollapsed)setDockCollapsed(true,false);
+        syncGuidanceVisibility();
       });
       observer.observe(root.document.body,{attributes:true,attributeFilter:['class']});
     }
     installSurfaceObserver();
     syncDockOcclusion();
+    syncGuidanceVisibility();
     syncUi();
   }
 
@@ -441,8 +477,10 @@
 
   const api=Object.freeze({
     clamp,midpoint,distance,anchoredViewport,translatedViewport,zoomAt,install,zoomBy,fit,center,
-    setPanMode,togglePanMode,setDockCollapsed,toggleDockCollapsed,blockingSurfaceOpen,syncDockOcclusion,abortGesture,
-    get panMode(){return panMode;},get dockCollapsed(){return dockCollapsed;},get dockOccluded(){return dockOccluded;},get installed(){return installed;}
+    setPanMode,togglePanMode,setDockCollapsed,toggleDockCollapsed,blockingSurfaceOpen,syncDockOcclusion,
+    dismissGuidance,syncGuidanceVisibility,abortGesture,
+    get panMode(){return panMode;},get dockCollapsed(){return dockCollapsed;},get dockOccluded(){return dockOccluded;},
+    get guidanceDismissed(){return guidanceDismissed;},get installed(){return installed;}
   });
   root.InkFrameViewportGestures=api;
   if(root.document){
