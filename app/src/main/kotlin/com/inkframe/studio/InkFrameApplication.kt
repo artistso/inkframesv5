@@ -74,6 +74,7 @@ private class NativeStudioController private constructor(
     private val bridge = StudioBridge()
     private val contextMirror = StudioContextMirror()
     private val bindingRegistry = StudioStrokeBindingRegistry()
+    private val projectReconciliation = StudioProjectReconciliationController()
     private var destroyed = false
     private var pendingConfiguration: String? = null
 
@@ -99,6 +100,7 @@ private class NativeStudioController private constructor(
         destroyed = true
         contextMirror.clear()
         bindingRegistry.clear()
+        projectReconciliation.clear()
         overlay.onStrokeComplete = null
         overlay.cancelStroke()
         webView.removeJavascriptInterface(BRIDGE_NAME)
@@ -129,6 +131,10 @@ private class NativeStudioController private constructor(
         }
         if (snapshot.hasDrawableTarget && !bindingRegistry.remember(snapshot)) {
             rejectConfiguration("rejected by Kotlin stroke binding registry")
+            return
+        }
+        if (!projectReconciliation.update(value, snapshot)) {
+            rejectConfiguration("rejected by Kotlin project reconciliation mirror")
             return
         }
 
@@ -180,6 +186,7 @@ private class NativeStudioController private constructor(
     private fun rejectConfiguration(reason: String, error: Throwable? = null) {
         contextMirror.clear()
         bindingRegistry.clear()
+        projectReconciliation.clear()
         overlay.applyConfiguration(
             NativeStudioInkOverlay.Configuration(
                 enabled = false,
