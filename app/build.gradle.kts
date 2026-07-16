@@ -292,6 +292,10 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("androidx.webkit:webkit:1.11.0")
 
+    // The front-buffer renderer is a debug laboratory dependency only. Production release
+    // artifacts retain the existing editor and do not package the experimental surface.
+    debugImplementation("androidx.graphics:graphics-core:1.0.4")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
 }
