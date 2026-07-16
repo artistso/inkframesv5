@@ -40,7 +40,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         val brushSizeDisplayPx: Float,
         val opacity: Float,
         val circularCanvas: Boolean,
-        val artistStatusLabel: String,
+        val artistStatusLabel: String = "",
     )
 
     private data class Sample(
@@ -59,6 +59,8 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         private set
     val hasActiveStroke: Boolean
         get() = activePointerId != null || awaitingReplay
+    val hasHover: Boolean
+        get() = hoverX != null && hoverY != null
 
     private val density = resources.displayMetrics.density.coerceAtLeast(1f)
     private var configuration = Configuration(
@@ -71,7 +73,6 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         brushSizeDisplayPx = 10f,
         opacity = 1f,
         circularCanvas = false,
-        artistStatusLabel = "",
     )
     private val samples = ArrayList<Sample>(512)
     private var activePointerId: Int? = null
@@ -294,7 +295,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
     }
 
     private fun drawArtistStatus(canvas: Canvas) {
-        val label = configuration.artistStatusLabel
+        val label = configuration.artistStatusLabel.ifBlank { StudioArtistCanvasStatusStore.label() }
         if (label.isBlank()) return
         val paddingX = 10f * density
         val paddingY = 7f * density
@@ -495,7 +496,7 @@ class NativeStudioHostLayout(context: Context) : FrameLayout(context) {
     }
 
     private fun shouldRouteStylus(event: MotionEvent, overlay: NativeStudioInkOverlay): Boolean {
-        if (overlay.hasActiveStroke) return true
+        if (overlay.hasActiveStroke || overlay.hasHover) return true
         for (index in 0 until event.pointerCount) {
             val tool = event.getToolType(index)
             if (tool != MotionEvent.TOOL_TYPE_STYLUS && tool != MotionEvent.TOOL_TYPE_ERASER) continue
