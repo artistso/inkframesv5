@@ -6,6 +6,9 @@ on:
       - 'app/src/debug/kotlin/com/inkframe/studio/nativeink/**'
       - 'app/src/main/kotlin/com/inkframe/studio/nativeink/**'
       - 'app/build.gradle.kts'
+      - 'web/metadata.json'
+      - 'gradle/libs.versions.toml'
+      - 'gradle/wrapper/gradle-wrapper.properties'
       - '.github/workflows/native-debug-compile.yml'
   workflow_dispatch:
 
@@ -29,8 +32,8 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android 16 platform
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Compile debug Kotlin with retained diagnostics
