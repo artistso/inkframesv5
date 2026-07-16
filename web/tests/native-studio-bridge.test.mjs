@@ -14,6 +14,8 @@ const root=resolve(web,'..');
 const source=readFileSync(resolve(web,'native-studio-bridge.js'),'utf8');
 const injector=readFileSync(resolve(root,'tools/inject-brush-v2-index.mjs'),'utf8');
 const applicationSource=readFileSync(resolve(root,'app/src/main/kotlin/com/inkframe/studio/InkFrameApplication.kt'),'utf8');
+const modelSource=readFileSync(resolve(root,'core-model/src/main/kotlin/com/inkframe/core/model/Project.kt'),'utf8');
+const appBuild=readFileSync(resolve(root,'app/build.gradle.kts'),'utf8');
 const studioSource=readFileSync(resolve(web,'index.html'),'utf8');
 const manifest=readFileSync(resolve(root,'app/src/main/AndroidManifest.xml'),'utf8');
 const radialPath=resolve(web,'radial-timeline.js');
@@ -166,8 +168,20 @@ assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/localStorage|sessionStorage/);
 assert.doesNotMatch(source,/fetch\(/);
 assert.doesNotMatch(source,/while\s*\(true\)/);
+
+// Kotlin shadow-state boundary: the WebView remains authoritative, but Android must decode the
+// full context into a pure core-model mirror and validate it before invoking JavaScript replay.
+assert.match(appBuild,/implementation\(project\(":core-model"\)\)/);
+assert.match(modelSource,/class StudioContextMirror/);
+assert.match(modelSource,/AtomicReference<StudioContextSnapshot\?>/);
+assert.match(modelSource,/fun captureStrokeBinding/);
+assert.match(modelSource,/fun validate\(binding: StudioStrokeBinding\)/);
+assert.match(applicationSource,/private val contextMirror = StudioContextMirror\(\)/);
+assert.match(applicationSource,/contextMirror\.update\(snapshot\)/);
+assert.match(applicationSource,/contextMirror\.validate\(binding\)/);
+assert.match(applicationSource,/Native stroke rejected by Kotlin studio mirror/);
+assert.match(applicationSource,/if \(schema == 1\)/,'the physically accepted overlay remains compatible during typed-mirror rollout');
 assert.match(applicationSource,/bridgeVersion\(\): Int = 2/);
-assert.match(applicationSource,/schema != 1 && schema != 2/);
 
 // Golden-master product boundary: stable selectors and runtimes that define the
 // original Glass Horizon studio must remain while Kotlin replaces subsystems.
@@ -205,4 +219,4 @@ assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.c
 // Node exit naturally; forcibly closing the window races its RAF implementation on Node 24.
 modal.remove();
 await new Promise(resolveWait=>window.requestAnimationFrame(resolveWait));
-console.log('✅ native S Pen exact project/frame/layer binding, golden-master chrome, and original commit-path tests passed');
+console.log('✅ Kotlin studio context mirror, native S Pen binding, golden-master chrome, and original commit-path tests passed');
