@@ -11,7 +11,6 @@ import android.widget.FrameLayout
 import androidx.annotation.RequiresApi
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
-import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicLong
 
 /** Common controls used by the native ink laboratory's buffered and front-buffered renderers. */
@@ -189,6 +188,7 @@ internal class FrontBufferedInkSurfaceView(context: Context) : FrameLayout(conte
         released = true
         rebuildGeneration += 1
         cancelActiveInput()
+        metricsListener = null
         synchronized(stateLock) { pendingSegments.clear() }
         canvasView.setOnTouchListener(null)
         canvasView.setOnHoverListener(null)
@@ -332,7 +332,9 @@ internal class FrontBufferedInkSurfaceView(context: Context) : FrameLayout(conte
             pendingSegments.addLast(segment)
             pendingSegments.size.toLong()
         }
-        maximumPendingSegments.accumulateAndGet(depth, ::maxOf)
+        maximumPendingSegments.accumulateAndGet(depth) { current, candidate ->
+            maxOf(current, candidate)
+        }
         renderRequests.incrementAndGet()
         canvasView.renderFrontBufferedLayer()
     }
