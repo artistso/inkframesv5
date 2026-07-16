@@ -91,6 +91,19 @@ const prototypeEnd=manifest.indexOf('/>',prototypeStart);
 assert.ok(prototypeStart>=0&&prototypeEnd>prototypeStart,'Native Canvas Prototype declaration must remain bounded');
 assert.doesNotMatch(manifest.slice(prototypeStart,prototypeEnd+2),/MAIN|LAUNCHER/,'the internal native prototype must not expose launcher intents');
 
+const debugManifest=text('app/src/debug/AndroidManifest.xml');
+assert.ok(debugManifest.includes('android:name=".DebugInkFrameApplication"'),'debug telemetry application subclass missing');
+assert.ok(debugManifest.includes('android:name=".nativeink.NativeInkLabActivity"'),'internal native diagnostics activity missing');
+assert.match(debugManifest,/android:name="\.nativeink\.NativeInkLabActivity"[\s\S]*?android:exported="false"/,'Native Ink Lab must remain internal in downloadable debug APKs');
+assert.equal((debugManifest.match(/android\.intent\.action\.MAIN/g)||[]).length,0,'debug source set must not add another MAIN entry');
+assert.equal((debugManifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length,0,'debug source set must not add another launcher');
+assert.equal(
+  (manifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length+
+    (debugManifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length,
+  1,
+  'the downloadable artist APK must expose only the full InkFrame studio launcher',
+);
+
 const splash=text('app/src/main/kotlin/com/inkframe/studio/SplashActivity.kt');
 assert.ok(splash.includes('R.drawable.inkframe_splash'),'native splash drawable missing');
 assert.ok(splash.includes('ImageView.ScaleType.CENTER_CROP'),'portrait splash must use non-distorting center crop');
@@ -109,6 +122,6 @@ assert.ok(themes31.includes('@mipmap/ic_launcher_glass_horizon'),'Android 12 sys
 assert.ok(themes31.includes('android:windowSplashScreenBackground'),'Android 12 splash background missing');
 
 assert.equal(app.endsWith('/app')||app.endsWith('\\app'),true);
-console.log('✅ Glass Horizon branding, sole full-studio launcher, internal native prototype, splash, and Android 12 policy passed');
+console.log('✅ Glass Horizon branding, sole full-studio launcher in debug/release, internal native prototypes, splash, and Android 12 policy passed');
 
 await import('./creator-statement.test.mjs');
