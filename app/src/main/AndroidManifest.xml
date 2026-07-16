@@ -27,6 +27,22 @@
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.InkFrame">
 
+        <!-- Production Kotlin canvas beta. It is intentionally a second launcher entry while
+             project-format and feature parity are established; the WebView studio remains intact. -->
+        <activity
+            android:name=".nativeink.NativeArtistActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode|density|smallestScreenSize"
+            android:exported="true"
+            android:hardwareAccelerated="true"
+            android:label="InkFrame Native Canvas Beta"
+            android:screenOrientation="userLandscape"
+            android:theme="@style/Theme.InkFrame">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode|density|smallestScreenSize"

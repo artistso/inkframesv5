@@ -74,14 +74,18 @@ assert.ok(gradle.includes('String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP"'),'b
 const manifest=text('app/src/main/AndroidManifest.xml');
 assert.ok(manifest.includes('android:name=".SplashActivity"'),'SplashActivity missing from manifest');
 assert.ok(manifest.includes('android:name=".MainActivity"'),'MainActivity missing from manifest');
+assert.ok(manifest.includes('android:name=".nativeink.NativeArtistActivity"'),'Native Canvas Beta missing from manifest');
+assert.ok(manifest.includes('android:label="InkFrame Native Canvas Beta"'),'Native Canvas Beta launcher label missing');
 assert.ok(manifest.includes('android:icon="@mipmap/ic_launcher_glass_horizon"'),'Glass Horizon launcher icon resource missing');
 assert.ok(manifest.includes('android:roundIcon="@mipmap/ic_launcher_glass_horizon"'),'Glass Horizon round icon resource missing');
-assert.equal(manifest.includes('android:excludeFromRecents="true"'),false,'splash must not remove the studio task from Recents');
+assert.equal(manifest.includes('android:excludeFromRecents="true"'),false,'launchers must remain available in Recents');
 assert.match(manifest,/android:name="\.MainActivity"[\s\S]*?android:exported="false"/,'MainActivity must remain internal');
-assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android:exported="true"/,'SplashActivity must own the exported launcher entry');
-assert.equal((manifest.match(/android\.intent\.action\.MAIN/g)||[]).length,1,'exactly one activity must own MAIN');
-assert.equal((manifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length,1,'exactly one activity must own LAUNCHER');
-assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.action\.MAIN[\s\S]*?android\.intent\.category\.LAUNCHER/,'SplashActivity must own launcher intent');
+assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android:exported="true"/,'SplashActivity must own the classic exported launcher entry');
+assert.match(manifest,/android:name="\.nativeink\.NativeArtistActivity"[\s\S]*?android:exported="true"/,'Native Canvas Beta must own its explicit exported launcher entry');
+assert.equal((manifest.match(/android\.intent\.action\.MAIN/g)||[]).length,2,'classic studio and Native Canvas Beta must be the only MAIN entries');
+assert.equal((manifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length,2,'classic studio and Native Canvas Beta must be the only LAUNCHER entries');
+assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.action\.MAIN[\s\S]*?android\.intent\.category\.LAUNCHER/,'SplashActivity must own classic launcher intent');
+assert.match(manifest,/android:name="\.nativeink\.NativeArtistActivity"[\s\S]*?android\.intent\.action\.MAIN[\s\S]*?android\.intent\.category\.LAUNCHER/,'NativeArtistActivity must own beta launcher intent');
 
 const splash=text('app/src/main/kotlin/com/inkframe/studio/SplashActivity.kt');
 assert.ok(splash.includes('R.drawable.inkframe_splash'),'native splash drawable missing');
@@ -101,6 +105,6 @@ assert.ok(themes31.includes('@mipmap/ic_launcher_glass_horizon'),'Android 12 sys
 assert.ok(themes31.includes('android:windowSplashScreenBackground'),'Android 12 splash background missing');
 
 assert.equal(app.endsWith('/app')||app.endsWith('\\app'),true);
-console.log('✅ Glass Horizon launcher bytes, native splash, manifest routing, and Android 12 policy passed');
+console.log('✅ Glass Horizon branding, classic launcher, Native Canvas Beta launcher, splash, and Android 12 policy passed');
 
 await import('./creator-statement.test.mjs');
