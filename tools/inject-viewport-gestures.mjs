@@ -6,8 +6,11 @@ const block=(...lines)=>lines.join('\n');
 export function injectViewportGestures(html,replaceOnce){
   html=replaceOnce(html,
     '<script src="canvas-shape.js"></script>',
-    block('<script src="canvas-shape.js"></script>','<script src="viewport-gestures.js"></script>'),
-    'viewport gesture runtime script');
+    block(
+      '<script src="canvas-shape.js"></script>',
+      '<script src="viewport-gestures.js"></script>',
+      '<script src="viewport-actual-pixels.js"></script>'),
+    'viewport gesture runtime scripts');
 
   html=replaceOnce(html,
     '  let cScale=1;                                   // display scale of the canvas element',
@@ -17,12 +20,12 @@ export function injectViewportGestures(html,replaceOnce){
   html=replaceOnce(html,
     '  function clampCanvas(){ const f=fitScale(); cScale=Math.max(f*0.35, Math.min(cScale, f*2.2)); }',
     block(
-      '  function clampCanvas(){ const f=fitScale(); cScale=Math.max(f*0.35, Math.min(cScale, f*2.2)); }',
+      '  function clampCanvas(){ const f=fitScale(), lo=Math.min(f*0.35,1), hi=Math.max(f*2.2,1); cScale=Math.max(lo, Math.min(cScale, hi)); }',
       '  function viewportState(){',
       '    const fit=fitScale();',
       '    return Object.freeze({',
       '      scale:cScale, panX:cPanX, panY:cPanY, fitScale:fit,',
-      '      minScale:fit*0.35, maxScale:fit*2.2,',
+      '      minScale:Math.min(fit*0.35,1), maxScale:Math.max(fit*2.2,1),',
       '      viewportWidth:window.innerWidth, viewportHeight:window.innerHeight,',
       '      centerX:window.innerWidth/2, centerY:window.innerHeight/2,',
       '      canvasWidth:W, canvasHeight:H',
