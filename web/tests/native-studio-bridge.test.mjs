@@ -201,9 +201,8 @@ assert.ok(prototypeBlock.includes('android:exported="false"'),'the simplified na
 assert.doesNotMatch(prototypeBlock,/MAIN|LAUNCHER/,'the simplified native prototype must never become a product launcher');
 assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.category\.LAUNCHER/,'the complete studio splash must remain the sole launcher');
 
-// Appending/removing the modal queues a MutationObserver-driven publish. Drain that final frame
-// before closing JSDOM so no callback can dereference a destroyed window document.
+// Let pending observer/RAF callbacks drain with the document still alive. JSDOM will then let
+// Node exit naturally; forcibly closing the window races its RAF implementation on Node 24.
 modal.remove();
 await new Promise(resolveWait=>window.requestAnimationFrame(resolveWait));
-window.close();
 console.log('✅ native S Pen exact project/frame/layer binding, golden-master chrome, and original commit-path tests passed');
