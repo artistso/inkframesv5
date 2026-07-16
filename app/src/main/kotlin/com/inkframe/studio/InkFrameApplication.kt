@@ -16,6 +16,7 @@ import com.inkframe.core.model.StudioContextMirror
 import com.inkframe.core.model.StudioContextSnapshot
 import com.inkframe.core.model.StudioContextUpdate
 import com.inkframe.core.model.StudioStrokeBinding
+import com.inkframe.core.model.StudioStrokeBindingRegistry
 import com.inkframe.core.model.StudioStrokeValidation
 import com.inkframe.studio.nativeink.NativeStudioHostLayout
 import com.inkframe.studio.nativeink.NativeStudioInkOverlay
@@ -72,6 +73,7 @@ private class NativeStudioController private constructor(
 ) {
     private val bridge = StudioBridge()
     private val contextMirror = StudioContextMirror()
+    private val bindingRegistry = StudioStrokeBindingRegistry()
     private var destroyed = false
     private var pendingConfiguration: String? = null
 
@@ -96,6 +98,7 @@ private class NativeStudioController private constructor(
     fun destroy() {
         destroyed = true
         contextMirror.clear()
+        bindingRegistry.clear()
         overlay.onStrokeComplete = null
         overlay.cancelStroke()
         webView.removeJavascriptInterface(BRIDGE_NAME)
@@ -122,6 +125,10 @@ private class NativeStudioController private constructor(
         }
         if (contextMirror.update(snapshot) == StudioContextUpdate.REJECTED_INVALID) {
             rejectConfiguration("rejected by Kotlin context mirror")
+            return
+        }
+        if (snapshot.hasDrawableTarget && !bindingRegistry.remember(snapshot)) {
+            rejectConfiguration("rejected by Kotlin stroke binding registry")
             return
         }
 
@@ -172,6 +179,7 @@ private class NativeStudioController private constructor(
 
     private fun rejectConfiguration(reason: String, error: Throwable? = null) {
         contextMirror.clear()
+        bindingRegistry.clear()
         overlay.applyConfiguration(
             NativeStudioInkOverlay.Configuration(
                 enabled = false,
@@ -197,13 +205,14 @@ private class NativeStudioController private constructor(
             overlay.cancelStroke()
             return
         }
-        val binding = parseStrokeBinding(payload)
+        val envelope = promoteStrokeEnvelope(payload)
+        val binding = envelope?.let(::parseStrokeBinding)
         val validation = if (binding == null) {
             StudioStrokeValidation.INVALID_STROKE_CONTEXT
         } else {
             contextMirror.validate(binding)
         }
-        if (validation != StudioStrokeValidation.ACCEPTED) {
+        if (validation != StudioStrokeValidation.ACCEPTED || envelope == null) {
             Log.w(TAG, "Native stroke rejected by Kotlin studio mirror: $validation")
             overlay.finishReplay()
             return
@@ -214,7 +223,7 @@ private class NativeStudioController private constructor(
               if (!window.InkFrameNativeStudio || !window.InkFrameNativeStudio.replayStroke) {
                 return JSON.stringify({ok:false,reason:'native-studio-js-unavailable'});
               }
-              return window.InkFrameNativeStudio.replayStroke(${jsString(payload)});
+              return window.InkFrameNativeStudio.replayStroke(${jsString(envelope)});
             })();
         """.trimIndent()
         webView.evaluateJavascript(script) { result ->
@@ -223,6 +232,47 @@ private class NativeStudioController private constructor(
             }
             overlay.finishReplay()
         }
+    }
+
+    /**
+     * Expands the overlay's frozen context token into the complete schema-2 binding remembered when
+     * the studio published that token. Schema-2 payloads pass through unchanged after parsing.
+     */
+    private fun promoteStrokeEnvelope(serialized: String): String? {
+        val value = try {
+            JSONObject(serialized)
+        } catch (_: Throwable) {
+            return null
+        }
+        when (value.optInt("schema", 0)) {
+            StudioContextSnapshot.CURRENT_SCHEMA -> return value.toString()
+            1 -> Unit
+            else -> return null
+        }
+
+        val token = value.optString("contextToken", "")
+        val binding = bindingRegistry.resolve(token) ?: return null
+        value.put("schema", StudioContextSnapshot.CURRENT_SCHEMA)
+        value.put("contextToken", binding.contextToken)
+        value.put("contextRevision", binding.contextRevision)
+        value.put("projectIndex", binding.projectIndex)
+        value.put("frameIndex", binding.frameIndex)
+        value.put("layerIndex", binding.layerIndex)
+        value.put("layerCount", binding.layerCount)
+        value.put("backgroundActive", binding.backgroundActive)
+        value.put("canvasWidth", binding.canvasWidth)
+        value.put("canvasHeight", binding.canvasHeight)
+        value.put("shape", if (binding.shape == StudioCanvasShape.CIRCLE) "circle" else "square")
+        value.put("canvasLeft", binding.geometry.left)
+        value.put("canvasTop", binding.geometry.top)
+        value.put("canvasDisplayWidth", binding.geometry.width)
+        value.put("canvasDisplayHeight", binding.geometry.height)
+        value.put("brushId", binding.brush.id)
+        value.put("brushColor", binding.brush.colorArgb)
+        value.put("paperColor", binding.brush.paperColorArgb)
+        value.put("brushSize", binding.brush.sizeCanvasPx)
+        value.put("opacity", binding.brush.opacity)
+        return value.toString()
     }
 
     private fun parseContextSnapshot(value: JSONObject): StudioContextSnapshot? {
@@ -264,11 +314,6 @@ private class NativeStudioController private constructor(
             return null
         }
         val schema = value.optInt("schema", 0)
-        if (schema == 1) {
-            val current = contextMirror.snapshot() ?: return null
-            if (value.optString("contextToken", "") != current.contextToken) return null
-            return current.strokeBinding()
-        }
         if (schema != StudioContextSnapshot.CURRENT_SCHEMA) return null
         return StudioStrokeBinding(
             schema = schema,
