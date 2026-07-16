@@ -9,6 +9,14 @@ import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.FrameLayout
+import com.inkframe.core.model.StudioBrushContext
+import com.inkframe.core.model.StudioCanvasGeometry
+import com.inkframe.core.model.StudioCanvasShape
+import com.inkframe.core.model.StudioContextMirror
+import com.inkframe.core.model.StudioContextSnapshot
+import com.inkframe.core.model.StudioContextUpdate
+import com.inkframe.core.model.StudioStrokeBinding
+import com.inkframe.core.model.StudioStrokeValidation
 import com.inkframe.studio.nativeink.NativeStudioHostLayout
 import com.inkframe.studio.nativeink.NativeStudioInkOverlay
 import org.json.JSONObject
@@ -63,6 +71,7 @@ private class NativeStudioController private constructor(
     private val overlay: NativeStudioInkOverlay,
 ) {
     private val bridge = StudioBridge()
+    private val contextMirror = StudioContextMirror()
     private var destroyed = false
     private var pendingConfiguration: String? = null
 
@@ -86,8 +95,9 @@ private class NativeStudioController private constructor(
 
     fun destroy() {
         destroyed = true
+        contextMirror.clear()
         overlay.onStrokeComplete = null
-        overlay.cancelStroke()
+        overlay.clearConfiguration()
         webView.removeJavascriptInterface(BRIDGE_NAME)
     }
 
@@ -102,33 +112,38 @@ private class NativeStudioController private constructor(
         val value = try {
             JSONObject(serialized)
         } catch (error: Throwable) {
-            Log.w(TAG, "Ignoring invalid studio canvas configuration", error)
+            rejectConfiguration("invalid JSON", error)
             return
         }
-        val schema = value.optInt("schema", 0)
-        if (schema != 1 && schema != 2) return
+        val snapshot = parseContextSnapshot(value)
+        if (snapshot == null) {
+            rejectConfiguration("invalid schema or context")
+            return
+        }
+        if (contextMirror.update(snapshot) == StudioContextUpdate.REJECTED_INVALID) {
+            rejectConfiguration("rejected by Kotlin context mirror")
+            return
+        }
 
         val viewportWidth = value.optDouble("viewportWidth", 0.0)
         val viewportHeight = value.optDouble("viewportHeight", 0.0)
         if (!viewportWidth.isFinite() || !viewportHeight.isFinite() || viewportWidth <= 0.0 || viewportHeight <= 0.0) {
+            rejectConfiguration("invalid viewport geometry")
             return
         }
 
         val scaleX = webView.width.toDouble() / viewportWidth
         val scaleY = webView.height.toDouble() / viewportHeight
-        val rawLeft = (value.optDouble("left", 0.0) * scaleX).roundToInt()
-        val rawTop = (value.optDouble("top", 0.0) * scaleY).roundToInt()
-        val rawWidth = (value.optDouble("width", 0.0) * scaleX).roundToInt()
-        val rawHeight = (value.optDouble("height", 0.0) * scaleY).roundToInt()
+        val rawLeft = (snapshot.geometry.left * scaleX).roundToInt()
+        val rawTop = (snapshot.geometry.top * scaleY).roundToInt()
+        val rawWidth = (snapshot.geometry.width * scaleX).roundToInt()
+        val rawHeight = (snapshot.geometry.height * scaleY).roundToInt()
 
         val left = rawLeft.coerceIn(0, host.width.coerceAtLeast(1) - 1)
         val top = rawTop.coerceIn(0, host.height.coerceAtLeast(1) - 1)
         val width = rawWidth.coerceAtLeast(1).coerceAtMost(host.width - left)
         val height = rawHeight.coerceAtLeast(1).coerceAtMost(host.height - top)
-        val canvasWidth = value.optInt("canvasWidth", 1).coerceAtLeast(1)
-        val canvasHeight = value.optInt("canvasHeight", 1).coerceAtLeast(1)
-        val brushSizeCanvasPx = value.optDouble("brushSize", 1.0).toFloat().coerceAtLeast(0.5f)
-        val brushScale = width.toFloat() / canvasWidth.toFloat()
+        val brushScale = width.toFloat() / snapshot.canvasWidth.toFloat()
 
         val layout = (overlay.layoutParams as? FrameLayout.LayoutParams)
             ?: FrameLayout.LayoutParams(width, height)
@@ -141,18 +156,21 @@ private class NativeStudioController private constructor(
 
         overlay.applyConfiguration(
             NativeStudioInkOverlay.Configuration(
-                enabled = value.optBoolean("enabled", false),
-                contextToken = value.optString("contextToken", ""),
-                canvasWidth = canvasWidth,
-                canvasHeight = canvasHeight,
-                brushColor = value.optInt("brushColor", DEFAULT_INK_COLOR),
-                paperColor = value.optInt("paperColor", DEFAULT_PAPER_COLOR),
-                brushSizeDisplayPx = brushSizeCanvasPx * brushScale,
-                opacity = value.optDouble("opacity", 1.0).toFloat(),
-                circularCanvas = value.optString("shape", "square") == "circle",
+                context = snapshot,
+                brushSizeDisplayPx = snapshot.brush.sizeCanvasPx.toFloat() * brushScale,
             ),
         )
         pendingConfiguration = null
+    }
+
+    private fun rejectConfiguration(reason: String, error: Throwable? = null) {
+        contextMirror.clear()
+        overlay.clearConfiguration()
+        if (error == null) {
+            Log.w(TAG, "Ignoring studio canvas configuration: $reason")
+        } else {
+            Log.w(TAG, "Ignoring studio canvas configuration: $reason", error)
+        }
     }
 
     private fun replayCompletedStroke(payload: String) {
@@ -160,6 +178,18 @@ private class NativeStudioController private constructor(
             overlay.cancelStroke()
             return
         }
+        val binding = parseStrokeBinding(payload)
+        val validation = if (binding == null) {
+            StudioStrokeValidation.INVALID_STROKE_CONTEXT
+        } else {
+            contextMirror.validate(binding)
+        }
+        if (validation != StudioStrokeValidation.ACCEPTED) {
+            Log.w(TAG, "Native stroke rejected by Kotlin studio mirror: $validation")
+            overlay.finishReplay()
+            return
+        }
+
         val script = """
             (function(){
               if (!window.InkFrameNativeStudio || !window.InkFrameNativeStudio.replayStroke) {
@@ -174,6 +204,79 @@ private class NativeStudioController private constructor(
             }
             overlay.finishReplay()
         }
+    }
+
+    private fun parseContextSnapshot(value: JSONObject): StudioContextSnapshot? {
+        if (value.optInt("schema", 0) != StudioContextSnapshot.CURRENT_SCHEMA) return null
+        return StudioContextSnapshot(
+            schema = value.optInt("schema", 0),
+            enabled = value.optBoolean("enabled", false),
+            contextToken = value.optString("contextToken", ""),
+            baseContextToken = value.optString("baseContextToken", ""),
+            contextRevision = value.optInt("contextRevision", -1),
+            projectIndex = value.optInt("projectIndex", -1),
+            frameIndex = value.optInt("frameIndex", -1),
+            layerIndex = value.optInt("layerIndex", Int.MIN_VALUE),
+            layerCount = value.optInt("layerCount", -1),
+            backgroundActive = value.optBoolean("backgroundActive", false),
+            canvasWidth = value.optInt("canvasWidth", 0),
+            canvasHeight = value.optInt("canvasHeight", 0),
+            shape = canvasShape(value.optString("shape", "")) ?: return null,
+            geometry = StudioCanvasGeometry(
+                left = value.optDouble("left", Double.NaN),
+                top = value.optDouble("top", Double.NaN),
+                width = value.optDouble("width", Double.NaN),
+                height = value.optDouble("height", Double.NaN),
+            ),
+            brush = StudioBrushContext(
+                id = value.optString("brushId", ""),
+                colorArgb = value.optInt("brushColor", DEFAULT_INK_COLOR),
+                paperColorArgb = value.optInt("paperColor", DEFAULT_PAPER_COLOR),
+                sizeCanvasPx = value.optDouble("brushSize", Double.NaN),
+                opacity = value.optDouble("opacity", Double.NaN),
+            ),
+        ).validatedOrNull()
+    }
+
+    private fun parseStrokeBinding(serialized: String): StudioStrokeBinding? {
+        val value = try {
+            JSONObject(serialized)
+        } catch (_: Throwable) {
+            return null
+        }
+        if (value.optInt("schema", 0) != StudioContextSnapshot.CURRENT_SCHEMA) return null
+        return StudioStrokeBinding(
+            schema = value.optInt("schema", 0),
+            contextToken = value.optString("contextToken", ""),
+            contextRevision = value.optInt("contextRevision", -1),
+            projectIndex = value.optInt("projectIndex", -1),
+            frameIndex = value.optInt("frameIndex", -1),
+            layerIndex = value.optInt("layerIndex", Int.MIN_VALUE),
+            layerCount = value.optInt("layerCount", -1),
+            backgroundActive = value.optBoolean("backgroundActive", false),
+            canvasWidth = value.optInt("canvasWidth", 0),
+            canvasHeight = value.optInt("canvasHeight", 0),
+            shape = canvasShape(value.optString("shape", "")) ?: return null,
+            geometry = StudioCanvasGeometry(
+                left = value.optDouble("canvasLeft", Double.NaN),
+                top = value.optDouble("canvasTop", Double.NaN),
+                width = value.optDouble("canvasDisplayWidth", Double.NaN),
+                height = value.optDouble("canvasDisplayHeight", Double.NaN),
+            ),
+            brush = StudioBrushContext(
+                id = value.optString("brushId", ""),
+                colorArgb = value.optInt("brushColor", DEFAULT_INK_COLOR),
+                paperColorArgb = value.optInt("paperColor", DEFAULT_PAPER_COLOR),
+                sizeCanvasPx = value.optDouble("brushSize", Double.NaN),
+                opacity = value.optDouble("opacity", Double.NaN),
+            ),
+        ).validatedOrNull()
+    }
+
+    private fun canvasShape(value: String): StudioCanvasShape? = when (value) {
+        "square" -> StudioCanvasShape.SQUARE
+        "circle" -> StudioCanvasShape.CIRCLE
+        else -> null
     }
 
     private inner class StudioBridge {
