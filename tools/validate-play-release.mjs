@@ -36,7 +36,7 @@ try {
 }
 
 requireCondition(metadata.packageName === 'com.inkframe.studio', 'Package name must remain com.inkframe.studio');
-requireCondition(Number.isInteger(metadata.targetSdk) && metadata.targetSdk >= 35, 'targetSdk must be API 35 or higher');
+requireCondition(Number.isInteger(metadata.targetSdk) && metadata.targetSdk >= 36, 'targetSdk must be API 36 or higher for Play submissions after August 31, 2026');
 requireCondition(Number.isInteger(metadata.minSdk) && metadata.minSdk >= 26, 'minSdk must be API 26 or higher');
 requireCondition(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(String(metadata.version || '')), 'Version must be semantic version format');
 
