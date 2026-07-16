@@ -13,6 +13,8 @@ const web=resolve(here,'..');
 const root=resolve(web,'..');
 const source=readFileSync(resolve(web,'native-studio-bridge.js'),'utf8');
 const injector=readFileSync(resolve(root,'tools/inject-brush-v2-index.mjs'),'utf8');
+const studioSource=readFileSync(resolve(web,'index.html'),'utf8');
+const manifest=readFileSync(resolve(root,'app/src/main/AndroidManifest.xml'),'utf8');
 
 const dom=new JSDOM('<!doctype html><html><body><canvas id="c" width="1000" height="500"></canvas></body></html>',{
   runScripts:'outside-only',
@@ -109,5 +111,34 @@ assert.doesNotMatch(source,/localStorage|sessionStorage/);
 assert.doesNotMatch(source,/fetch\(/);
 assert.doesNotMatch(source,/while\s*\(true\)/);
 
+// Golden-master product boundary: the full Glass Horizon studio remains present while
+// Kotlin replaces subsystems. The simplified native prototype is never a launcher.
+for(const marker of [
+  'id="stage"',
+  'id="frameGlass"',
+  'id="c"',
+  'id="frameBoard"',
+  '#frameBoard',
+  '.node',
+  '.orb',
+  '.kids',
+  'id="studio"',
+  'id="projectPanel"',
+]){
+  assert.ok(studioSource.includes(marker),`original studio golden-master marker missing: ${marker}`);
+}
+assert.ok(studioSource.includes('canvas#c'),'the original framed drawing canvas styling must remain');
+assert.ok(studioSource.includes('Circular Canvas')||injector.includes('inject-canvas-shape'),'square/circular canvas support must remain');
+assert.ok(injector.includes('radial-timeline'),'the circular timeline must remain in generated Android assets');
+assert.ok(injector.includes('viewport-gestures'),'the established viewport controls must remain in generated Android assets');
+
+assert.ok(manifest.includes('android:name=".InkFrameStudioApplication"'),'production must use the full-studio Kotlin application host');
+assert.equal((manifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length,1,'production must expose exactly one InkFrame launcher');
+const prototypeBlock=manifest.match(/<activity\s+[\s\S]*?android:name="\.nativeink\.NativeArtistActivity"[\s\S]*?\/>/)?.[0]||'';
+assert.ok(prototypeBlock,'the internal native prototype activity must remain explicitly declared');
+assert.ok(prototypeBlock.includes('android:exported="false"'),'the simplified native prototype must remain internal');
+assert.doesNotMatch(prototypeBlock,/MAIN|LAUNCHER/,'the simplified native prototype must never become a product launcher');
+assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.category\.LAUNCHER/,'the complete studio splash must remain the sole launcher');
+
 window.close();
-console.log('✅ full-studio native S Pen overlay, original Brush V2 commit path, and modal isolation tests passed');
+console.log('✅ full-studio native S Pen overlay, golden-master chrome, single-launcher, and original Brush V2 commit-path tests passed');
