@@ -140,7 +140,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         )
         studioEnabled = configuration.enabled
         if (!studioEnabled) {
-            clearHover()
+            cancelHover()
             if (hasActiveStroke) cancelStroke()
         }
         postInvalidateOnAnimation()
@@ -161,6 +161,10 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
+    fun cancelHover() {
+        clearHover()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!studioEnabled) return false
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -175,7 +179,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN,
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.actionIndex == stylusIndex || activePointerId == null) {
-                    clearHover()
+                    cancelHover()
                     beginStroke(event, stylusIndex, pointerId)
                 }
             }
@@ -197,12 +201,12 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
         if (!studioEnabled) {
-            clearHover()
+            cancelHover()
             return false
         }
         val stylusIndex = findStylusPointerIndex(event)
         if (stylusIndex == null) {
-            clearHover()
+            cancelHover()
             return false
         }
         when (event.actionMasked) {
@@ -214,7 +218,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
                 postInvalidateOnAnimation()
             }
 
-            MotionEvent.ACTION_HOVER_EXIT -> clearHover()
+            MotionEvent.ACTION_HOVER_EXIT -> cancelHover()
         }
         return true
     }
@@ -222,6 +226,7 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (samples.isEmpty() && hoverX == null) return
+        val showHover = samples.isEmpty() && activePointerId == null && !awaitingReplay && hasHover
 
         val restore = canvas.save()
         if (configuration.circularCanvas) {
@@ -234,16 +239,17 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
             )
             canvas.clipPath(circularClip)
         }
-
         drawStroke(canvas)
-        if (samples.isEmpty() && activePointerId == null && !awaitingReplay) {
-            drawHoverCursor(canvas)
-        }
+        if (showHover) drawHoverCursor(canvas)
         canvas.restoreToCount(restore)
+
+        // The status pill belongs to the surrounding artist UI, not the artwork clip. Keeping it
+        // outside the circular clip makes frame/layer context readable in both canvas shapes.
+        if (showHover) drawArtistStatus(canvas)
     }
 
     override fun onDetachedFromWindow() {
-        clearHover()
+        cancelHover()
         cancelStroke()
         onStrokeComplete = null
         super.onDetachedFromWindow()
@@ -291,7 +297,6 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         canvas.drawLine(x, y - arm, x, y + arm, hoverOuterPaint)
         canvas.drawLine(x - arm, y, x + arm, y, hoverInnerPaint)
         canvas.drawLine(x, y - arm, x, y + arm, hoverInnerPaint)
-        drawArtistStatus(canvas)
     }
 
     private fun drawArtistStatus(canvas: Canvas) {
@@ -496,7 +501,7 @@ class NativeStudioHostLayout(context: Context) : FrameLayout(context) {
     }
 
     private fun shouldRouteStylus(event: MotionEvent, overlay: NativeStudioInkOverlay): Boolean {
-        if (overlay.hasActiveStroke || overlay.hasHover) return true
+        if (overlay.hasActiveStroke) return true
         for (index in 0 until event.pointerCount) {
             val tool = event.getToolType(index)
             if (tool != MotionEvent.TOOL_TYPE_STYLUS && tool != MotionEvent.TOOL_TYPE_ERASER) continue
@@ -506,6 +511,7 @@ class NativeStudioHostLayout(context: Context) : FrameLayout(context) {
                 return true
             }
         }
+        if (overlay.hasHover) overlay.cancelHover()
         return false
     }
 
