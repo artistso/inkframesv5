@@ -153,7 +153,8 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         return true
     }
 
-    override fun onHoverEvent(event: MotionEvent): Boolean = studioEnabled && findStylusPointerIndex(event) != null
+    override fun onHoverEvent(event: MotionEvent): Boolean =
+        studioEnabled && findStylusPointerIndex(event) != null
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -185,7 +186,8 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
             var previous = samples[0]
             for (index in 1 until samples.size) {
                 val current = samples[index]
-                strokePaint.strokeWidth = (widthFor(previous.pressure) + widthFor(current.pressure)) / 2f
+                strokePaint.strokeWidth =
+                    (widthFor(previous.pressure) + widthFor(current.pressure)) / 2f
                 canvas.drawLine(previous.x, previous.y, current.x, current.y, strokePaint)
                 previous = current
             }
@@ -219,8 +221,16 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
 
     private fun appendSample(event: MotionEvent, pointerIndex: Int, historyIndex: Int?) {
         val historical = historyIndex != null
-        val x = if (historical) event.getHistoricalX(pointerIndex, historyIndex!!) else event.getX(pointerIndex)
-        val y = if (historical) event.getHistoricalY(pointerIndex, historyIndex!!) else event.getY(pointerIndex)
+        val x = if (historical) {
+            event.getHistoricalX(pointerIndex, historyIndex!!)
+        } else {
+            event.getX(pointerIndex)
+        }
+        val y = if (historical) {
+            event.getHistoricalY(pointerIndex, historyIndex!!)
+        } else {
+            event.getY(pointerIndex)
+        }
         val pressure = if (historical) {
             event.getHistoricalPressure(pointerIndex, historyIndex!!)
         } else {
@@ -265,8 +275,12 @@ class NativeStudioInkOverlay @JvmOverloads constructor(
         val firstTime = samples.firstOrNull()?.eventTimeMillis ?: SystemClock.uptimeMillis()
         val values = JSONArray()
         samples.forEach { sample ->
-            val tiltX = Math.toDegrees((sample.tiltRadians * cos(sample.orientationRadians)).toDouble())
-            val tiltY = Math.toDegrees((sample.tiltRadians * sin(sample.orientationRadians)).toDouble())
+            val tiltX = Math.toDegrees(
+                (sample.tiltRadians * cos(sample.orientationRadians)).toDouble(),
+            )
+            val tiltY = Math.toDegrees(
+                (sample.tiltRadians * sin(sample.orientationRadians)).toDouble(),
+            )
             values.put(JSONObject().apply {
                 put("x", (sample.x / widthValue).coerceIn(0f, 1f).toDouble())
                 put("y", (sample.y / heightValue).coerceIn(0f, 1f).toDouble())
@@ -353,7 +367,7 @@ class NativeStudioHostLayout(context: Context) : FrameLayout(context) {
         if (overlay != null && overlay.studioEnabled && shouldRouteStylus(event, overlay)) {
             return dispatchOffset(event, overlay, hover = true)
         }
-        return webContent?.dispatchHoverEvent(event) ?: super.dispatchHoverEvent(event)
+        return super.dispatchHoverEvent(event)
     }
 
     private fun shouldRouteStylus(event: MotionEvent, overlay: NativeStudioInkOverlay): Boolean {
@@ -370,11 +384,15 @@ class NativeStudioHostLayout(context: Context) : FrameLayout(context) {
         return false
     }
 
-    private fun dispatchOffset(event: MotionEvent, overlay: NativeStudioInkOverlay, hover: Boolean): Boolean {
+    private fun dispatchOffset(
+        event: MotionEvent,
+        overlay: NativeStudioInkOverlay,
+        hover: Boolean,
+    ): Boolean {
         val copy = MotionEvent.obtain(event)
         copy.offsetLocation(-overlay.left.toFloat(), -overlay.top.toFloat())
         return try {
-            if (hover) overlay.dispatchHoverEvent(copy) else overlay.dispatchTouchEvent(copy)
+            if (hover) overlay.onHoverEvent(copy) else overlay.dispatchTouchEvent(copy)
         } finally {
             copy.recycle()
         }
