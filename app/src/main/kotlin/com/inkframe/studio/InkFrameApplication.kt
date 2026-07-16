@@ -97,7 +97,7 @@ private class NativeStudioController private constructor(
         destroyed = true
         contextMirror.clear()
         overlay.onStrokeComplete = null
-        overlay.clearConfiguration()
+        overlay.cancelStroke()
         webView.removeJavascriptInterface(BRIDGE_NAME)
     }
 
@@ -156,8 +156,15 @@ private class NativeStudioController private constructor(
 
         overlay.applyConfiguration(
             NativeStudioInkOverlay.Configuration(
-                context = snapshot,
+                enabled = snapshot.enabled && snapshot.hasDrawableTarget,
+                contextToken = snapshot.contextToken,
+                canvasWidth = snapshot.canvasWidth,
+                canvasHeight = snapshot.canvasHeight,
+                brushColor = snapshot.brush.colorArgb,
+                paperColor = snapshot.brush.paperColorArgb,
                 brushSizeDisplayPx = snapshot.brush.sizeCanvasPx.toFloat() * brushScale,
+                opacity = snapshot.brush.opacity.toFloat(),
+                circularCanvas = snapshot.shape == StudioCanvasShape.CIRCLE,
             ),
         )
         pendingConfiguration = null
@@ -165,7 +172,19 @@ private class NativeStudioController private constructor(
 
     private fun rejectConfiguration(reason: String, error: Throwable? = null) {
         contextMirror.clear()
-        overlay.clearConfiguration()
+        overlay.applyConfiguration(
+            NativeStudioInkOverlay.Configuration(
+                enabled = false,
+                contextToken = "",
+                canvasWidth = 1,
+                canvasHeight = 1,
+                brushColor = DEFAULT_INK_COLOR,
+                paperColor = DEFAULT_PAPER_COLOR,
+                brushSizeDisplayPx = 1f,
+                opacity = 1f,
+                circularCanvas = false,
+            ),
+        )
         if (error == null) {
             Log.w(TAG, "Ignoring studio canvas configuration: $reason")
         } else {
@@ -244,9 +263,15 @@ private class NativeStudioController private constructor(
         } catch (_: Throwable) {
             return null
         }
-        if (value.optInt("schema", 0) != StudioContextSnapshot.CURRENT_SCHEMA) return null
+        val schema = value.optInt("schema", 0)
+        if (schema == 1) {
+            val current = contextMirror.snapshot() ?: return null
+            if (value.optString("contextToken", "") != current.contextToken) return null
+            return current.strokeBinding()
+        }
+        if (schema != StudioContextSnapshot.CURRENT_SCHEMA) return null
         return StudioStrokeBinding(
-            schema = value.optInt("schema", 0),
+            schema = schema,
             contextToken = value.optString("contextToken", ""),
             contextRevision = value.optInt("contextRevision", -1),
             projectIndex = value.optInt("projectIndex", -1),
