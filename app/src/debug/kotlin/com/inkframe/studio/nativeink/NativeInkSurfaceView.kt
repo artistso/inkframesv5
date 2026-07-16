@@ -26,7 +26,7 @@ internal class NativeInkSurfaceView @JvmOverloads constructor(
         val samples: MutableList<InkSample> = ArrayList(),
     )
 
-    override val rootView: View
+    override val displayView: View
         get() = this
     override val rendererLabel: String = "BUFFERED VIEW · HWUI"
 
