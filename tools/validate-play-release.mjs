@@ -36,9 +36,11 @@ try {
 }
 
 requireCondition(metadata.packageName === 'com.inkframe.studio', 'Package name must remain com.inkframe.studio');
-requireCondition(Number.isInteger(metadata.targetSdk) && metadata.targetSdk >= 35, 'targetSdk must be API 35 or higher');
+requireCondition(Number.isInteger(metadata.targetSdk) && metadata.targetSdk >= 36, 'targetSdk must be API 36 or higher for the 2026 Play update');
 requireCondition(Number.isInteger(metadata.minSdk) && metadata.minSdk >= 26, 'minSdk must be API 26 or higher');
+requireCondition(Number.isInteger(metadata.versionCode) && metadata.versionCode > 0 && metadata.versionCode <= 2100000000, 'versionCode must be a positive Play-compatible integer');
 requireCondition(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(String(metadata.version || '')), 'Version must be semantic version format');
+requireCondition(/^\d{4}-\d{2}-\d{2}$/.test(String(metadata.releaseDate || '')), 'releaseDate must use YYYY-MM-DD');
 
 const language = read('app/src/main/play/default-language.txt');
 requireCondition(language === 'en-US', 'Default Play language must be en-US');
@@ -76,5 +78,5 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`✅ Google Play release package is valid for InkFrame ${metadata.version}`);
+console.log(`✅ Google Play release package is valid for InkFrame ${metadata.version} (${metadata.versionCode})`);
 console.log(`   package=${metadata.packageName} targetSdk=${metadata.targetSdk} minSdk=${metadata.minSdk}`);
