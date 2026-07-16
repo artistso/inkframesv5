@@ -1,6 +1,7 @@
 package com.inkframe.core.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -22,9 +23,7 @@ class LayerTest {
             name = "L",
             cels = mapOf(0 to Cel(surfaceId = 10), 5 to Cel(surfaceId = 20)),
         )
-        // Frames 1..4 hold cel from frame 0.
         assertEquals(10L, layer.celAt(3)?.surfaceId)
-        // Frames after 5 hold cel from frame 5.
         assertEquals(20L, layer.celAt(99)?.surfaceId)
     }
 
@@ -65,5 +64,82 @@ class LayerTest {
     @Test(expected = IllegalArgumentException::class)
     fun scene_requiresAtLeastOneFrame() {
         Scene(name = "S", frameCount = 0)
+    }
+}
+
+class StudioContextMirrorTest {
+    private fun context(
+        token: String = "p2-f7-l1",
+        frame: Int = 7,
+        layer: Int = 1,
+        count: Int = 3,
+        background: Boolean = false,
+        enabled: Boolean = true,
+        geometry: StudioCanvasGeometry = StudioCanvasGeometry(100.0, 40.0, 800.0, 400.0),
+        brush: StudioBrushContext = StudioBrushContext("pen", 0xff3366cc.toInt(), 0xfffff0f3.toInt(), 24.0, 0.75),
+    ) = StudioContextSnapshot(
+        schema = 2,
+        enabled = enabled,
+        contextToken = token,
+        baseContextToken = "base",
+        contextRevision = 4,
+        projectIndex = 2,
+        frameIndex = frame,
+        layerIndex = layer,
+        layerCount = count,
+        backgroundActive = background,
+        canvasWidth = 1000,
+        canvasHeight = 500,
+        shape = StudioCanvasShape.CIRCLE,
+        geometry = geometry,
+        brush = brush,
+    )
+
+    @Test
+    fun exactContextIsCapturedAndAccepted() {
+        val mirror = StudioContextMirror()
+        val current = context()
+        assertEquals(StudioContextUpdate.ACCEPTED_CHANGED, mirror.update(current))
+        assertEquals(current.strokeBinding(), mirror.captureStrokeBinding())
+        assertEquals(StudioStrokeValidation.ACCEPTED, mirror.validate(current.strokeBinding()))
+        assertEquals(StudioContextUpdate.ACCEPTED_UNCHANGED, mirror.update(current))
+        assertEquals(1L, mirror.generation)
+    }
+
+    @Test
+    fun frameLayerGeometryAndBrushChangesAreStale() {
+        val mirror = StudioContextMirror()
+        val current = context()
+        mirror.update(current)
+        listOf(
+            current.copy(frameIndex = 8),
+            current.copy(layerIndex = 2),
+            current.copy(geometry = StudioCanvasGeometry(101.0, 40.0, 800.0, 400.0)),
+            current.copy(brush = current.brush.copy(sizeCanvasPx = 25.0)),
+        ).forEach {
+            assertEquals(StudioStrokeValidation.STALE_CONTEXT, mirror.validate(it.strokeBinding()))
+        }
+    }
+
+    @Test
+    fun staticBackgroundIsSeparateAndDisabledTargetsDoNotCapture() {
+        val mirror = StudioContextMirror()
+        val background = context(token = "bg", layer = -1, background = true)
+        mirror.update(background)
+        assertEquals(StudioStrokeValidation.ACCEPTED, mirror.validate(background.strokeBinding()))
+        assertEquals(StudioStrokeValidation.STALE_CONTEXT, mirror.validate(context(layer = 0).strokeBinding()))
+        mirror.update(context(enabled = false))
+        assertNull(mirror.captureStrokeBinding())
+    }
+
+    @Test
+    fun invalidSnapshotDoesNotReplaceLastGoodContext() {
+        val mirror = StudioContextMirror()
+        val valid = context()
+        mirror.update(valid)
+        val invalid = valid.copy(layerIndex = 99, geometry = StudioCanvasGeometry(0.0, 0.0, 0.0, 1.0))
+        assertEquals(StudioContextUpdate.REJECTED_INVALID, mirror.update(invalid))
+        assertEquals(valid, mirror.snapshot())
+        assertNotNull(mirror.captureStrokeBinding())
     }
 }
