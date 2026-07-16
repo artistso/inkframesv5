@@ -159,4 +159,5 @@ assert.doesNotMatch(performanceSource,/localStorage/);
 assert.doesNotMatch(performanceSource,/fetch\(/);
 
 await import('./viewport-gestures.test.mjs');
-console.log('✅ Brush Engine V2 tablet-first Brush Lab and debug performance diagnostics tests passed');
+await import('./viewport-actual-pixels.test.mjs');
+console.log('✅ Brush Engine V2 tablet-first Brush Lab, viewport navigation, and debug performance diagnostics tests passed');
