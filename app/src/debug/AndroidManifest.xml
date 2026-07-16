@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application android:name=".DebugInkFrameApplication" tools:replace="android:name">
-        <activity android:name=".nativeink.NativeInkLabActivity" android:exported="true" android:hardwareAccelerated="true" android:label="InkFrame Native Ink Lab" android:screenOrientation="userLandscape" android:theme="@style/Theme.InkFrame">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+        <!-- Internal diagnostics only. The downloadable artist APK must expose one launcher:
+             SplashActivity -> MainActivity -> the complete InkFrame studio. -->
+        <activity
+            android:name=".nativeink.NativeInkLabActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:label="InkFrame Native Ink Lab"
+            android:screenOrientation="userLandscape"
+            android:theme="@style/Theme.InkFrame" />
     </application>
 </manifest>
