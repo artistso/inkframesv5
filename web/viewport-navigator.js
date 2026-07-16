@@ -93,19 +93,28 @@
     render(applied);return true;
   }
 
+  function navigatorPoint(clientX,clientY,rect){
+    let x=clamp((finite(clientX)-rect.left)/rect.width,0,1);
+    let y=clamp((finite(clientY)-rect.top)/rect.height,0,1);
+    if(shape()==='circle'){
+      const dx=x-.5,dy=y-.5,distance=Math.hypot(dx,dy);
+      if(distance>.5){const factor=.5/distance;x=.5+dx*factor;y=.5+dy*factor;}
+    }
+    return Object.freeze({x,y});
+  }
+
   function recenterAt(clientX,clientY){
     if(!canNavigate()||!navigator)return false;
     const state=env.getState()||{};
     const rect=navigator.getBoundingClientRect();
     if(!rect||rect.width<=0||rect.height<=0)return false;
-    const x=clamp((finite(clientX)-rect.left)/rect.width,0,1);
-    const y=clamp((finite(clientY)-rect.top)/rect.height,0,1);
+    const point=navigatorPoint(clientX,clientY,rect);
     const canvasWidth=Math.max(1,finite(state.canvasWidth,1));
     const canvasHeight=Math.max(1,finite(state.canvasHeight,1));
     const scale=Math.max(1e-6,finite(state.scale,1));
     return applyPan(
-      -(x*canvasWidth-canvasWidth/2)*scale,
-      -(y*canvasHeight-canvasHeight/2)*scale,
+      -(point.x*canvasWidth-canvasWidth/2)*scale,
+      -(point.y*canvasHeight-canvasHeight/2)*scale,
     );
   }
 
@@ -198,7 +207,7 @@
     root.addEventListener('resize',()=>render());
     if(root.MutationObserver){
       const observer=new root.MutationObserver(()=>render());
-      observer.observe(root.document.body,{attributes:true,attributeFilter:['class','data-canvas-shape']});
+      observer.observe(root.document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','aria-hidden','data-canvas-shape']});
     }
     installed=true;render();return true;
   }
