@@ -111,31 +111,33 @@ assert.doesNotMatch(source,/localStorage|sessionStorage/);
 assert.doesNotMatch(source,/fetch\(/);
 assert.doesNotMatch(source,/while\s*\(true\)/);
 
-// Golden-master product boundary: the full Glass Horizon studio remains present while
-// Kotlin replaces subsystems. The simplified native prototype is never a launcher.
+// Golden-master product boundary: stable selectors and runtimes that define the
+// original Glass Horizon studio must remain while Kotlin replaces subsystems.
 for(const marker of [
-  'id="stage"',
-  'id="frameGlass"',
-  'id="c"',
-  'id="frameBoard"',
+  '#stage',
+  '#frameGlass',
+  'canvas#c',
   '#frameBoard',
+  '.frameSlot',
   '.node',
   '.orb',
   '.kids',
-  'id="studio"',
-  'id="projectPanel"',
+  '#studio',
+  '#projectPanel',
 ]){
-  assert.ok(studioSource.includes(marker),`original studio golden-master marker missing: ${marker}`);
+  assert.ok(studioSource.includes(marker),`original studio golden-master selector missing: ${marker}`);
 }
-assert.ok(studioSource.includes('canvas#c'),'the original framed drawing canvas styling must remain');
 assert.ok(studioSource.includes('Circular Canvas')||injector.includes('inject-canvas-shape'),'square/circular canvas support must remain');
 assert.ok(injector.includes('radial-timeline'),'the circular timeline must remain in generated Android assets');
 assert.ok(injector.includes('viewport-gestures'),'the established viewport controls must remain in generated Android assets');
 
 assert.ok(manifest.includes('android:name=".InkFrameStudioApplication"'),'production must use the full-studio Kotlin application host');
 assert.equal((manifest.match(/android\.intent\.category\.LAUNCHER/g)||[]).length,1,'production must expose exactly one InkFrame launcher');
-const prototypeBlock=manifest.match(/<activity\s+[\s\S]*?android:name="\.nativeink\.NativeArtistActivity"[\s\S]*?\/>/)?.[0]||'';
-assert.ok(prototypeBlock,'the internal native prototype activity must remain explicitly declared');
+const prototypeStart=manifest.indexOf('android:name=".nativeink.NativeArtistActivity"');
+assert.ok(prototypeStart>=0,'the internal native prototype activity must remain explicitly declared');
+const prototypeEnd=manifest.indexOf('/>',prototypeStart);
+assert.ok(prototypeEnd>prototypeStart,'the internal native prototype declaration must remain bounded');
+const prototypeBlock=manifest.slice(prototypeStart,prototypeEnd+2);
 assert.ok(prototypeBlock.includes('android:exported="false"'),'the simplified native prototype must remain internal');
 assert.doesNotMatch(prototypeBlock,/MAIN|LAUNCHER/,'the simplified native prototype must never become a product launcher');
 assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.category\.LAUNCHER/,'the complete studio splash must remain the sole launcher');
