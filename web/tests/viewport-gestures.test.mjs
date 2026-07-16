@@ -1,4 +1,4 @@
-// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, and compact zoom UI
+// InkFrame viewport gestures — anchored pinch, event ownership, hand tool, compact UI, and modal isolation
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -98,6 +98,9 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.ok(dock,'tablet zoom dock must install');
   assert.equal(dock.querySelectorAll('button').length,7);
   assert.equal(dock.querySelector('.inkframe-viewport-percent').textContent,'160%');
+  assert.equal(api.dockOccluded,false);
+  assert.equal(dock.getAttribute('aria-hidden'),'false');
+  assert.equal(dock.hasAttribute('inert'),false);
 
   // The dock can collapse without hiding the two controls needed during drawing:
   // live zoom/Fit and the Hand tool.
@@ -127,6 +130,48 @@ function pointer(window,type,id,x,y,pointerType='touch'){
   assert.deepEqual(viewport,beforeKeyboardCollapse);
   window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'N',bubbles:true,cancelable:true}));
   assert.equal(api.dockCollapsed,false);
+
+  // Modal surfaces suspend the dock and its shortcuts without mutating Hand,
+  // compact, artwork, or viewport state. Closing restores the prior presentation.
+  const projectPanel=document.createElement('section');projectPanel.id='projectPanel';document.body.appendChild(projectPanel);
+  projectPanel.classList.add('show');
+  await Promise.resolve();
+  assert.equal(api.blockingSurfaceOpen(),true);
+  assert.equal(api.dockOccluded,true);
+  assert.equal(dock.classList.contains('occluded'),true);
+  assert.equal(dock.dataset.occluded,'true');
+  assert.equal(dock.getAttribute('aria-hidden'),'true');
+  assert.equal(dock.hasAttribute('inert'),true);
+  const beforeModalShortcuts={collapsed:api.dockCollapsed,pan:api.panMode,viewport:Object.assign({},viewport)};
+  window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'h',bubbles:true,cancelable:true}));
+  window.dispatchEvent(new window.KeyboardEvent('keydown',{key:'n',bubbles:true,cancelable:true}));
+  assert.equal(api.panMode,beforeModalShortcuts.pan);
+  assert.equal(api.dockCollapsed,beforeModalShortcuts.collapsed);
+  assert.deepEqual(viewport,beforeModalShortcuts.viewport);
+  projectPanel.classList.remove('show');
+  await Promise.resolve();
+  assert.equal(api.dockOccluded,false);
+  assert.equal(dock.classList.contains('occluded'),false);
+  assert.equal(dock.getAttribute('aria-hidden'),'false');
+  assert.equal(dock.hasAttribute('inert'),false);
+  assert.equal(api.dockCollapsed,beforeModalShortcuts.collapsed);
+
+  // Brush Lab and the generated offline Feedback panel are injected later and
+  // use hidden-state visibility rather than the host .show convention.
+  const brushLab=document.createElement('section');brushLab.id='inkframe-v2-tuning';brushLab.hidden=true;document.body.appendChild(brushLab);
+  brushLab.hidden=false;
+  await Promise.resolve();
+  assert.equal(api.dockOccluded,true);
+  brushLab.hidden=true;
+  await Promise.resolve();
+  assert.equal(api.dockOccluded,false);
+  const feedback=document.createElement('section');feedback.className='inkframe-feedback';feedback.hidden=true;document.body.appendChild(feedback);
+  feedback.hidden=false;
+  await Promise.resolve();
+  assert.equal(api.dockOccluded,true);
+  feedback.hidden=true;
+  await Promise.resolve();
+  assert.equal(api.dockOccluded,false);
 
   // Hand mode consumes the first touch before drawing and turns it into
   // one-finger canvas navigation. Pen input remains untouched.
@@ -206,6 +251,8 @@ assert.match(source,/inkframe-viewport-dock/);
 assert.match(source,/inkframe-viewport-hud/);
 assert.match(source,/inkframe-viewport-pan-mode/);
 assert.match(source,/inkframe-viewport-collapse/);
+assert.match(source,/inkframe-viewport-dock\.occluded/);
+assert.match(source,/blockingSurfaceOpen/);
 assert.match(source,/MutationObserver/);
 assert.match(source,/aria-expanded/);
 assert.match(source,/aria-pressed/);
@@ -216,4 +263,4 @@ assert.match(source,/pointercancel/);
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/touchstart|touchmove/,'Pointer Events remain the single gesture input model');
 
-console.log('✅ anchored pinch, hand pan, compact dock, gesture HUD, ownership, cancellation, Undo/Redo, and zoom UI tests passed');
+console.log('✅ anchored pinch, hand pan, compact dock, modal isolation, gesture HUD, ownership, cancellation, Undo/Redo, and zoom UI tests passed');
