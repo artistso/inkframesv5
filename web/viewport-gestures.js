@@ -7,6 +7,11 @@
   const point=value=>({x:finite(value&&value.clientX),y:finite(value&&value.clientY)});
   const midpoint=(a,b)=>({x:(finite(a&&a.x)+finite(b&&b.x))/2,y:(finite(a&&a.y)+finite(b&&b.y))/2});
   const distance=(a,b)=>Math.hypot(finite(a&&a.x)-finite(b&&b.x),finite(a&&a.y)-finite(b&&b.y));
+  const BLOCKING_SURFACE_SELECTOR='#studio,#projectPanel,#startPanel,#helpPanel,#inkframe-v2-tuning,.inkframe-feedback';
+  const BLOCKING_SURFACE_QUERIES=Object.freeze([
+    '#studio.show','#projectPanel.show','#startPanel.show','#helpPanel.show',
+    '#inkframe-v2-tuning:not([hidden])','.inkframe-feedback:not([hidden])',
+  ]);
 
   function anchoredViewport(state,startCentroid,currentCentroid,startDistance,currentDistance){
     const input=state||{};
@@ -70,6 +75,7 @@
   let gestureKind='';
   let panMode=false;
   let dockCollapsed=false;
+  let dockOccluded=false;
 
   const now=()=>root.performance&&typeof root.performance.now==='function'?root.performance.now():Date.now();
   const requestFrame=callback=>typeof root.requestAnimationFrame==='function'
@@ -82,7 +88,11 @@
   };
 
   function state(){return env&&typeof env.getState==='function'?env.getState():null;}
-  function canGesture(){return !!(env&&(!env.canGesture||env.canGesture()));}
+  function blockingSurfaceOpen(){
+    if(!root.document||typeof root.document.querySelector!=='function')return false;
+    return BLOCKING_SURFACE_QUERIES.some(selector=>!!root.document.querySelector(selector));
+  }
+  function canGesture(){return !blockingSurfaceOpen()&&!!(env&&(!env.canGesture||env.canGesture()));}
   function percentOfFit(value){
     const input=value||state(),fit=Math.max(1e-6,finite(input&&input.fitScale,1));
     return Math.round(finite(input&&input.scale,fit)/fit*100);
@@ -229,6 +239,39 @@
   }
   function toggleDockCollapsed(){return setDockCollapsed(!dockCollapsed);}
 
+  function syncDockOcclusion(){
+    const next=blockingSurfaceOpen();
+    dockOccluded=next;
+    if(dock){
+      dock.classList.toggle('occluded',dockOccluded);
+      dock.dataset.occluded=String(dockOccluded);
+      dock.setAttribute('aria-hidden',String(dockOccluded));
+      dock.toggleAttribute('inert',dockOccluded);
+      const active=root.document&&root.document.activeElement;
+      if(dockOccluded&&active&&dock.contains(active)&&typeof active.blur==='function')active.blur();
+    }
+    if(dockOccluded&&consumed)abortGesture();
+    return dockOccluded;
+  }
+  function isBlockingSurfaceNode(node){
+    return !!(node&&node.nodeType===1&&typeof node.matches==='function'&&node.matches(BLOCKING_SURFACE_SELECTOR));
+  }
+  function containsBlockingSurface(node){
+    return isBlockingSurfaceNode(node)||!!(node&&node.nodeType===1&&typeof node.querySelector==='function'&&node.querySelector(BLOCKING_SURFACE_SELECTOR));
+  }
+  function installSurfaceObserver(){
+    if(!root.MutationObserver||!root.document||!root.document.body)return false;
+    const observer=new root.MutationObserver(mutations=>{
+      const relevant=mutations.some(mutation=>{
+        if(mutation.type==='attributes')return isBlockingSurfaceNode(mutation.target);
+        return Array.from(mutation.addedNodes||[]).some(containsBlockingSurface);
+      });
+      if(relevant)syncDockOcclusion();
+    });
+    observer.observe(root.document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','aria-hidden']});
+    return true;
+  }
+
   function onPointerDown(event){
     if(!event||event.pointerType!=='touch')return;
     if(touches.size===0){startedAt=now();maxTouches=0;moved=false;cancelled=false;historyEligible=true;startPoints.clear();}
@@ -311,13 +354,14 @@
   function installUi(){
     const style=root.document.createElement('style');style.dataset.inkframeViewportStyle='true';
     style.textContent=`
-      #inkframe-viewport-dock{position:fixed;left:50%;top:max(54px,calc(env(safe-area-inset-top) + 48px));z-index:26;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(255,240,243,.34);border-radius:16px;background:rgba(28,4,24,.78);box-shadow:0 10px 28px rgba(12,0,10,.34),inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);touch-action:manipulation;transition:padding .16s ease,gap .16s ease,opacity .16s ease}
+      #inkframe-viewport-dock{position:fixed;left:50%;top:max(54px,calc(env(safe-area-inset-top) + 48px));z-index:26;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(255,240,243,.34);border-radius:16px;background:rgba(28,4,24,.78);box-shadow:0 10px 28px rgba(12,0,10,.34),inset 0 1px 0 rgba(255,255,255,.13);backdrop-filter:blur(16px) saturate(145%);-webkit-backdrop-filter:blur(16px) saturate(145%);touch-action:manipulation;transition:padding .16s ease,gap .16s ease,opacity .16s ease,transform .16s ease,visibility .16s ease}
       #inkframe-viewport-dock button{min-width:42px;height:40px;padding:0 10px;border:0;border-radius:11px;background:rgba(255,255,255,.07);color:#fff0f3;font:800 15px/1 system-ui;touch-action:manipulation}
       #inkframe-viewport-dock button:active{transform:scale(.95);background:rgba(247,202,201,.18)}
       #inkframe-viewport-dock button:focus-visible{outline:2px solid #fff0f3;outline-offset:2px}
       #inkframe-viewport-dock .inkframe-viewport-controls{display:flex;align-items:center;gap:4px}
       #inkframe-viewport-dock.collapsed .inkframe-viewport-controls{display:none}
       #inkframe-viewport-dock.collapsed{gap:3px;padding:4px}
+      #inkframe-viewport-dock.occluded{opacity:0!important;pointer-events:none!important;visibility:hidden;transform:translate(-50%,-12px) scale(.94)}
       #inkframe-viewport-dock .inkframe-viewport-collapse{min-width:32px;width:32px;padding:0;font-size:18px}
       #inkframe-viewport-dock .inkframe-viewport-percent{min-width:64px;font-size:12px;letter-spacing:.04em;background:linear-gradient(145deg,rgba(187,0,55,.78),rgba(105,0,78,.82))}
       #inkframe-viewport-dock .inkframe-viewport-fit{font-size:10px;letter-spacing:.07em;text-transform:uppercase}
@@ -356,6 +400,8 @@
       });
       observer.observe(root.document.body,{attributes:true,attributeFilter:['class']});
     }
+    installSurfaceObserver();
+    syncDockOcclusion();
     syncUi();
   }
 
@@ -378,6 +424,7 @@
     root.addEventListener('keydown',event=>{
       const target=event.target;
       if(target&&(/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)||target.isContentEditable))return;
+      if(blockingSurfaceOpen())return;
       if(!(event.ctrlKey||event.metaKey)){
         if((event.key==='h'||event.key==='H')&&!event.repeat){event.preventDefault();togglePanMode();}
         else if((event.key==='n'||event.key==='N')&&!event.repeat){event.preventDefault();toggleDockCollapsed();}
@@ -394,8 +441,8 @@
 
   const api=Object.freeze({
     clamp,midpoint,distance,anchoredViewport,translatedViewport,zoomAt,install,zoomBy,fit,center,
-    setPanMode,togglePanMode,setDockCollapsed,toggleDockCollapsed,abortGesture,
-    get panMode(){return panMode;},get dockCollapsed(){return dockCollapsed;},get installed(){return installed;}
+    setPanMode,togglePanMode,setDockCollapsed,toggleDockCollapsed,blockingSurfaceOpen,syncDockOcclusion,abortGesture,
+    get panMode(){return panMode;},get dockCollapsed(){return dockCollapsed;},get dockOccluded(){return dockOccluded;},get installed(){return installed;}
   });
   root.InkFrameViewportGestures=api;
   if(root.document){
