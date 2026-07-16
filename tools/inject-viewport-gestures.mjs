@@ -9,7 +9,8 @@ export function injectViewportGestures(html,replaceOnce){
     block(
       '<script src="canvas-shape.js"></script>',
       '<script src="viewport-gestures.js"></script>',
-      '<script src="viewport-actual-pixels.js"></script>'),
+      '<script src="viewport-actual-pixels.js"></script>',
+      '<script src="viewport-navigator.js"></script>'),
     'viewport gesture runtime scripts');
 
   html=replaceOnce(html,
