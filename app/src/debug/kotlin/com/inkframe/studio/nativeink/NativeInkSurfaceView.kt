@@ -3,30 +3,32 @@ package com.inkframe.studio.nativeink
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.PointF
 import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.max
 
 /**
- * Debug-only native S Pen surface.
+ * Debug-only native S Pen surface using the ordinary hardware-accelerated View pipeline.
  *
- * The high-frequency path consumes MotionEvent samples directly. No sample is
- * sent through WebView or a JavaScript bridge. Historical samples are retained
- * so the laboratory can expose the actual Android input density.
+ * The high-frequency path consumes MotionEvent samples directly. No sample is sent through
+ * WebView or a JavaScript bridge. Historical samples are retained so this renderer can be compared
+ * against the front-buffered experiment with the same input and telemetry model.
  */
-class NativeInkSurfaceView @JvmOverloads constructor(
+internal class NativeInkSurfaceView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-) : View(context, attrs, defStyleAttr) {
+) : View(context, attrs, defStyleAttr), InkLabSurface {
 
     private data class Stroke(
         val tool: InkTool,
         val samples: MutableList<InkSample> = ArrayList(),
     )
+
+    override val rootView: View
+        get() = this
+    override val rendererLabel: String = "BUFFERED VIEW · HWUI"
 
     private val metrics = InkMetrics()
     private val completedStrokes = ArrayDeque<Stroke>()
@@ -50,8 +52,8 @@ class NativeInkSurfaceView @JvmOverloads constructor(
         color = HOVER_COLOR
     }
 
-    var metricsListener: ((InkMetricsSnapshot) -> Unit)? = null
-    var showSamplePoints: Boolean = false
+    override var metricsListener: ((InkMetricsSnapshot) -> Unit)? = null
+    override var showSamplePoints: Boolean = false
         set(value) {
             field = value
             postInvalidateOnAnimation()
@@ -62,10 +64,10 @@ class NativeInkSurfaceView @JvmOverloads constructor(
         isFocusable = true
         isFocusableInTouchMode = true
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        contentDescription = "Native S Pen drawing laboratory"
+        contentDescription = "Buffered native S Pen drawing laboratory"
     }
 
-    fun clearInk() {
+    override fun clearInk() {
         completedStrokes.clear()
         activeStroke = null
         activePointerId = null
@@ -76,7 +78,23 @@ class NativeInkSurfaceView @JvmOverloads constructor(
         postInvalidateOnAnimation()
     }
 
-    fun metricsSnapshot(): InkMetricsSnapshot = metrics.snapshot()
+    override fun cancelActiveInput() {
+        cancelActiveStroke()
+    }
+
+    override fun metricsSnapshot(): InkMetricsSnapshot = metrics.snapshot()
+
+    override fun rendererReport(): String = buildString {
+        appendLine("renderer=buffered-view")
+        appendLine("pipeline=hardware-accelerated-hwui")
+        appendLine("requestUnbufferedDispatch=true")
+        appendLine("framePresentation=postInvalidateOnAnimation")
+    }
+
+    override fun release() {
+        cancelActiveStroke()
+        metricsListener = null
+    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val action = event.actionMasked
@@ -157,6 +175,7 @@ class NativeInkSurfaceView @JvmOverloads constructor(
 
     private fun beginStroke(event: MotionEvent, pointerIndex: Int, pointerId: Int) {
         if (activeStroke != null) cancelActiveStroke()
+        requestUnbufferedDispatch(event)
         val tool = toolFrom(event.getToolType(pointerIndex))
         activeStroke = Stroke(tool)
         activePointerId = pointerId
@@ -306,6 +325,7 @@ class NativeInkSurfaceView @JvmOverloads constructor(
             strokePaint.strokeWidth = (strokeWidth(previous.pressure) + strokeWidth(current.pressure)) / 2f
             canvas.drawLine(previous.x, previous.y, current.x, current.y, strokePaint)
             if (showSamplePoints && stroke.tool != InkTool.ERASER) {
+                pointPaint.color = if (current.historical) HISTORICAL_SAMPLE_COLOR else SAMPLE_COLOR
                 canvas.drawCircle(current.x, current.y, dp(1.25f), pointPaint)
             }
             previous = current
@@ -337,6 +357,7 @@ class NativeInkSurfaceView @JvmOverloads constructor(
         const val BACKGROUND_COLOR = 0xFF100A12.toInt()
         const val INK_COLOR = 0xFFFFE9F0.toInt()
         const val SAMPLE_COLOR = 0xFFFF4F91.toInt()
+        const val HISTORICAL_SAMPLE_COLOR = 0xFFFFA6C5.toInt()
         const val HOVER_COLOR = 0xFF71E6FF.toInt()
     }
 }
