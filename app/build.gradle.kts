@@ -9,9 +9,8 @@ plugins {
 }
 
 // --- Shared app metadata ---------------------------------------------------
-// web/metadata.json is the single source for the human version and Android SDK
-// surface that both the Web UI and APK build expose. Keep parsing dependency-free
-// so Gradle configuration stays fast and works before any app dependencies exist.
+// web/metadata.json is the single source for version identity and Android SDK
+// policy shared by the artist UI, APK, AAB, Play listing, and release workflows.
 val webMetadataFile = rootProject.file("web/metadata.json")
 fun webMetadataString(key: String): String? =
     Regex("\"$key\"[ ]*:[ ]*\"([^\"]+)\"")
@@ -24,14 +23,13 @@ fun webMetadataInt(key: String): Int? =
 
 // --- Versioning ------------------------------------------------------------
 val baseVersionName = webMetadataString("version") ?: "0.1.0"
-val metadataTargetSdk = webMetadataInt("targetSdk") ?: 35
+val metadataVersionCode = webMetadataInt("versionCode") ?: 1
+val metadataTargetSdk = webMetadataInt("targetSdk") ?: 36
 val metadataMinSdk = webMetadataInt("minSdk") ?: 26
-val versionCodeBase = 1
-val resolvedVersionCode: Int = run {
-    System.getenv("INKFRAME_VERSION_CODE")?.toIntOrNull()?.let { return@run it }
-    val ci = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
-    if (ci != null) versionCodeBase + ci else versionCodeBase
-}
+val resolvedVersionCode = System.getenv("INKFRAME_VERSION_CODE")
+    ?.toIntOrNull()
+    ?.takeIf { it > 0 }
+    ?: metadataVersionCode
 
 // --- Release signing -------------------------------------------------------
 val keystorePropsFile = rootProject.file("keystore.properties")
@@ -138,16 +136,15 @@ android {
 
     buildTypes {
         release {
-            // The WebView shell has no meaningful Kotlin surface to shrink, and
-            // R8 can break JavaScript bridge reachability. Keep release explicit.
+            // Keep shrinking disabled until the Kotlin-native studio surface and JavaScript bridge
+            // have explicit keep rules plus a complete physical regression pass.
             isMinifyEnabled = false
             isShrinkResources = false
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
-            // Debug keeps the canonical package name so RC APKs replace earlier
-            // test builds cleanly on the tablet.
+            // Debug keeps the canonical package name so RC APKs replace earlier test builds.
         }
     }
 
@@ -155,7 +152,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+        htmlReport = true
+        sarifReport = true
+    }
 
     // Debug and release receive independently generated web asset roots. This
     // prevents a release build from reusing a debug index containing telemetry.
@@ -173,6 +177,13 @@ android {
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.add("-Xjspecify-annotations=strict")
     }
 }
 
@@ -222,6 +233,7 @@ fun registerWebAssetPipeline(
         val indexInjectorInputs = files(
             injector,
             rootProject.file("tools/inject-canvas-shape.mjs"),
+            rootProject.file("tools/inject-viewport-gestures.mjs"),
             rootProject.file("tools/inject-onion-skin-studio.mjs"),
             rootProject.file("tools/inject-feedback-report.mjs"),
             rootProject.file("tools/inject-static-background.mjs"),
@@ -289,13 +301,13 @@ gradle.taskGraph.whenReady {
 dependencies {
     implementation(project(":core-model"))
     implementation(libs.androidx.core.ktx)
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.activity:activity-ktx:1.9.0")
-    implementation("androidx.webkit:webkit:1.11.0")
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.androidx.webkit)
 
     // The front-buffer renderer is a debug laboratory dependency only. Production release
     // artifacts retain the existing editor and do not package the experimental surface.
-    debugImplementation("androidx.graphics:graphics-core:1.0.4")
+    debugImplementation(libs.androidx.graphics.core)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -305,6 +317,13 @@ dependencies {
 run {
     val saJson = System.getenv("PLAY_SERVICE_ACCOUNT_JSON_FILE")
         ?: rootProject.file("play-service-account.json").takeIf { it.exists() }?.absolutePath
+    val requestedStatus = System.getenv("PLAY_RELEASE_STATUS")?.trim()?.lowercase()
+    val playReleaseStatus = when (requestedStatus) {
+        "completed" -> com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED
+        "inprogress", "in-progress" -> com.github.triplet.gradle.androidpublisher.ReleaseStatus.IN_PROGRESS
+        "halted" -> com.github.triplet.gradle.androidpublisher.ReleaseStatus.HALTED
+        else -> com.github.triplet.gradle.androidpublisher.ReleaseStatus.DRAFT
+    }
     play {
         if (saJson != null) {
             serviceAccountCredentials.set(file(saJson))
@@ -312,6 +331,6 @@ run {
             enabled.set(false)
         }
         track.set(System.getenv("PLAY_TRACK") ?: "internal")
-        releaseStatus.set(com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED)
+        releaseStatus.set(playReleaseStatus)
     }
 }
