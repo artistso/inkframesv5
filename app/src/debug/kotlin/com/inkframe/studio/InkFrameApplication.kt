@@ -14,11 +14,10 @@ import java.util.WeakHashMap
 /**
  * Debug-only native S Pen telemetry attachment.
  *
- * MainActivity remains the production WebView shell. This application callback
- * finds its WebView after creation, records MotionEvents without consuming them,
- * and exposes the latest native trace to Brush Engine V2 exports.
+ * The production InkFrameApplication still installs the full-studio native canvas overlay. This
+ * debug subclass adds non-consuming MotionEvent telemetry and the diagnostics JavaScript bridge.
  */
-class InkFrameApplication : Application(), Application.ActivityLifecycleCallbacks {
+class DebugInkFrameApplication : InkFrameApplication(), Application.ActivityLifecycleCallbacks {
     private val attachments = WeakHashMap<WebView, Attachment>()
 
     override fun onCreate() {
@@ -47,9 +46,8 @@ class InkFrameApplication : Application(), Application.ActivityLifecycleCallback
             false
         }
 
-        // addJavascriptInterface becomes visible on the next page load. The
-        // Activity has already requested the bundled index, so reload exactly
-        // once after attachment while the debug app is still starting.
+        // addJavascriptInterface becomes visible on the next page load. The full-studio host also
+        // performs one startup reload; this post executes only after the telemetry bridge exists.
         webView.post { webView.reload() }
     }
 
