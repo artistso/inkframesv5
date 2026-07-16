@@ -6,6 +6,9 @@ import com.inkframe.core.model.StudioPlaybackSnapshot
 import com.inkframe.core.model.StudioProjectReconciliationMirror
 import com.inkframe.core.model.StudioProjectReconciliationSnapshot
 import com.inkframe.core.model.StudioProjectReconciliationUpdate
+import com.inkframe.core.model.StudioTimelineExposureMirror
+import com.inkframe.core.model.StudioTimelineExposureSnapshot
+import com.inkframe.core.model.StudioTimelineExposureUpdate
 import org.json.JSONObject
 
 /**
@@ -14,16 +17,28 @@ import org.json.JSONObject
  */
 internal class StudioProjectReconciliationController {
     private val mirror = StudioProjectReconciliationMirror()
+    private val timelineMirror = StudioTimelineExposureMirror()
 
+    @Synchronized
     fun update(value: JSONObject, context: StudioContextSnapshot): Boolean {
         val candidate = parse(value, context) ?: return false
         if (!candidate.matches(context)) return false
-        return mirror.update(candidate) != StudioProjectReconciliationUpdate.REJECTED_INVALID
+        val timeline = StudioTimelineExposureSnapshot.from(candidate) ?: return false
+        val projectUpdate = mirror.update(candidate)
+        val timelineUpdate = timelineMirror.update(timeline)
+        return projectUpdate != StudioProjectReconciliationUpdate.REJECTED_INVALID &&
+            timelineUpdate != StudioTimelineExposureUpdate.REJECTED_INVALID
     }
 
     fun snapshot(): StudioProjectReconciliationSnapshot? = mirror.snapshot()
 
-    fun clear() = mirror.clear()
+    fun timelineSnapshot(): StudioTimelineExposureSnapshot? = timelineMirror.snapshot()
+
+    @Synchronized
+    fun clear() {
+        mirror.clear()
+        timelineMirror.clear()
+    }
 
     private fun parse(
         value: JSONObject,
