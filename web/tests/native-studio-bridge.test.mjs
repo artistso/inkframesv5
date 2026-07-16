@@ -13,6 +13,7 @@ const web=resolve(here,'..');
 const root=resolve(web,'..');
 const source=readFileSync(resolve(web,'native-studio-bridge.js'),'utf8');
 const injector=readFileSync(resolve(root,'tools/inject-brush-v2-index.mjs'),'utf8');
+const applicationSource=readFileSync(resolve(root,'app/src/main/kotlin/com/inkframe/studio/InkFrameApplication.kt'),'utf8');
 const studioSource=readFileSync(resolve(web,'index.html'),'utf8');
 const manifest=readFileSync(resolve(root,'app/src/main/AndroidManifest.xml'),'utf8');
 const radialPath=resolve(web,'radial-timeline.js');
@@ -40,6 +41,8 @@ window.InkFrameBrushV2InputBridge={
   end(event){calls.push(['end',event]);return true;},
 };
 const brushEnvironment={id:'existing-project-environment'};
+let layerState={count:3,active:2,background:false};
+window.InkFrameTabletDeckEnvironment=()=>({layerSnapshot:()=>({...layerState})});
 window.InkFrameNativeStudioEnvironment=()=>({
   canvas,
   brushEnvironment,
@@ -52,7 +55,7 @@ window.InkFrameNativeStudioEnvironment=()=>({
   canvasShape:'circle',
   projectIndex:2,
   frameIndex:7,
-  contextToken:'2|7|1000|500|soft-pen|#ff4f91|24|0.75|circle',
+  contextToken:'project-2|frame-7|brush-state',
   supported:true,
 });
 window.eval(source);
@@ -60,6 +63,7 @@ await new Promise(resolveWait=>window.requestAnimationFrame(resolveWait));
 
 assert.ok(configurations.length>=1,'native bridge must publish the original canvas bounds');
 const state=configurations.at(-1);
+assert.equal(state.schema,2);
 assert.equal(state.enabled,true);
 assert.equal(state.left,100);
 assert.equal(state.top,40);
@@ -68,21 +72,43 @@ assert.equal(state.height,400);
 assert.equal(state.canvasWidth,1000);
 assert.equal(state.canvasHeight,500);
 assert.equal(state.shape,'circle');
-assert.equal(state.contextToken,'2|7|1000|500|soft-pen|#ff4f91|24|0.75|circle');
+assert.equal(state.projectIndex,2);
+assert.equal(state.frameIndex,7);
+assert.equal(state.layerIndex,1);
+assert.equal(state.layerCount,3);
+assert.equal(state.backgroundActive,false);
+assert.equal(state.contextRevision,0);
+assert.match(state.contextToken,/project-2\|frame-7\|brush-state/);
+assert.match(state.contextToken,/layer:1\/3/);
+assert.match(state.contextToken,/geometry:100\.000,40\.000,800\.000,400\.000/);
 
-const payload={
-  schema:1,
-  contextToken:state.contextToken,
-  pointerId:31,
-  eraser:false,
-  samples:[
-    {x:.1,y:.2,pressure:.25,tiltX:2,tiltY:3,twist:4,dt:0},
-    {x:.5,y:.5,pressure:.6,tiltX:4,tiltY:5,twist:6,dt:4},
-    {x:.9,y:.8,pressure:1,tiltX:6,tiltY:7,twist:8,dt:8},
-  ],
-};
+function payloadFor(context,overrides={}){
+  return {
+    schema:2,
+    contextToken:context.contextToken,
+    contextRevision:context.contextRevision,
+    projectIndex:context.projectIndex,
+    frameIndex:context.frameIndex,
+    layerIndex:context.layerIndex,
+    layerCount:context.layerCount,
+    backgroundActive:context.backgroundActive,
+    pointerId:31,
+    eraser:false,
+    samples:[
+      {x:.1,y:.2,pressure:.25,tiltX:2,tiltY:3,twist:4,dt:0},
+      {x:.5,y:.5,pressure:.6,tiltX:4,tiltY:5,twist:6,dt:4},
+      {x:.9,y:.8,pressure:1,tiltX:6,tiltY:7,twist:8,dt:8},
+    ],
+    ...overrides,
+  };
+}
+
+const payload=payloadFor(state);
 const replay=JSON.parse(window.InkFrameNativeStudio.replayStroke(JSON.stringify(payload)));
 assert.equal(replay.ok,true);
+assert.equal(replay.projectIndex,2);
+assert.equal(replay.frameIndex,7);
+assert.equal(replay.layerIndex,1);
 assert.deepEqual(calls.map(value=>value[0]),['begin','move','end']);
 assert.equal(calls[0][2],brushEnvironment,'completed native ink must enter the established Brush V2 environment');
 assert.equal(calls[0][1].clientX,180);
@@ -93,9 +119,32 @@ assert.equal(calls[2][1].clientX,820);
 assert.equal(calls[2][1].clientY,360);
 assert.equal(calls[0][1].pointerType,'pen');
 
-const rejected=JSON.parse(window.InkFrameNativeStudio.replayStroke(JSON.stringify({...payload,contextToken:'different-frame'})));
-assert.equal(rejected.ok,false);
-assert.equal(rejected.reason,'studio-context-changed');
+layerState={count:3,active:1,background:false};
+window.dispatchEvent(new window.Event('inkframe:layers'));
+await new Promise(resolveWait=>window.requestAnimationFrame(resolveWait));
+const layerChanged=configurations.at(-1);
+assert.equal(layerChanged.layerIndex,0);
+assert.equal(layerChanged.contextRevision,1);
+assert.notEqual(layerChanged.contextToken,state.contextToken);
+const stale=JSON.parse(window.InkFrameNativeStudio.replayStroke(JSON.stringify(payload)));
+assert.equal(stale.ok,false);
+assert.equal(stale.reason,'studio-context-changed','a stroke from the prior layer must never enter history');
+
+const explicitMismatch=JSON.parse(window.InkFrameNativeStudio.replayStroke(JSON.stringify(payloadFor(layerChanged,{layerIndex:2}))));
+assert.equal(explicitMismatch.ok,false);
+assert.equal(explicitMismatch.reason,'studio-context-changed');
+
+const fresh=JSON.parse(window.InkFrameNativeStudio.replayStroke(JSON.stringify(payloadFor(layerChanged))));
+assert.equal(fresh.ok,true);
+assert.equal(fresh.layerIndex,0);
+
+layerState={count:3,active:0,background:true};
+window.dispatchEvent(new window.Event('inkframe:layers'));
+await new Promise(resolveWait=>window.requestAnimationFrame(resolveWait));
+const backgroundState=configurations.at(-1);
+assert.equal(backgroundState.backgroundActive,true);
+assert.equal(backgroundState.layerIndex,-1);
+assert.match(backgroundState.contextToken,/layer:background/);
 
 const modal=window.document.createElement('div');
 modal.id='projectPanel';
@@ -108,10 +157,17 @@ assert.ok(injector.includes('<script src="native-studio-bridge.js"></script>'));
 assert.ok(injector.indexOf('brush-engine-v2/input.js')<injector.indexOf('native-studio-bridge.js'));
 assert.ok(injector.includes('window.InkFrameNativeStudioEnvironment'));
 assert.ok(injector.includes('brushEnvironment:makeBrushV2Env()'));
+assert.match(source,/CONFIG_SCHEMA = 2/);
+assert.match(source,/layerSnapshot/);
+assert.match(source,/contextRevision/);
+assert.match(source,/inkframe:layers/);
+assert.match(source,/studio-context-changed/);
 assert.doesNotMatch(source,/setInterval/);
 assert.doesNotMatch(source,/localStorage|sessionStorage/);
 assert.doesNotMatch(source,/fetch\(/);
 assert.doesNotMatch(source,/while\s*\(true\)/);
+assert.match(applicationSource,/bridgeVersion\(\): Int = 2/);
+assert.match(applicationSource,/schema != 1 && schema != 2/);
 
 // Golden-master product boundary: stable selectors and runtimes that define the
 // original Glass Horizon studio must remain while Kotlin replaces subsystems.
@@ -146,4 +202,4 @@ assert.doesNotMatch(prototypeBlock,/MAIN|LAUNCHER/,'the simplified native protot
 assert.match(manifest,/android:name="\.SplashActivity"[\s\S]*?android\.intent\.category\.LAUNCHER/,'the complete studio splash must remain the sole launcher');
 
 window.close();
-console.log('✅ full-studio native S Pen overlay, golden-master chrome, single-launcher, and original Brush V2 commit-path tests passed');
+console.log('✅ native S Pen exact project/frame/layer binding, golden-master chrome, and original commit-path tests passed');
