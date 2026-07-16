@@ -10,6 +10,7 @@ import com.inkframe.core.model.StudioProjectReconciliationUpdate
 import com.inkframe.core.model.StudioTimelineExposureMirror
 import com.inkframe.core.model.StudioTimelineExposureSnapshot
 import com.inkframe.core.model.StudioTimelineExposureUpdate
+import com.inkframe.studio.nativeink.StudioArtistCanvasStatusStore
 import org.json.JSONObject
 
 /**
@@ -27,8 +28,10 @@ internal class StudioProjectReconciliationController {
         val timeline = StudioTimelineExposureSnapshot.from(candidate) ?: return false
         val projectUpdate = mirror.update(candidate)
         val timelineUpdate = timelineMirror.update(timeline)
-        return projectUpdate != StudioProjectReconciliationUpdate.REJECTED_INVALID &&
+        val accepted = projectUpdate != StudioProjectReconciliationUpdate.REJECTED_INVALID &&
             timelineUpdate != StudioTimelineExposureUpdate.REJECTED_INVALID
+        if (accepted) StudioArtistCanvasStatusStore.update(StudioArtistCanvasStatus.from(candidate, timeline))
+        return accepted
     }
 
     fun snapshot(): StudioProjectReconciliationSnapshot? = mirror.snapshot()
@@ -45,6 +48,7 @@ internal class StudioProjectReconciliationController {
     fun clear() {
         mirror.clear()
         timelineMirror.clear()
+        StudioArtistCanvasStatusStore.clear()
     }
 
     private fun parse(
