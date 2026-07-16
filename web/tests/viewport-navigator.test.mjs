@@ -63,6 +63,8 @@ assert.equal(visible.style.width,'50%');
 assert.equal(visible.style.height,'37.5%');
 assert.match(navigator.getAttribute('aria-label'),/19% visible/);
 
+document.body.dataset.canvasShape='square';api.render(viewport);
+assert.ok(!navigator.classList.contains('circle'),'navigator must return to rectangular project geometry');
 navigator.getBoundingClientRect=()=>({left:100,top:100,width:150,height:104,right:250,bottom:204});
 function pointer(type,x,y,pointerType='touch',pointerId=7){
   const event=new window.MouseEvent(type,{clientX:x,clientY:y,bubbles:true,cancelable:true});
