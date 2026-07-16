@@ -4,6 +4,7 @@
 (function(root){
   const finite=(value,fallback=0)=>Number.isFinite(Number(value))?Number(value):fallback;
   const clamp=(value,min,max)=>Math.max(min,Math.min(max,finite(value,min)));
+  const BLOCKING_SURFACE_SELECTOR='#studio,#projectPanel,#startPanel,#helpPanel,#inkframe-v2-tuning,.inkframe-feedback';
   let env=null;
   let gestures=null;
   let navigator=null;
@@ -50,6 +51,14 @@
   function shape(){
     const body=root.document&&root.document.body;
     return body&&body.dataset&&body.dataset.canvasShape==='circle'?'circle':'square';
+  }
+
+  function isBlockingSurfaceNode(node){
+    return !!(node&&node.nodeType===1&&typeof node.matches==='function'&&node.matches(BLOCKING_SURFACE_SELECTOR));
+  }
+
+  function containsBlockingSurface(node){
+    return isBlockingSurfaceNode(node)||!!(node&&node.nodeType===1&&typeof node.querySelector==='function'&&node.querySelector(BLOCKING_SURFACE_SELECTOR));
   }
 
   function render(value){
@@ -167,6 +176,19 @@
     if(handled)consume(event);
   }
 
+  function installSurfaceObserver(){
+    if(!root.MutationObserver||!root.document||!root.document.body)return false;
+    const observer=new root.MutationObserver(mutations=>{
+      const relevant=mutations.some(mutation=>{
+        if(mutation.type==='attributes')return mutation.target===root.document.body||isBlockingSurfaceNode(mutation.target);
+        return Array.from(mutation.addedNodes||[]).some(containsBlockingSurface);
+      });
+      if(relevant)render();
+    });
+    observer.observe(root.document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','aria-hidden','data-canvas-shape']});
+    return true;
+  }
+
   function install(){
     if(installed)return true;
     if(!root.document||!root.document.body)return false;
@@ -205,10 +227,7 @@
     navigator.addEventListener('keydown',onKeyDown);
     root.addEventListener('inkframe:viewportchange',event=>render(event&&event.detail));
     root.addEventListener('resize',()=>render());
-    if(root.MutationObserver){
-      const observer=new root.MutationObserver(()=>render());
-      observer.observe(root.document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','aria-hidden','data-canvas-shape']});
-    }
+    installSurfaceObserver();
     installed=true;render();return true;
   }
 
