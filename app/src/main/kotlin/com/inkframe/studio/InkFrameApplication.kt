@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
  * surface and installs the coarse JavaScript bridge used to replay completed strokes through the
  * original Brush Engine V2 project/frame/layer model.
  */
-class InkFrameApplication : Application(), Application.ActivityLifecycleCallbacks {
+open class InkFrameApplication : Application(), Application.ActivityLifecycleCallbacks {
     private val controllers = WeakHashMap<Activity, NativeStudioController>()
 
     override fun onCreate() {
