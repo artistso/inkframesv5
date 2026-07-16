@@ -46,9 +46,17 @@ class StudioTimelineExposureTest {
         ),
     )
 
+    private fun timeline(value: StudioProjectReconciliationSnapshot): StudioTimelineExposureSnapshot =
+        requireNotNull(StudioTimelineExposureSnapshot.from(value))
+
+    private fun frameState(
+        timeline: StudioTimelineExposureSnapshot,
+        frameIndex: Int,
+    ): StudioTimelineFrameState = requireNotNull(timeline.frameState(frameIndex))
+
     @Test
     fun derivesSelectionRangesExposureAndActiveCel() {
-        val timeline = assertNotNull(StudioTimelineExposureSnapshot.from(project()))
+        val timeline = timeline(project())
         assertEquals(StudioPlaybackRange(1, 9), timeline.playbackRange)
         assertEquals(
             listOf(
@@ -64,9 +72,7 @@ class StudioTimelineExposureTest {
 
     @Test
     fun exposureClampsAtTimelineEnd() {
-        val timeline = assertNotNull(
-            StudioTimelineExposureSnapshot.from(project(activeFrame = 11, hold = 4, rangeEnd = 11)),
-        )
+        val timeline = timeline(project(activeFrame = 11, hold = 4, rangeEnd = 11))
         assertEquals(11, timeline.declaredExposure.endFrameIndex)
         assertEquals(1, timeline.declaredExposure.visibleFrameCount)
         assertEquals(4, timeline.declaredExposure.holdFrames)
@@ -74,21 +80,21 @@ class StudioTimelineExposureTest {
 
     @Test
     fun frameStateSeparatesActiveSelectedRangeAndExposure() {
-        val timeline = assertNotNull(StudioTimelineExposureSnapshot.from(project()))
-        val active = assertNotNull(timeline.frameState(4))
+        val timeline = timeline(project())
+        val active = frameState(timeline, 4)
         assertTrue(active.active)
         assertTrue(active.selected)
         assertTrue(active.insidePlaybackRange)
         assertTrue(active.insideDeclaredExposure)
         assertNotNull(active.activeCelAddress)
 
-        val held = assertNotNull(timeline.frameState(6))
+        val held = frameState(timeline, 6)
         assertFalse(held.active)
         assertFalse(held.selected)
         assertTrue(held.insideDeclaredExposure)
         assertNull(held.activeCelAddress)
 
-        val outside = assertNotNull(timeline.frameState(10))
+        val outside = frameState(timeline, 10)
         assertFalse(outside.insidePlaybackRange)
         assertFalse(outside.insideDeclaredExposure)
         assertNull(timeline.frameState(12))
@@ -96,18 +102,18 @@ class StudioTimelineExposureTest {
 
     @Test
     fun transportPreviewLoopsOrClampsWithoutMutation() {
-        val looping = assertNotNull(StudioTimelineExposureSnapshot.from(project(activeFrame = 9)))
+        val looping = timeline(project(activeFrame = 9))
         assertEquals(1, looping.steppedFrameIndex(1))
         assertEquals(8, looping.steppedFrameIndex(-1))
 
-        val clamped = assertNotNull(StudioTimelineExposureSnapshot.from(project(activeFrame = 9, loop = false)))
+        val clamped = timeline(project(activeFrame = 9, loop = false))
         assertEquals(9, clamped.steppedFrameIndex(1))
         assertEquals(1, clamped.copy(activeFrameIndex = 1).steppedFrameIndex(-1))
     }
 
     @Test
     fun backgroundAddressRemainsExplicit() {
-        val timeline = assertNotNull(StudioTimelineExposureSnapshot.from(project(background = true)))
+        val timeline = timeline(project(background = true))
         assertEquals(
             StudioCelAddress(2, 0, 4, StudioContextSnapshot.BACKGROUND_LAYER_INDEX, true),
             timeline.activeCelAddress,
@@ -117,7 +123,7 @@ class StudioTimelineExposureTest {
     @Test
     fun mirrorPreservesLastValidTimeline() {
         val mirror = StudioTimelineExposureMirror()
-        val first = assertNotNull(StudioTimelineExposureSnapshot.from(project()))
+        val first = timeline(project())
         assertEquals(StudioTimelineExposureUpdate.ACCEPTED_CHANGED, mirror.update(first))
         assertEquals(StudioTimelineExposureUpdate.ACCEPTED_UNCHANGED, mirror.update(first))
         val invalid = first.copy(activeFrameIndex = 99)
