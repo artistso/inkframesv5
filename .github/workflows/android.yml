@@ -148,13 +148,18 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
       - name: Run unit tests
-        run: ./gradlew test --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew test --stacktrace --console=plain 2>&1 | tee gradle-test.log
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: '**/build/reports/tests/'
+          path: |
+            **/build/reports/tests/
+            gradle-test.log
           if-no-files-found: ignore
           retention-days: 14
 
@@ -274,6 +279,14 @@ jobs:
           fi
           if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'InkFrameApplication'; then
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'NativeInkLabActivity'; then
+            echo "Production manifest unexpectedly registers the native ink laboratory" >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -F 'libgraphics-core.so'; then
+            echo "Production APK unexpectedly packages the debug-only graphics-core native library" >&2
             exit 1
           fi
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
