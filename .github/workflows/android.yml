@@ -148,13 +148,18 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
       - name: Run unit tests
-        run: ./gradlew test --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew test --stacktrace --console=plain 2>&1 | tee gradle-test.log
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: '**/build/reports/tests/'
+          path: |
+            **/build/reports/tests/
+            gradle-test.log
           if-no-files-found: ignore
           retention-days: 14
 
