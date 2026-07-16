@@ -65,6 +65,7 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/ghost-runtime.js"></script>
 <script src="brush-engine-v2/performance.js"></script>
 <script src="brush-engine-v2/input.js"></script>
+<script src="native-studio-bridge.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
 <script src="brush-engine-v2/ghost-ui.js"></script>
@@ -127,6 +128,32 @@ const helper = `  // Android runtime bridge for Brush Engine V2. This is injecte
     };
   }
   window.InkFrameBrushV2Environment=()=>makeBrushV2Env();
+  window.InkFrameNativeStudioEnvironment=()=>{
+    const project=projects[pi]||{};
+    const syntheticPen={
+      pointerId:1,pointerType:'pen',pressure:.5,buttons:1,button:0,
+      clientX:0,clientY:0,timeStamp:performance.now(),preventDefault(){}
+    };
+    const supported=!!(window.InkFrameBrushV2Adapter &&
+      window.InkFrameBrushV2Adapter.shouldHandle(brush.id,syntheticPen));
+    const canvasShape=project.canvasShape==='circle'?'circle':'square';
+    const contextToken=[pi,cur,W,H,brush.id,color,size,opacity,canvasShape].join('|');
+    return {
+      canvas,
+      brushEnvironment:makeBrushV2Env(),
+      width:W,
+      height:H,
+      brushId:brush.id,
+      color,
+      size,
+      opacity,
+      canvasShape,
+      projectIndex:pi,
+      frameIndex:cur,
+      contextToken,
+      supported
+    };
+  };
 
 ${helperNeedle}`;
 html = replaceOnce(html, helperNeedle, helper, 'V2 environment bridge');
@@ -188,12 +215,14 @@ const requiredMarkers = [
   'makeBrushV2Env()',
   'coordinateTransform:inputTransform',
   'InkFrameBrushV2Environment',
+  'InkFrameNativeStudioEnvironment',
   'InkFrameBrushV2Adapter.begin',
   'InkFrameBrushV2Adapter.move',
   'InkFrameBrushV2Adapter.end',
   'InkFrameBrushV2InputBridge.begin',
   'InkFrameBrushV2InputBridge.move',
   'InkFrameBrushV2InputBridge.end',
+  'native-studio-bridge.js',
   'brush-engine-v2/batch.js',
   'brush-engine-v2/contact.js',
   'brush-engine-v2/stabilizer.js',
