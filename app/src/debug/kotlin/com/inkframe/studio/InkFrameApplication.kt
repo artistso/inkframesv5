@@ -14,10 +14,10 @@ import java.util.WeakHashMap
 /**
  * Debug-only native S Pen telemetry attachment.
  *
- * The production InkFrameApplication still installs the full-studio native canvas overlay. This
- * debug subclass adds non-consuming MotionEvent telemetry and the diagnostics JavaScript bridge.
+ * The production InkFrameStudioApplication still installs the full-studio native canvas overlay.
+ * This debug subclass adds non-consuming MotionEvent telemetry and the diagnostics JavaScript bridge.
  */
-class DebugInkFrameApplication : InkFrameApplication(), Application.ActivityLifecycleCallbacks {
+class DebugInkFrameApplication : InkFrameStudioApplication(), Application.ActivityLifecycleCallbacks {
     private val attachments = WeakHashMap<WebView, Attachment>()
 
     override fun onCreate() {
