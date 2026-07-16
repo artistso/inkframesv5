@@ -47,21 +47,11 @@ class NativeProjectRepository private constructor(
         val backup = File(directory, BACKUP_FILE_NAME)
         if (!target.exists() && !backup.exists()) return null
 
-        if (target.exists()) {
-            try {
-                return NativeProjectLoad(
-                    project = NativeProjectCodec.decode(target.readBytes()),
-                    recoveredFromBackup = false,
-                )
-            } catch (_: Throwable) {
-                // Fall through to the last fully committed generation.
-            }
+        decodeOrQuarantine(target)?.let { project ->
+            return NativeProjectLoad(project = project, recoveredFromBackup = false)
         }
-        if (backup.exists()) {
-            return NativeProjectLoad(
-                project = NativeProjectCodec.decode(backup.readBytes()),
-                recoveredFromBackup = true,
-            )
+        decodeOrQuarantine(backup)?.let { project ->
+            return NativeProjectLoad(project = project, recoveredFromBackup = true)
         }
         return null
     }
@@ -76,6 +66,20 @@ class NativeProjectRepository private constructor(
 
     internal fun currentFileForTests(): File = File(directory, CURRENT_FILE_NAME)
     internal fun backupFileForTests(): File = File(directory, BACKUP_FILE_NAME)
+
+    private fun decodeOrQuarantine(file: File): NativeProject? {
+        if (!file.exists()) return null
+        return try {
+            NativeProjectCodec.decode(file.readBytes())
+        } catch (_: Throwable) {
+            val quarantine = File(
+                directory,
+                "${file.name}.corrupt-${System.currentTimeMillis()}",
+            )
+            file.renameTo(quarantine)
+            null
+        }
+    }
 
     private fun ensureDirectory() {
         check(directory.exists() || directory.mkdirs()) { "Unable to create native project directory" }
