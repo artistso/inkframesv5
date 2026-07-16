@@ -281,6 +281,14 @@ jobs:
             echo "Production manifest unexpectedly registers the debug telemetry application" >&2
             exit 1
           fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'NativeInkLabActivity'; then
+            echo "Production manifest unexpectedly registers the native ink laboratory" >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -F 'libgraphics-core.so'; then
+            echo "Production APK unexpectedly packages the debug-only graphics-core native library" >&2
+            exit 1
+          fi
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
       - name: Explain verification key scope
         run: |
