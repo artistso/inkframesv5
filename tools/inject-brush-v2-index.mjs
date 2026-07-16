@@ -66,6 +66,7 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/performance.js"></script>
 <script src="brush-engine-v2/input.js"></script>
 <script src="native-studio-bridge.js"></script>
+<script src="artist-canvas-ui.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
 <script src="brush-engine-v2/ghost-ui.js"></script>
@@ -223,6 +224,7 @@ const requiredMarkers = [
   'InkFrameBrushV2InputBridge.move',
   'InkFrameBrushV2InputBridge.end',
   'native-studio-bridge.js',
+  'artist-canvas-ui.js',
   'brush-engine-v2/batch.js',
   'brush-engine-v2/contact.js',
   'brush-engine-v2/stabilizer.js',
