@@ -8,35 +8,33 @@ plugins {
     alias(libs.plugins.play.publisher)
 }
 
-// --- Shared app metadata ---------------------------------------------------
-// web/metadata.json is the single source for the human version and Android SDK
-// surface that both the Web UI and APK build expose. Keep parsing dependency-free
-// so Gradle configuration stays fast and works before any app dependencies exist.
-val webMetadataFile = rootProject.file("web/metadata.json")
-fun webMetadataString(key: String): String? =
-    Regex("\"$key\"[ ]*:[ ]*\"([^\"]+)\"")
-        .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
-        ?.groupValues?.getOrNull(1)
-fun webMetadataInt(key: String): Int? =
-    Regex("\"$key\"[ ]*:[ ]*([0-9]+)")
-        .find(webMetadataFile.takeIf { it.exists() }?.readText() ?: "")
-        ?.groupValues?.getOrNull(1)?.toIntOrNull()
-
-// --- Versioning ------------------------------------------------------------
-val baseVersionName = webMetadataString("version") ?: "0.1.0"
-val metadataTargetSdk = webMetadataInt("targetSdk") ?: 35
-val metadataMinSdk = webMetadataInt("minSdk") ?: 26
-val versionCodeBase = 1
-val resolvedVersionCode: Int = run {
-    System.getenv("INKFRAME_VERSION_CODE")?.toIntOrNull()?.let { return@run it }
-    val ci = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
-    if (ci != null) versionCodeBase + ci else versionCodeBase
+// --- Native Android application metadata -----------------------------------
+// Android packaging no longer derives identity or SDK levels from web/metadata.json.
+// The Kotlin runtime owns its own explicit, reviewable metadata contract.
+val appMetadataFile = rootProject.file("gradle/inkframe-app.properties")
+val appMetadata = Properties().apply {
+    require(appMetadataFile.isFile) {
+        "Missing native Android metadata: ${appMetadataFile.absolutePath}"
+    }
+    appMetadataFile.inputStream().use(::load)
 }
+
+fun appMetadataString(key: String): String =
+    appMetadata.getProperty(key)?.trim()?.takeIf(String::isNotEmpty)
+        ?: error("Missing '$key' in ${appMetadataFile.path}")
+
+fun appMetadataInt(key: String): Int =
+    appMetadataString(key).toIntOrNull()
+        ?: error("'$key' must be an integer in ${appMetadataFile.path}")
+
+val resolvedVersionCode =
+    System.getenv("INKFRAME_VERSION_CODE")?.toIntOrNull()
+        ?: appMetadataInt("versionCode")
 
 // --- Release signing -------------------------------------------------------
 val keystorePropsFile = rootProject.file("keystore.properties")
 val keystoreProps = Properties().apply {
-    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use(::load)
 }
 
 fun signingValue(propKey: String, envKey: String): String? =
@@ -46,7 +44,7 @@ val releaseStorePath = signingValue("storeFile", "INKFRAME_KEYSTORE")
 val releaseStorePassword = signingValue("storePassword", "INKFRAME_KEYSTORE_PASSWORD")
 val releaseKeyAlias = signingValue("keyAlias", "INKFRAME_KEY_ALIAS")
 val releaseKeyPassword = signingValue("keyPassword", "INKFRAME_KEY_PASSWORD")
-val releaseStoreFile = releaseStorePath?.let { file(it) }
+val releaseStoreFile = releaseStorePath?.let(::file)
 val hasReleaseSigning =
     releaseStoreFile?.isFile == true &&
         !releaseStorePassword.isNullOrBlank() &&
@@ -54,9 +52,6 @@ val hasReleaseSigning =
         !releaseKeyPassword.isNullOrBlank()
 
 // --- Glass Horizon generated branding ------------------------------------
-// GitHub's text-oriented contents API stores the approved image masters as
-// compact base64 WebP files. This deterministic task reconstructs Android
-// resources in build/ and verifies the exact bytes before resource merging.
 val brandingSourceDir = rootProject.file("app/src/main/branding")
 val generatedBrandingResDir = layout.buildDirectory.dir("generated/brandingRes")
 val brandingAssets = listOf(
@@ -87,7 +82,7 @@ val generateBrandingResources = tasks.register("generateBrandingResources") {
             require(source.isFile) { "Missing branding source: ${source.absolutePath}" }
 
             val encoded = source.readText(Charsets.US_ASCII)
-                .filterNot { character -> character.isWhitespace() }
+                .filterNot(Char::isWhitespace)
             val bytes = Base64.getDecoder().decode(encoded)
             require(bytes.size >= 12) { "Branding asset is too small: $sourceName" }
             require(String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF") {
@@ -114,14 +109,14 @@ val generateBrandingResources = tasks.register("generateBrandingResources") {
 
 android {
     namespace = "com.inkframe.studio"
-    compileSdk = metadataTargetSdk
+    compileSdk = appMetadataInt("targetSdk")
 
     defaultConfig {
-        applicationId = webMetadataString("packageName") ?: "com.inkframe.studio"
-        minSdk = metadataMinSdk
-        targetSdk = metadataTargetSdk
+        applicationId = appMetadataString("applicationId")
+        minSdk = appMetadataInt("minSdk")
+        targetSdk = appMetadataInt("targetSdk")
         versionCode = resolvedVersionCode
-        versionName = baseVersionName
+        versionName = appMetadataString("versionName")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -138,16 +133,12 @@ android {
 
     buildTypes {
         release {
-            // The WebView shell has no meaningful Kotlin surface to shrink, and
-            // R8 can break JavaScript bridge reachability. Keep release explicit.
             isMinifyEnabled = false
             isShrinkResources = false
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
-            // Debug keeps the canonical package name so RC APKs replace earlier
-            // test builds cleanly on the tablet.
         }
     }
 
@@ -157,17 +148,16 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    // Debug and release receive independently generated web asset roots. This
-    // prevents a release build from reusing a debug index containing telemetry.
+    buildFeatures {
+        compose = true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
+
     sourceSets {
         getByName("main") {
             res.srcDir(generatedBrandingResDir)
-        }
-        getByName("debug") {
-            assets.srcDir(layout.buildDirectory.dir("generated/webAssets/debug"))
-        }
-        getByName("release") {
-            assets.srcDir(layout.buildDirectory.dir("generated/webAssets/release"))
         }
     }
 
@@ -176,7 +166,7 @@ android {
     }
 }
 
-// Resource merging must never race the branding decoder.
+// Resource merging must never race the deterministic branding decoder.
 tasks.matching {
     val name = it.name
     name == "preBuild" ||
@@ -184,117 +174,36 @@ tasks.matching {
         (name.startsWith("merge") && name.endsWith("Resources"))
 }.configureEach { dependsOn(generateBrandingResources) }
 
-fun registerWebAssetPipeline(
-    variantName: String,
-    diagnostics: Boolean,
-    defaultEngine: String,
-) {
-    val capitalized = variantName.replaceFirstChar { character ->
-        if (character.isLowerCase()) character.titlecase() else character.toString()
-    }
-    val outputDir = layout.buildDirectory.dir("generated/webAssets/$variantName")
-    val stageTask = tasks.register<Copy>("stage${capitalized}WebAssets") {
-        val webDir = rootProject.file("web")
-        from(webDir) {
-            include(
-                "index.html",
-                "**/*.js", "**/*.css",
-                "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.svg",
-                "**/*.mp3", "**/*.wav", "**/*.mp4",
-                "**/*.woff", "**/*.woff2", "**/*.ttf", "**/*.otf",
-                "**/*.webmanifest", "manifest.json", "metadata.json", "sw.js",
-            )
-            exclude(
-                "package.json", "package-lock.json", "yarn.lock",
-                "vite.config.js",
-                "node_modules/**", "dist/**",
-            )
-            if (!diagnostics) {
-                exclude("brush-engine-v2/native.js")
-            }
-        }
-        into(outputDir)
-    }
-
-    val injectTask = tasks.register<Exec>("injectBrushV2${capitalized}Index") {
-        dependsOn(stageTask)
-        val injector = rootProject.file("tools/inject-brush-v2-index.mjs")
-        val indexInjectorInputs = files(
-            injector,
-            rootProject.file("tools/inject-canvas-shape.mjs"),
-            rootProject.file("tools/inject-onion-skin-studio.mjs"),
-            rootProject.file("tools/inject-feedback-report.mjs"),
-            rootProject.file("tools/inject-static-background.mjs"),
-            rootProject.file("tools/inject-static-background-v2.mjs"),
-            rootProject.file("tools/inject-static-background-layer-bridge.mjs"),
-            webMetadataFile,
-        )
-        val sourceIndex = rootProject.file("web/index.html")
-        val targetIndex = outputDir.map { it.file("index.html") }
-        inputs.files(indexInjectorInputs, sourceIndex)
-        inputs.property("variantName", variantName)
-        inputs.property("diagnostics", diagnostics)
-        inputs.property("defaultEngine", defaultEngine)
-        outputs.file(targetIndex)
-        workingDir(rootProject.projectDir)
-        commandLine(
-            "node",
-            injector.absolutePath,
-            sourceIndex.absolutePath,
-            targetIndex.get().asFile.absolutePath,
-            "--variant=$variantName",
-            "--diagnostics=$diagnostics",
-            "--default-engine=$defaultEngine",
-        )
-    }
-
-    tasks.matching {
-        val name = it.name
-        name == "pre${capitalized}Build" ||
-            name == "merge${capitalized}Assets" ||
-            name == "package${capitalized}Assets" ||
-            name == "generate${capitalized}Assets"
-    }.configureEach { dependsOn(injectTask) }
-}
-
-registerWebAssetPipeline(
-    variantName = "debug",
-    diagnostics = true,
-    defaultEngine = "v2",
-)
-registerWebAssetPipeline(
-    variantName = "release",
-    diagnostics = false,
-    defaultEngine = "v2",
-)
-
 // Never silently produce a release artifact with the Android debug certificate.
-// Debug builds and JVM tests remain secret-free; packaging release APK/AAB files
-// requires a complete keystore configuration.
 gradle.taskGraph.whenReady {
     val releasePackagingRequested = allTasks.any { task ->
         task.project == project && task.name.matches(
-            Regex("(assembleRelease|bundleRelease|packageRelease|signReleaseBundle|publishRelease.*)")
+            Regex("(assembleRelease|bundleRelease|packageRelease|signReleaseBundle|publishRelease.*)"),
         )
     }
     if (releasePackagingRequested && !hasReleaseSigning) {
         throw GradleException(
             "Release signing is required. Configure INKFRAME_KEYSTORE, " +
                 "INKFRAME_KEYSTORE_PASSWORD, INKFRAME_KEY_ALIAS, and " +
-                "INKFRAME_KEY_PASSWORD (or keystore.properties)."
+                "INKFRAME_KEY_PASSWORD (or keystore.properties).",
         )
     }
 }
 
 dependencies {
+    implementation(project(":feature-canvas"))
     implementation(project(":core-model"))
-    implementation(libs.androidx.core.ktx)
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.activity:activity-ktx:1.9.0")
-    implementation("androidx.webkit:webkit:1.11.0")
 
-    // The front-buffer renderer is a debug laboratory dependency only. Production release
-    // artifacts retain the existing editor and do not package the experimental surface.
+    implementation(libs.androidx.core.ktx)
+    implementation("androidx.activity:activity-ktx:1.9.0")
+    implementation(libs.androidx.activity.compose)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    debugImplementation(libs.compose.ui.tooling)
+
+    // Retained only for the internal native ink laboratory in the debug source set.
     debugImplementation("androidx.graphics:graphics-core:1.0.4")
 
     testImplementation(libs.junit)
