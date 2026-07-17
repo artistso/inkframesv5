@@ -1,8 +1,9 @@
 name: Android Mainline
 
-# Direct-mainline native Kotlin migration. Every main build validates the native release source
-# set. A permanently signed, non-debuggable APK is produced only when the long-lived signing
-# secrets are configured. Debug APKs are never built.
+# Direct-mainline native Kotlin migration.
+# Every successful main build validates the native runtime and publishes a non-debuggable,
+# update-compatible QA APK for com.inkframe.studio.qa. Production signing remains separate,
+# secret, and conditional. Debug APKs are never built.
 
 on:
   push:
@@ -22,7 +23,7 @@ jobs:
     name: Native Glass Horizon boundary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Verify native application ownership
         shell: bash
         run: |
@@ -30,6 +31,7 @@ jobs:
           test -s docs/MAINLINE_KOTLIN_MIGRATION.md
           test -s docs/GLASS_HORIZON_VISUAL_CONTRACT.md
           test -s gradle/inkframe-app.properties
+          test -s tools/generate_stable_qa_keystore.py
 
           MAIN='app/src/main/kotlin/com/inkframe/studio/MainActivity.kt'
           grep -Fq 'GlassHorizonScreen' "$MAIN"
@@ -58,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: native-boundary
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -112,6 +114,138 @@ jobs:
           } > compiler-report.md
           gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file compiler-report.md
 
+  stable-qa-release-apk:
+    name: Stable non-debuggable QA APK
+    runs-on: ubuntu-latest
+    needs: release-compile-and-tests
+    env:
+      INKFRAME_APPLICATION_ID: com.inkframe.studio.qa
+      INKFRAME_VERSION_NAME: 0.5.0-native-qa.${{ github.run_number }}
+      INKFRAME_KEYSTORE_PASSWORD: inkframe-qa-release
+      INKFRAME_KEY_ALIAS: inkframe-qa
+      INKFRAME_KEY_PASSWORD: inkframe-qa-release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install deterministic signing dependency
+        run: python -m pip install --disable-pip-version-check --no-input cryptography==46.0.4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Generate stable public QA signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/inkframe-stable-qa.p12"
+          FINGERPRINT="$(python tools/generate_stable_qa_keystore.py --output "$KEYSTORE" --password "$INKFRAME_KEYSTORE_PASSWORD")"
+          test -s "$KEYSTORE"
+          test -n "$FINGERPRINT"
+          keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
+          echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$((80000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "QA_CERT_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
+      - name: Assemble stable QA release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease --stacktrace --console=plain
+      - name: Verify stable native QA package
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$RUNNER_TEMP/qa-badging.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$BADGING"
+          grep -F "package: name='com.inkframe.studio.qa'" "$BADGING"
+          grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'" "$BADGING"
+
+          if grep -Fq 'application-debuggable' "$BADGING"; then
+            echo 'Stable QA APK is unexpectedly debuggable.' >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -Eq 'assets/index\.html|assets/brush-engine-v2/|\.js$|\.html$'; then
+            echo 'Stable QA APK unexpectedly packages retired web assets.' >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -Fq 'android.permission.INTERNET'; then
+            echo 'Stable QA APK unexpectedly requests INTERNET.' >&2
+            exit 1
+          fi
+          if strings "$APK" | grep -Eq 'android/webkit/WebView|addJavascriptInterface|GlassCanvasScreen|StudioScreen\('; then
+            echo 'Stable QA APK contains a rejected runtime marker.' >&2
+            exit 1
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          OUT="InkFrame-native-QA-release-${SHORT_SHA}.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 "${OUT}.sha256")" >> "$GITHUB_OUTPUT"
+      - name: Upload stable QA release APK
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-native-qa-release-${{ github.sha }}
+          path: |
+            ${{ steps.verify.outputs.apk }}
+            ${{ steps.verify.outputs.apk }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish latest stable QA artifact record
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          APK_NAME: ${{ steps.verify.outputs.apk }}
+          APK_SHA256: ${{ steps.verify.outputs.sha256 }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo '# Stable native QA APK artifact'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Result: **${JOB_STATUS}**"
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo "- Artifact ID: \`${ARTIFACT_ID}\`"
+              echo "- Artifact URL: ${ARTIFACT_URL}"
+              echo "- Artifact name: \`inkframe-native-qa-release-${GITHUB_SHA}\`"
+              echo "- File: \`${APK_NAME}\`"
+              echo "- SHA-256: \`${APK_SHA256}\`"
+              echo "- Package: \`com.inkframe.studio.qa\`"
+              echo "- Certificate SHA-256: \`${QA_CERT_FINGERPRINT}\`"
+              echo '- Build type: release / non-debuggable / native-only / stable public QA identity'
+              echo
+              echo 'Future Android Mainline QA APKs use this same certificate and install over this QA build.'
+              echo 'The production `com.inkframe.studio` signing lineage remains separate and secret.'
+            else
+              echo '- No QA APK was published from this run.'
+            fi
+          } > stable-qa-record.md
+          gh issue edit 142 --repo "$GITHUB_REPOSITORY" --body-file stable-qa-record.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file stable-qa-record.md
+
   signing-readiness:
     name: Permanent signing readiness
     runs-on: ubuntu-latest
@@ -137,25 +271,24 @@ jobs:
 
           if (( ${#missing[@]} > 0 )); then
             echo 'ready=false' >> "$GITHUB_OUTPUT"
-            printf '::notice title=Signed APK blocked::Add repository secrets: %s\n' "${missing[*]}"
+            printf '::notice title=Production APK blocked::Add repository secrets: %s\n' "${missing[*]}"
             {
-              echo 'Signing status: **blocked — permanent key not configured**'
+              echo 'Production signing status: **blocked — permanent key not configured**'
               echo
               echo 'Missing repository secrets:'
               printf -- '- `%s`\n' "${missing[@]}"
               echo
-              echo 'Native compilation and tests remain authoritative and are not failed by this configuration state.'
+              echo 'Native compilation, tests, and stable QA APK production remain authoritative.'
             } > signing-readiness.md
           else
             echo 'ready=true' >> "$GITHUB_OUTPUT"
             {
-              echo 'Signing status: **ready**'
+              echo 'Production signing status: **ready**'
               echo
-              echo 'All four permanent signing inputs are configured. The release APK job may proceed.'
+              echo 'All four permanent signing inputs are configured. The production APK job may proceed.'
             } > signing-readiness.md
           fi
-
-      - name: Report signing readiness to migration issue
+      - name: Report production signing readiness
         if: always()
         shell: bash
         env:
@@ -174,7 +307,7 @@ jobs:
           gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file signing-report.md
 
   signed-release-apk:
-    name: Signed non-debuggable release APK
+    name: Signed non-debuggable production APK
     runs-on: ubuntu-latest
     needs:
       - release-compile-and-tests
@@ -186,7 +319,7 @@ jobs:
       INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
       INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -209,13 +342,14 @@ jobs:
           keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
           echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
           echo "INKFRAME_VERSION_CODE=$((50000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-      - name: Assemble signed release APK
+      - name: Assemble signed production APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:assembleRelease --stacktrace --console=plain
-      - name: Verify release package boundary
+      - name: Verify production package boundary
+        id: verify
         shell: bash
         run: |
           set -euo pipefail
@@ -226,15 +360,15 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'"
 
           if unzip -l "$APK" | grep -Eq 'assets/index\.html|assets/brush-engine-v2/|\.js$|\.html$'; then
-            echo 'Release APK unexpectedly packages the retired web application.' >&2
+            echo 'Production APK unexpectedly packages the retired web application.' >&2
             exit 1
           fi
           if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -Fq 'android.permission.INTERNET'; then
-            echo 'Release APK unexpectedly requests INTERNET.' >&2
+            echo 'Production APK unexpectedly requests INTERNET.' >&2
             exit 1
           fi
           if strings "$APK" | grep -Eq 'android/webkit/WebView|addJavascriptInterface|GlassCanvasScreen|StudioScreen\('; then
-            echo 'Release APK contains a rejected runtime marker.' >&2
+            echo 'Production APK contains a rejected runtime marker.' >&2
             exit 1
           fi
 
@@ -242,17 +376,17 @@ jobs:
           OUT="InkFrame-release-${SHORT_SHA}.apk"
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee "${OUT}.sha256"
-          echo "INKFRAME_APK=$OUT" >> "$GITHUB_ENV"
-      - name: Upload signed release APK
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+      - name: Upload signed production APK
         uses: actions/upload-artifact@v4
         with:
           name: inkframe-release-${{ github.sha }}
           path: |
-            ${{ env.INKFRAME_APK }}
-            ${{ env.INKFRAME_APK }}.sha256
+            ${{ steps.verify.outputs.apk }}
+            ${{ steps.verify.outputs.apk }}.sha256
           if-no-files-found: error
           retention-days: 30
-      - name: Report APK result to migration issue
+      - name: Report production APK result
         if: always()
         shell: bash
         env:
@@ -262,16 +396,16 @@ jobs:
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::7}"
           {
-            echo "## Signed release APK — ${SHORT_SHA}"
+            echo "## Signed production APK — ${SHORT_SHA}"
             echo
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Result: **${JOB_STATUS}**"
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             if [[ "$JOB_STATUS" == "success" ]]; then
               echo "- Artifact: \`inkframe-release-${GITHUB_SHA}\`"
-              echo "- Build type: release / non-debuggable / permanent signing lineage"
+              echo '- Build type: release / non-debuggable / permanent production signing lineage'
             else
-              echo '- No APK was published from this run.'
+              echo '- No production APK was published from this run.'
             fi
-          } > apk-report.md
-          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file apk-report.md
+          } > production-apk-report.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file production-apk-report.md
