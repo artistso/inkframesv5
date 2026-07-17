@@ -25,6 +25,12 @@ fun appMetadataInt(key: String): Int =
     appMetadataString(key).toIntOrNull()
         ?: error("'$key' must be an integer in ${appMetadataFile.path}")
 
+val resolvedApplicationId =
+    System.getenv("INKFRAME_APPLICATION_ID")?.trim()?.takeIf(String::isNotEmpty)
+        ?: appMetadataString("applicationId")
+val resolvedVersionName =
+    System.getenv("INKFRAME_VERSION_NAME")?.trim()?.takeIf(String::isNotEmpty)
+        ?: appMetadataString("versionName")
 val resolvedVersionCode =
     System.getenv("INKFRAME_VERSION_CODE")?.toIntOrNull()
         ?: appMetadataInt("versionCode")
@@ -108,11 +114,11 @@ android {
     compileSdk = appMetadataInt("targetSdk")
 
     defaultConfig {
-        applicationId = appMetadataString("applicationId")
+        applicationId = resolvedApplicationId
         minSdk = appMetadataInt("minSdk")
         targetSdk = appMetadataInt("targetSdk")
         versionCode = resolvedVersionCode
-        versionName = appMetadataString("versionName")
+        versionName = resolvedVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -165,7 +171,7 @@ tasks.matching {
         (name.startsWith("merge") && name.endsWith("Resources"))
 }.configureEach { dependsOn(generateBrandingResources) }
 
-// Release artifacts must always use the permanent InkFrame signing lineage.
+// Release artifacts must always use an explicit signing lineage.
 gradle.taskGraph.whenReady {
     val releasePackagingRequested = allTasks.any { task ->
         task.project == project && task.name.matches(
