@@ -23,6 +23,9 @@ import com.inkframe.feature.canvas.StudioState
  *
  * Kotlin, Compose and OpenGL own the complete application surface. No WebView, JavaScript bridge,
  * browser storage, or packaged web application participates in startup.
+ *
+ * The temporary [GlassHorizonRecoveryScreen] delegates to the real GlassHorizonScreen while basic
+ * drawing and playback are revalidated on the Galaxy Tab. It is not a replacement design.
  */
 class MainActivity : ComponentActivity() {
 
