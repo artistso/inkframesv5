@@ -1,0 +1,346 @@
+name: Repair Galaxy Tab Stroke Path Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/repair-device-stroke-path-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: repair-device-stroke-path-once
+  cancel-in-progress: true
+
+jobs:
+  repair-test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add deterministic dirty-region stroke rasterizer
+        shell: bash
+        run: |
+          cat > engine-gl/src/main/kotlin/com/inkframe/engine/gl/CpuStrokeRasterizer.kt <<'KOTLIN'
+          package com.inkframe.engine.gl
+
+          import com.inkframe.core.common.IntRect
+          import com.inkframe.core.model.Brush
+          import com.inkframe.core.model.RgbaColor
+          import java.nio.ByteBuffer
+          import java.nio.ByteOrder
+          import kotlin.math.ceil
+          import kotlin.math.floor
+          import kotlin.math.max
+          import kotlin.math.min
+          import kotlin.math.sqrt
+
+          /**
+           * Device-safe stroke commit used after the live GPU preview.
+           *
+           * Samsung device testing showed that the wet OpenGL path could accept input without
+           * leaving persistent pixels. This rasterizer writes the completed dirty rectangle into
+           * the cel texture deterministically, while OpenGL remains responsible for presentation,
+           * compositing, onion skinning and export readback.
+           */
+          internal object CpuStrokeRasterizer {
+              fun commit(
+                  baseBottomUpRgba: ByteBuffer,
+                  topRect: IntRect,
+                  brush: Brush,
+                  color: RgbaColor,
+                  opacity: Float,
+                  erase: Boolean,
+                  dabs: List<Dab>,
+              ): ByteBuffer {
+                  val width = topRect.w
+                  val height = topRect.h
+                  val byteCount = width * height * 4
+                  val bytes = ByteArray(byteCount)
+                  val source = baseBottomUpRgba.duplicate().apply { position(0) }
+                  source.get(bytes)
+                  if (width <= 0 || height <= 0 || dabs.isEmpty()) {
+                      return direct(bytes)
+                  }
+
+                  val coverage = FloatArray(width * height)
+                  val hardness = brush.hardness.coerceIn(0f, 0.98f)
+                  for (dab in dabs) {
+                      val radius = max(0.5f, dab.size * 0.5f)
+                      val left = max(0, floor(dab.center.x - radius - topRect.x).toInt())
+                      val right = min(width - 1, ceil(dab.center.x + radius - topRect.x).toInt())
+                      val top = max(0, floor(dab.center.y - radius - topRect.y).toInt())
+                      val bottom = min(height - 1, ceil(dab.center.y + radius - topRect.y).toInt())
+                      if (left > right || top > bottom) continue
+
+                      for (localY in top..bottom) {
+                          val canvasY = topRect.y + localY + 0.5f
+                          for (localX in left..right) {
+                              val canvasX = topRect.x + localX + 0.5f
+                              val dx = canvasX - dab.center.x
+                              val dy = canvasY - dab.center.y
+                              val normalized = sqrt(dx * dx + dy * dy) / radius
+                              if (normalized >= 1f) continue
+                              val falloff = 1f - smoothstep(hardness, 1f, normalized)
+                              val dabCoverage = (falloff * dab.flow).coerceIn(0f, 1f)
+                              val index = localY * width + localX
+                              coverage[index] = if (brush.buildUp) {
+                                  1f - (1f - coverage[index]) * (1f - dabCoverage)
+                              } else {
+                                  max(coverage[index], dabCoverage)
+                              }
+                          }
+                      }
+                  }
+
+                  val paintAlphaScale = (opacity * color.a).coerceIn(0f, 1f)
+                  for (localY in 0 until height) {
+                      val bufferRow = height - 1 - localY
+                      for (localX in 0 until width) {
+                          val cover = coverage[localY * width + localX]
+                          if (cover <= 0f) continue
+                          val offset = (bufferRow * width + localX) * 4
+                          val dstR = u8(bytes[offset]) / 255f
+                          val dstG = u8(bytes[offset + 1]) / 255f
+                          val dstB = u8(bytes[offset + 2]) / 255f
+                          val dstA = u8(bytes[offset + 3]) / 255f
+                          val mask = cover.coerceIn(0f, 1f)
+
+                          if (erase) {
+                              val outA = dstA * (1f - mask)
+                              bytes[offset + 3] = channel(outA)
+                              if (outA <= 0.0001f) {
+                                  bytes[offset] = 0
+                                  bytes[offset + 1] = 0
+                                  bytes[offset + 2] = 0
+                              }
+                          } else {
+                              val srcA = (mask * paintAlphaScale).coerceIn(0f, 1f)
+                              val outA = srcA + dstA * (1f - srcA)
+                              if (outA <= 0f) continue
+                              val outR = (color.r * srcA + dstR * dstA * (1f - srcA)) / outA
+                              val outG = (color.g * srcA + dstG * dstA * (1f - srcA)) / outA
+                              val outB = (color.b * srcA + dstB * dstA * (1f - srcA)) / outA
+                              bytes[offset] = channel(outR)
+                              bytes[offset + 1] = channel(outG)
+                              bytes[offset + 2] = channel(outB)
+                              bytes[offset + 3] = channel(outA)
+                          }
+                      }
+                  }
+                  return direct(bytes)
+              }
+
+              private fun smoothstep(edge0: Float, edge1: Float, value: Float): Float {
+                  if (edge0 >= edge1) return if (value < edge1) 0f else 1f
+                  val t = ((value - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+                  return t * t * (3f - 2f * t)
+              }
+
+              private fun u8(value: Byte): Int = value.toInt() and 0xFF
+              private fun channel(value: Float): Byte = (value.coerceIn(0f, 1f) * 255f + 0.5f).toInt().toByte()
+              private fun direct(bytes: ByteArray): ByteBuffer =
+                  ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
+                      put(bytes)
+                      position(0)
+                  }
+          }
+          KOTLIN
+
+      - name: Apply surface, stroke, status and timeline corrections
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          canvas = 'feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/CanvasView.kt'
+          replace_once(canvas, '        setZOrderOnTop(true)\n', '        setZOrderMediaOverlay(true)\n')
+          replace_once(
+              canvas,
+              '    /** Invoked (main thread) after a fill; arg = whether anything changed. */\n    var onFilled: ((Boolean) -> Unit)? = null\n',
+              '    /** Invoked (main thread) after a fill; arg = whether anything changed. */\n    var onFilled: ((Boolean) -> Unit)? = null\n\n    /** Visible QA signal proving that Android contact reached the native canvas. */\n    var onStrokeInput: ((String) -> Unit)? = null\n',
+          )
+          replace_once(
+              canvas,
+              '''                    else -> {\n                        mode = Mode.DRAW\n                        renderer.post(CanvasRenderer.EngineEvent.Begin(cfg.targetSurfaceId, cfg.brush, cfg.color, sample(0)))\n                        requestRender()\n                    }\n''',
+              '''                    else -> {\n                        mode = Mode.DRAW\n                        onStrokeInput?.invoke(\n                            "INK CONTACT · ${cfg.brush.name.uppercase()} · ${cfg.brush.sizePx.toInt()} PX",\n                        )\n                        renderer.post(CanvasRenderer.EngineEvent.Begin(cfg.targetSurfaceId, cfg.brush, cfg.color, sample(0)))\n                        requestRender()\n                    }\n''',
+          )
+          replace_once(
+              canvas,
+              '''            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {\n                if (mode == Mode.DRAW) renderer.post(CanvasRenderer.EngineEvent.End)\n                mode = Mode.IDLE\n''',
+              '''            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {\n                if (mode == Mode.DRAW) {\n                    renderer.post(CanvasRenderer.EngineEvent.End)\n                    onStrokeInput?.invoke("INK COMMITTED · FRAME ${cfg.targetSurfaceId}")\n                }\n                mode = Mode.IDLE\n''',
+          )
+
+          engine = 'engine-gl/src/main/kotlin/com/inkframe/engine/gl/PaintEngine.kt'
+          replace_once(
+              engine,
+              '    private val dirty = DirtyRegion()\n',
+              '    private val dirty = DirtyRegion()\n    private val strokeDabs = ArrayList<Dab>()\n',
+          )
+          replace_once(
+              engine,
+              '''        strokeOpacity = brush.opacity\n        dirty.reset()\n\n        scratch().clear(0f, 0f, 0f, 0f)   // fresh wet layer\n''',
+              '''        strokeOpacity = brush.opacity\n        dirty.reset()\n        strokeDabs.clear()\n\n        scratch().clear(0f, 0f, 0f, 0f)   // fresh wet layer\n''',
+          )
+          replace_once(
+              engine,
+              '''                brushRenderer.compositeScratchToCel(\n                    target = cel,\n                    scratch = scratch(),\n                    opacity = strokeOpacity,\n                    erase = brush.kind == BrushKind.ERASER,\n                )\n\n                val after = cel.readPixels(glRect.x, glRect.y, glRect.w, glRect.h)\n''',
+              '''                // Keep the GPU preview path, then replace the committed dirty rectangle with\n                // deterministic CPU-rasterized pixels. This prevents device-specific FBO/blend\n                // failures from accepting input without leaving artwork.\n                brushRenderer.compositeScratchToCel(\n                    target = cel,\n                    scratch = scratch(),\n                    opacity = strokeOpacity,\n                    erase = brush.kind == BrushKind.ERASER,\n                )\n                val committed = CpuStrokeRasterizer.commit(\n                    baseBottomUpRgba = before,\n                    topRect = topRect,\n                    brush = brush,\n                    color = strokeColor,\n                    opacity = strokeOpacity,\n                    erase = brush.kind == BrushKind.ERASER,\n                    dabs = strokeDabs,\n                )\n                cel.writePixels(glRect.x, glRect.y, glRect.w, glRect.h, committed)\n\n                val after = cel.readPixels(glRect.x, glRect.y, glRect.w, glRect.h)\n''',
+          )
+          replace_once(
+              engine,
+              '''        strokeCelId = -1L\n        strokeBrush = null\n    }\n''',
+              '''        strokeCelId = -1L\n        strokeBrush = null\n        strokeDabs.clear()\n    }\n''',
+          )
+          replace_once(
+              engine,
+              '''    private fun addDabs(dabs: List<Dab>) {\n        if (dabs.isEmpty()) return\n        val brush = strokeBrush ?: return\n        for (d in dabs) dirty.addCircle(d.center.x, d.center.y, d.size)\n''',
+              '''    private fun addDabs(dabs: List<Dab>) {\n        if (dabs.isEmpty()) return\n        val brush = strokeBrush ?: return\n        strokeDabs.addAll(dabs)\n        for (d in dabs) dirty.addCircle(d.center.x, d.center.y, d.size)\n''',
+          )
+          replace_once(
+              engine,
+              '''        strokeCelId = -1L\n        strokeBrush = null\n        surfaces.values.forEach { it.release() }\n''',
+              '''        strokeCelId = -1L\n        strokeBrush = null\n        strokeDabs.clear()\n        surfaces.values.forEach { it.release() }\n''',
+          )
+
+          screen = 'feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt'
+          replace_once(
+              screen,
+              '''                            view.onFilled = {\n                                state.fillActive = false\n                                view.fillActive = false\n                            }\n''',
+              '''                            view.onFilled = {\n                                state.fillActive = false\n                                view.fillActive = false\n                            }\n                            view.onStrokeInput = { status -> state.statusMessage = status }\n''',
+          )
+          replace_once(
+              screen,
+              '''        RailStep("‹", onPrevious)\n        BoxWithConstraints(\n''',
+              '''        RailStep("‹", onPrevious)\n        RailStep(if (state.isPlaying) "Ⅱ" else "▶") { state.togglePlay() }\n        BoxWithConstraints(\n''',
+          )
+          PY
+
+      - name: Add rasterizer tests
+        shell: bash
+        run: |
+          mkdir -p engine-gl/src/test/kotlin/com/inkframe/engine/gl
+          cat > engine-gl/src/test/kotlin/com/inkframe/engine/gl/CpuStrokeRasterizerTest.kt <<'KOTLIN'
+          package com.inkframe.engine.gl
+
+          import com.inkframe.core.common.IntRect
+          import com.inkframe.core.common.Vec2
+          import com.inkframe.core.model.DefaultBrushes
+          import com.inkframe.core.model.RgbaColor
+          import java.nio.ByteBuffer
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class CpuStrokeRasterizerTest {
+              @Test
+              fun paintDabWritesVisibleCenterAndLeavesOutsideTransparent() {
+                  val out = CpuStrokeRasterizer.commit(
+                      baseBottomUpRgba = ByteBuffer.allocateDirect(10 * 10 * 4),
+                      topRect = IntRect(0, 0, 10, 10),
+                      brush = DefaultBrushes.pencil.copy(sizePx = 6f, pressureToSize = false),
+                      color = RgbaColor.BLACK,
+                      opacity = 1f,
+                      erase = false,
+                      dabs = listOf(Dab(Vec2(5f, 5f), 6f, 0f, 1f)),
+                  )
+                  assertTrue(alphaAtTopDown(out, 10, 10, 5, 5) > 0)
+                  assertEquals(0, alphaAtTopDown(out, 10, 10, 0, 0))
+              }
+
+              @Test
+              fun eraserDabReducesExistingAlpha() {
+                  val base = ByteBuffer.allocateDirect(10 * 10 * 4)
+                  repeat(10 * 10) {
+                      base.put(0).put(0).put(0).put(0xFF.toByte())
+                  }
+                  base.position(0)
+                  val out = CpuStrokeRasterizer.commit(
+                      baseBottomUpRgba = base,
+                      topRect = IntRect(0, 0, 10, 10),
+                      brush = DefaultBrushes.eraser.copy(sizePx = 6f, pressureToSize = false),
+                      color = RgbaColor.BLACK,
+                      opacity = 1f,
+                      erase = true,
+                      dabs = listOf(Dab(Vec2(5f, 5f), 6f, 0f, 1f)),
+                  )
+                  assertTrue(alphaAtTopDown(out, 10, 10, 5, 5) < 255)
+                  assertEquals(255, alphaAtTopDown(out, 10, 10, 0, 0))
+              }
+
+              private fun alphaAtTopDown(buffer: ByteBuffer, width: Int, height: Int, x: Int, y: Int): Int {
+                  val bottomRow = height - 1 - y
+                  return buffer.get((bottomRow * width + x) * 4 + 3).toInt() and 0xFF
+              }
+          }
+          KOTLIN
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile release Kotlin and run complete tests
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/device-stroke-repair.log
+
+      - name: Commit verified repair and remove executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/repair-device-stroke-path-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Commit strokes deterministically on Galaxy Tab'
+          git push origin HEAD:main
+
+      - name: Publish exact failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Galaxy Tab stroke-path repair failed before commit'
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '```text'
+            if [[ -s /tmp/device-stroke-repair.log ]]; then
+              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:|expected one match)' /tmp/device-stroke-repair.log | tail -n 200 || tail -n 200 /tmp/device-stroke-repair.log
+            else
+              echo 'Source transformation failed before Gradle started.'
+            fi
+            echo '```'
+          } > /tmp/device-stroke-repair-failure.md
+          gh issue comment 144 --repo "$GITHUB_REPOSITORY" --body-file /tmp/device-stroke-repair-failure.md
