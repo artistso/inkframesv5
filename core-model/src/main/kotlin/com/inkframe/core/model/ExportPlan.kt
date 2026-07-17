@@ -37,7 +37,8 @@ object ExportPlanner {
      *
      * @param range PLAYBACK uses the scene's playback in/out; ALL uses every frame.
      * @param fpsOverride optional fps to retime the export (defaults to the canvas fps).
-     * @param frameStep render every Nth frame (1 = all; 2 = on twos, etc.).
+     * @param frameStep render every Nth frame (1 = all; 2 = on twos, etc.). A sampled
+     * frame inherits the total display time of every source frame covered by that step.
      */
     fun plan(
         scene: Scene,
@@ -59,9 +60,7 @@ object ExportPlanner {
             }
         }
 
-        // Each held step covers `frameStep` source frames of screen time.
-        val perFrameMs = (1000.0 / fps) * frameStep
-
+        val tickDurationMs = 1000.0 / fps
         val frames = ArrayList<PlannedFrame>()
         var idx = first
         // Accumulate fractional ms so total duration tracks the true frame rate without
@@ -69,7 +68,12 @@ object ExportPlanner {
         var accumulatedMs = 0.0
         var emittedMs = 0
         while (idx <= last) {
-            accumulatedMs += perFrameMs
+            val coveredEndExclusive = (idx + frameStep).coerceAtMost(last + 1)
+            var heldTicks = 0
+            for (sourceFrame in idx until coveredEndExclusive) {
+                heldTicks += scene.frameHolds[sourceFrame]
+            }
+            accumulatedMs += tickDurationMs * heldTicks
             val targetTotal = accumulatedMs.toInt()
             val durationMs = (targetTotal - emittedMs).coerceAtLeast(1)
             emittedMs += durationMs
