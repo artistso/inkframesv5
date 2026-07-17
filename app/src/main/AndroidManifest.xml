@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
     <supports-screens
         android:largeScreens="true"
         android:xlargeScreens="true"
         android:requiresSmallestWidthDp="320" />
+
     <application
         android:name=".InkFrameStudioApplication"
         android:allowBackup="true"
@@ -17,14 +14,7 @@
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:theme="@style/Theme.InkFrame">
-        <activity
-            android:name=".nativeink.NativeArtistActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode|density|smallestScreenSize"
-            android:exported="false"
-            android:hardwareAccelerated="true"
-            android:label="InkFrame Native Canvas Prototype"
-            android:screenOrientation="userLandscape"
-            android:theme="@style/Theme.InkFrame" />
+
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode|density|smallestScreenSize"
@@ -32,6 +22,7 @@
             android:hardwareAccelerated="true"
             android:screenOrientation="userLandscape"
             android:theme="@style/Theme.InkFrame" />
+
         <activity
             android:name=".SplashActivity"
             android:exported="true"
