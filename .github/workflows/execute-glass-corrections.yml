@@ -1,0 +1,127 @@
+name: Execute Glass Horizon Device Corrections
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/execute-glass-corrections.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract corrected guarded transformer
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '
+            /python3 - <<'"'"'PY'"'"'/ { capture=1; next }
+            capture && /^          PY$/ { capture=0; exit }
+            capture { sub(/^          /, ""); print }
+          ' .github/workflows/apply-glass-device-corrections.yml > /tmp/correction.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/correction.py')
+          text = p.read_text()
+          old = '''literal(screen, 'RadialAction("Next") {', 'RadialAction("›") {')'''
+          new = '''sub(
+              screen,
+              r''' + "'''" + r'''(node = PrimaryNode\.FRAMES,.*?RadialAction\(")Next("\) \{)''' + "'''" + ''',
+              r''' + "'''" + r'''\1›\2''' + "'''" + ''',
+          )'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one ambiguous Next replacement, found {text.count(old)}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Apply source corrections
+        id: patch
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 /tmp/correction.py 2>&1 | tee /tmp/patch.log
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify release compiler and complete test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/gradle.log
+
+      - name: Commit verified source and remove temporary workflows
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm \
+            .github/workflows/apply-glass-device-corrections.yml \
+            .github/workflows/diagnose-glass-correction.yml \
+            .github/workflows/execute-glass-corrections.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add feature-canvas engine-gl
+          git commit -m "Correct Glass Horizon device geometry and paper rendering"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Record verified correction
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          cat > /tmp/result.md <<EOF
+          # Glass Horizon device correction — verified
+
+          - Commit: \`${COMMIT_SHA}\`
+          - Result: **release compilation and complete test suite passed**
+          - Corrected stage scale, command-node anchors, project paper rendering, perimeter slots, one-frame rail proportions, Frames controls, and title contrast.
+          - Temporary correction and diagnostic workflows were removed in the same commit.
+          - Next gate: build and inspect a new non-debuggable QA release APK on the Galaxy Tab S10+.
+          EOF
+          gh issue edit 140 --repo "$GITHUB_REPOSITORY" --body-file /tmp/result.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file /tmp/result.md
+
+      - name: Publish exact failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "# Glass Horizon device correction — failed before commit"
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '```text'
+            if [[ -s /tmp/patch.log ]]; then tail -n 100 /tmp/patch.log; fi
+            if [[ -s /tmp/gradle.log ]]; then tail -n 100 /tmp/gradle.log; fi
+            echo '```'
+          } > /tmp/failure.md
+          gh issue edit 140 --repo "$GITHUB_REPOSITORY" --body-file /tmp/failure.md
