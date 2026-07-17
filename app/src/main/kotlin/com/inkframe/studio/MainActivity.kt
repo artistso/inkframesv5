@@ -13,11 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.inkframe.core.model.CanvasSpec
-import com.inkframe.core.model.Layer
-import com.inkframe.core.model.Project
-import com.inkframe.core.model.RgbaColor
-import com.inkframe.core.model.Scene
+import com.inkframe.core.model.InkFrameDefaults
 import com.inkframe.feature.canvas.CanvasView
 import com.inkframe.feature.canvas.GlassHorizonScreen
 import com.inkframe.feature.canvas.StudioState
@@ -79,45 +75,10 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    /**
-     * The retired native prototype started with a 1280×720, 24 FPS, 24-frame placeholder.
-     * Replace only that untouched placeholder with the original Glass Horizon document contract.
-     * A loaded, renamed, resized, animated, layered, or drawn project is never modified here.
-     */
     private fun restoreOriginalDefaultsIfPristine() {
-        val project = studioState.project
-        val scene = project.activeScene ?: return
-        val untouchedLegacyPlaceholder =
-            project.name == "Untitled" &&
-                project.scenes.size == 1 &&
-                project.canvas.widthPx == 1280 &&
-                project.canvas.heightPx == 720 &&
-                project.canvas.fps == 24 &&
-                scene.frameCount == 24 &&
-                scene.layers.size == 1 &&
-                scene.layers.all { it.cels.isEmpty() }
-
-        if (!untouchedLegacyPlaceholder) return
-
-        val layer = Layer(name = "Layer 1")
-        studioState.replaceProject(
-            Project(
-                name = "Canvas",
-                canvas = CanvasSpec(
-                    widthPx = 1024,
-                    heightPx = 768,
-                    fps = 12,
-                    backgroundColor = RgbaColor.fromArgb(0xFFFFF0F3.toInt()),
-                ),
-                scenes = listOf(
-                    Scene(
-                        name = "Scene 1",
-                        frameCount = 1,
-                        layers = listOf(layer),
-                    ),
-                ),
-            ),
-        )
+        val current = studioState.project
+        val migrated = InkFrameDefaults.migrateUntouchedLegacyNativePlaceholder(current)
+        if (migrated !== current) studioState.replaceProject(migrated)
     }
 
     private fun installStylusLens() {
