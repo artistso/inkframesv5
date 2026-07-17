@@ -13,12 +13,30 @@ data class Scene(
     val layers: List<Layer> = emptyList(),
     val playbackRange: IntRange = 0 until frameCount,
     val loop: Boolean = true,
+    /** Display duration multiplier for every timeline frame. InkFrame supports holds 1 through 8. */
+    val frameHolds: List<Int> = List(frameCount) { MIN_FRAME_HOLD },
 ) {
     init {
         require(frameCount >= 1) { "A scene needs at least one frame" }
+        require(frameHolds.size == frameCount) {
+            "frameHolds size ${frameHolds.size} must match frameCount $frameCount"
+        }
+        require(frameHolds.all { it in MIN_FRAME_HOLD..MAX_FRAME_HOLD }) {
+            "frame holds must be in $MIN_FRAME_HOLD..$MAX_FRAME_HOLD"
+        }
     }
 
     fun layerById(id: String): Layer? = layers.firstOrNull { it.id == id }
+
+    fun holdAt(frame: Int): Int {
+        require(frame in 0 until frameCount) { "frame out of range: $frame" }
+        return frameHolds[frame]
+    }
+
+    companion object {
+        const val MIN_FRAME_HOLD = 1
+        const val MAX_FRAME_HOLD = 8
+    }
 }
 
 /** Blend modes supported by the GL compositor. Ordinal maps to a shader uniform. */
