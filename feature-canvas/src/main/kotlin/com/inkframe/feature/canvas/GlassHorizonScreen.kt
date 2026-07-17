@@ -564,15 +564,6 @@ private fun GlassStage(
                                 state.fillActive = false
                                 view.fillActive = false
                             }
-                  view.onStrokeFinished = { summary ->
-                      val tiltDegrees = (summary.maxTiltRad * 180f / PI.toFloat()).roundToInt()
-                      val mode = if (summary.eraser) "ERASER" else state.brush.name.uppercase()
-                      val barrel = if (summary.barrelButtonUsed) " · BUTTON" else ""
-                      state.statusMessage =
-                          "FRAME ${state.currentFrame + 1} · $mode · ${summary.sampleCount} SAMPLES · " +
-                              "P ${"%.2f".format(summary.minPressure)}–${"%.2f".format(summary.maxPressure)} · " +
-                              "TILT ${tiltDegrees}°$barrel"
-                  }
                         }
                     },
                 )

@@ -4,66 +4,57 @@ import com.inkframe.core.common.Vec2
 import com.inkframe.core.common.catmullRom
 import com.inkframe.core.common.lerp
 import com.inkframe.core.model.Brush
-import com.inkframe.core.model.BrushKind
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.sin
 
 /** A single sampled point of a stylus stroke. */
-data class InputSample(
-    val pos: Vec2,
-    val pressure: Float,
-    val timeMs: Long,
-    /** Android stylus tilt: 0 = perpendicular, PI/2 = parallel to the surface. */
-    val tiltRad: Float = 0f,
-    /** Stylus azimuth/orientation in radians around the screen normal. */
-    val orientationRad: Float = 0f,
-)
+data class InputSample(val pos: Vec2, val pressure: Float, val timeMs: Long)
 
 /**
- * One brush dab ready to be stamped: position, major diameter, rotation, per-dab [flow],
- * and [aspectRatio] (1 = round, >1 = elongated along the rotated major axis).
+ * One brush dab ready to be stamped: position, diameter, rotation and per-dab [flow].
+ * [flow] is the coverage written into the stroke scratch buffer; the brush's overall
+ * opacity is applied separately, once, when the finished stroke is composited.
  */
-data class Dab(
-    val center: Vec2,
-    val size: Float,
-    val rotationRad: Float,
-    val flow: Float,
-    val aspectRatio: Float = 1f,
-)
+data class Dab(val center: Vec2, val size: Float, val rotationRad: Float, val flow: Float)
 
 /**
  * Converts a noisy stream of stylus samples into a clean run of evenly spaced dabs.
- * Pressure controls size/flow. Pencil, ink and marker tips also consume S Pen tilt and
- * orientation so the actual stroke—not only the UI lens—responds to the physical stylus.
+ *
+ * Pipeline per added sample:
+ *   1. Exponential smoothing of position (brush.smoothing) to reduce jitter.
+ *   2. Catmull-Rom interpolation between the last control points for smooth curves.
+ *   3. Arc-length resampling at `spacing * diameter` so coverage is uniform
+ *      regardless of stroke speed.
+ *
+ * The processor is stateful per stroke; create one (or call [reset]) per stroke.
  */
 class StrokeProcessor(private val brush: Brush) {
     private val raw = ArrayList<InputSample>()
     private var smoothed: Vec2? = null
-    private var carry = 0f
+    private var carry = 0f // leftover distance from previous segment
 
     fun reset() {
         raw.clear(); smoothed = null; carry = 0f
     }
 
+    /** Pushes a sample and returns any dabs produced since the previous call. */
     fun add(sample: InputSample): List<Dab> {
         val s = brush.smoothing.coerceIn(0f, 0.95f)
         val prev = smoothed
         val sm = if (prev == null) sample.pos else lerp(prev, sample.pos, 1f - s)
         smoothed = sm
-        raw.add(sample.copy(pos = sm))
+        raw.add(InputSample(sm, sample.pressure, sample.timeMs))
 
         if (raw.size < 4) return emptyList()
         val n = raw.size
         return resampleSegment(raw[n - 4], raw[n - 3], raw[n - 2], raw[n - 1])
     }
 
+    /** Flushes the final tail so the stroke reaches its last input point. */
     fun finish(): List<Dab> {
         if (raw.size < 2) {
-  val only = raw.firstOrNull() ?: return emptyList()
-  return listOf(dabAt(only.pos, only.pressure, only.tiltRad, only.orientationRad))
+            // Single tap -> one dab.
+            val only = raw.firstOrNull() ?: return emptyList()
+            return listOf(dabAt(only.pos, only.pressure))
         }
         val n = raw.size
         val a = raw[max(0, n - 2)]
@@ -71,77 +62,40 @@ class StrokeProcessor(private val brush: Brush) {
         return resampleSegment(a, a, b, b)
     }
 
-    private fun resampleSegment(
-        s0: InputSample,
-        s1: InputSample,
-        s2: InputSample,
-        s3: InputSample,
-    ): List<Dab> {
+    private fun resampleSegment(s0: InputSample, s1: InputSample, s2: InputSample, s3: InputSample): List<Dab> {
         val dabs = ArrayList<Dab>()
         val approxLen = s1.pos.distanceTo(s2.pos)
         val avgPressure = (s1.pressure + s2.pressure) * 0.5f
-        val avgTilt = (s1.tiltRad + s2.tiltRad) * 0.5f
-        val stepDiameter = majorDiameter(avgPressure, avgTilt)
-        val step = max(1f, brush.spacing * stepDiameter)
+        val diameter = brush.diameterForPressure(avgPressure)
+        val step = max(1f, brush.spacing * diameter)
         val subdiv = max(1, (approxLen / step).toInt() * 2)
 
         var t = 0f
         val dt = 1f / subdiv
         var i = 0
         while (i <= subdiv) {
-  val p = catmullRom(s0.pos, s1.pos, s2.pos, s3.pos, t)
-  val pressure = lerp(s1.pressure, s2.pressure, t)
-  val tilt = lerp(s1.tiltRad, s2.tiltRad, t)
-  val orientation = lerpAngle(s1.orientationRad, s2.orientationRad, t)
-  t += dt
-  i++
-
-  if (dabs.isEmpty()) {
-      dabs.add(dabAt(p, pressure, tilt, orientation))
-      continue
-  }
-  val last = dabs.last().center
-  carry += p.distanceTo(last)
-  if (carry >= step) {
-      carry = 0f
-      dabs.add(dabAt(p, pressure, tilt, orientation))
-  }
+            val p = catmullRom(s0.pos, s1.pos, s2.pos, s3.pos, t)
+            val pressure = lerp(s1.pressure, s2.pressure, t)
+            carry += if (i == 0) 0f else step / subdiv * 0f // placeholder; arc-length below
+            t += dt; i++
+            // Accumulate by true inter-point distance for even spacing.
+            if (dabs.isEmpty()) {
+                dabs.add(dabAt(p, pressure)); continue
+            }
+            val last = dabs.last().center
+            carry += p.distanceTo(last)
+            if (carry >= step) {
+                carry = 0f
+                dabs.add(dabAt(p, pressure))
+            }
         }
         return dabs
     }
 
-    private fun dabAt(
-        p: Vec2,
-        pressure: Float,
-        tiltRad: Float,
-        orientationRad: Float,
-    ): Dab {
-        val tiltEnabled = brush.kind == BrushKind.PENCIL ||
-  brush.kind == BrushKind.INK ||
-  brush.kind == BrushKind.MARKER
-        val normalizedTilt = (tiltRad / (PI.toFloat() * 0.5f)).coerceIn(0f, 1f)
-        val aspect = if (tiltEnabled) 1f + normalizedTilt * 2.4f else 1f
-        return Dab(
-  center = p,
-  size = majorDiameter(pressure, tiltRad),
-  rotationRad = if (tiltEnabled) orientationRad else 0f,
-  flow = brush.flowForPressure(pressure),
-  aspectRatio = aspect,
-        )
-    }
-
-    private fun majorDiameter(pressure: Float, tiltRad: Float): Float {
-        val base = brush.diameterForPressure(pressure)
-        val tiltEnabled = brush.kind == BrushKind.PENCIL ||
-  brush.kind == BrushKind.INK ||
-  brush.kind == BrushKind.MARKER
-        if (!tiltEnabled) return base
-        val normalizedTilt = (tiltRad / (PI.toFloat() * 0.5f)).coerceIn(0f, 1f)
-        return base * (1f + normalizedTilt * 0.30f)
-    }
-
-    private fun lerpAngle(from: Float, to: Float, t: Float): Float {
-        val delta = atan2(sin(to - from), cos(to - from))
-        return from + delta * t
-    }
+    private fun dabAt(p: Vec2, pressure: Float): Dab = Dab(
+        center = p,
+        size = brush.diameterForPressure(pressure),
+        rotationRad = 0f,
+        flow = brush.flowForPressure(pressure),
+    )
 }

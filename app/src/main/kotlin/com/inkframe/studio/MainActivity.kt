@@ -15,7 +15,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.inkframe.core.model.InkFrameDefaults
 import com.inkframe.feature.canvas.CanvasView
-import com.inkframe.feature.canvas.GlassHorizonScreen
+import com.inkframe.feature.canvas.GlassHorizonRecoveryScreen
 import com.inkframe.feature.canvas.StudioState
 
 /**
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                GlassHorizonScreen(state = studioState)
+                GlassHorizonRecoveryScreen(state = studioState)
             }
         }
 
