@@ -1,7 +1,8 @@
 name: Android CI
 
 # Builds and verifies the native Kotlin/Compose/OpenGL application. The Android package must not
-# stage, execute, or verify a browser application.
+# stage or execute a browser application. Glass Horizon branches may run tests while the UI is
+# under construction, but APK/AAB artifacts are prohibited until the owner-approved launcher exists.
 
 on:
   push:
@@ -27,7 +28,6 @@ jobs:
         run: |
           set -euo pipefail
           test -s gradle/inkframe-app.properties
-          grep -F 'StudioScreen()' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt
           grep -F 'implementation(project(":feature-canvas"))' app/build.gradle.kts
           grep -F 'compose = true' app/build.gradle.kts
 
@@ -51,6 +51,71 @@ jobs:
             echo 'The offline native application must not request INTERNET.' >&2
             exit 1
           fi
+
+  design-artifact-gate:
+    name: Glass Horizon artifact gate
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+      reason: ${{ steps.gate.outputs.reason }}
+    env:
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: gate
+        name: Decide whether APK artifacts are permitted
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN='app/src/main/kotlin/com/inkframe/studio/MainActivity.kt'
+
+          # Non-Glass-Horizon branches retain the repository's normal CI behavior.
+          if [[ "$TARGET_BRANCH" != native/glass-horizon-* ]]; then
+            echo 'approved=true' >> "$GITHUB_OUTPUT"
+            echo 'reason=not a Glass Horizon implementation branch' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The faithful port is deliberately testable before it is distributable.
+          # No artifact may be produced while either rejected screen owns startup.
+          if grep -Fq 'StudioScreen' "$MAIN"; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=legacy StudioScreen still owns startup' >> "$GITHUB_OUTPUT"
+            echo 'APK blocked: legacy StudioScreen still owns startup.'
+            exit 0
+          fi
+          if grep -Fq 'GlassCanvasScreen' "$MAIN"; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=rejected GlassCanvasScreen still owns startup' >> "$GITHUB_OUTPUT"
+            echo 'APK blocked: rejected GlassCanvasScreen still owns startup.'
+            exit 0
+          fi
+          if ! grep -Fq 'GlassHorizonScreen' "$MAIN"; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=faithful GlassHorizonScreen is not connected' >> "$GITHUB_OUTPUT"
+            echo 'APK blocked: GlassHorizonScreen is not connected.'
+            exit 0
+          fi
+          if [[ ! -s docs/GLASS_HORIZON_DESIGN_APPROVED ]]; then
+            echo 'approved=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=owner screenshot approval has not been recorded' >> "$GITHUB_OUTPUT"
+            echo 'APK blocked: owner screenshot approval marker is absent.'
+            exit 0
+          fi
+
+          echo 'approved=true' >> "$GITHUB_OUTPUT"
+          echo 'reason=faithful launcher and owner approval are present' >> "$GITHUB_OUTPUT"
+
+      - name: Summarize artifact decision
+        shell: bash
+        run: |
+          {
+            echo '## Glass Horizon artifact gate'
+            echo
+            echo "- Branch: \`$TARGET_BRANCH\`"
+            echo "- APK/AAB permitted: \`${{ steps.gate.outputs.approved }}\`"
+            echo "- Reason: ${{ steps.gate.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test:
     name: Native unit tests
@@ -78,7 +143,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports
+          name: test-reports-${{ github.sha }}
           path: |
             **/build/reports/tests/
             gradle-test.log
@@ -86,9 +151,10 @@ jobs:
           retention-days: 14
 
   build-apk:
-    name: Build native debug APK
+    name: Build design-approved native debug APK
     runs-on: ubuntu-latest
-    needs: [native-boundary, test]
+    needs: [native-boundary, design-artifact-gate, test]
+    if: needs.design-artifact-gate.outputs.approved == 'true'
     steps:
       - uses: actions/checkout@v7
       - name: Set up JDK 17
@@ -118,18 +184,19 @@ jobs:
           fi
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'"
-      - name: Upload debug APK
+      - name: Upload design-approved debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: inkframe-native-debug-apk
+          name: inkframe-glass-horizon-approved-${{ github.sha }}-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
   verify-release:
-    name: Verify signed native APK and AAB
+    name: Verify design-approved signed native APK and AAB
     runs-on: ubuntu-latest
-    needs: [native-boundary, test]
+    needs: [native-boundary, design-artifact-gate, test]
+    if: needs.design-artifact-gate.outputs.approved == 'true'
     env:
       INKFRAME_KEYSTORE_PASSWORD: inkframe-ci-verification-only
       INKFRAME_KEY_ALIAS: inkframe-ci
