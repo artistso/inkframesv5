@@ -31,8 +31,12 @@ jobs:
           grep -F 'implementation(project(":feature-canvas"))' app/build.gradle.kts
           grep -F 'compose = true' app/build.gradle.kts
 
-          if grep -F 'WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
-            echo 'MainActivity must not host a WebView.' >&2
+          if grep -F 'import android.webkit.WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity must not import WebView.' >&2
+            exit 1
+          fi
+          if grep -F 'WebView(' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity must not construct a WebView.' >&2
             exit 1
           fi
           if grep -F 'registerWebAssetPipeline' app/build.gradle.kts; then
