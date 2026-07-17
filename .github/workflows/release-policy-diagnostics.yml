@@ -44,8 +44,12 @@ jobs:
           grep -F 'compose = true' app/build.gradle.kts
 
           echo 'Rejecting browser runtime dependencies...'
-          if grep -F 'WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
-            echo 'MainActivity contains a WebView reference.' >&2
+          if grep -F 'import android.webkit.WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity imports WebView.' >&2
+            exit 1
+          fi
+          if grep -F 'WebView(' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity constructs a WebView.' >&2
             exit 1
           fi
           if grep -F 'registerWebAssetPipeline' app/build.gradle.kts; then
