@@ -58,3 +58,5 @@ jobs:
           git add .github/workflows/android.yml
           git commit -m 'Validate delegated Glass Horizon recovery host'
           git push origin HEAD:main
+
+# Triggered after registration.
