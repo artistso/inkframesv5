@@ -99,6 +99,7 @@ jobs:
           echo "sha256=$(cut -d' ' -f1 "${OUT}.sha256")" >> "$GITHUB_OUTPUT"
 
       - name: Upload QA release APK
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: inkframe-native-qa-release-${{ github.sha }}
@@ -108,7 +109,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Report QA artifact
+      - name: Publish exact artifact record
         if: always()
         shell: bash
         env:
@@ -116,22 +117,30 @@ jobs:
           JOB_STATUS: ${{ job.status }}
           APK_NAME: ${{ steps.verify.outputs.apk }}
           APK_SHA256: ${{ steps.verify.outputs.sha256 }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
           set -euo pipefail
           {
-            echo "## One-shot QA release APK — ${GITHUB_SHA::7}"
+            echo "# One-shot native QA APK artifact"
             echo
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Result: **${JOB_STATUS}**"
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             if [[ "$JOB_STATUS" == "success" ]]; then
-              echo "- Artifact: \`inkframe-native-qa-release-${GITHUB_SHA}\`"
+              echo "- Artifact ID: \`${ARTIFACT_ID}\`"
+              echo "- Artifact URL: ${ARTIFACT_URL}"
+              echo "- Artifact name: \`inkframe-native-qa-release-${GITHUB_SHA}\`"
               echo "- File: \`${APK_NAME}\`"
               echo "- SHA-256: \`${APK_SHA256}\`"
               echo "- Package: \`com.inkframe.studio.qa\`"
-              echo "- Build type: release / non-debuggable / isolated QA signing key"
+              echo "- Build type: release / non-debuggable / native-only / isolated QA signing key"
+              echo
+              echo "This QA package installs beside \`com.inkframe.studio\` and does not alter its data or signing lineage."
             else
               echo '- No APK was published.'
             fi
-          } > qa-report.md
-          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file qa-report.md
+          } > qa-artifact-record.md
+          gh issue edit 139 --repo "$GITHUB_REPOSITORY" --body-file qa-artifact-record.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file qa-artifact-record.md
