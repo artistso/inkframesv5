@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Bare, no-actionbar theme. The WebView renders the entire UI, so the
-         only thing this style controls is the pre-load / edge-swipe area. -->
+    <!-- Bare, no-actionbar host theme. Compose and the native GL canvas render the studio UI. -->
     <style name="Theme.InkFrame" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:statusBarColor">@color/window_background</item>
