@@ -1,11 +1,11 @@
 name: Android CI
 
-# Builds the tablet debug APK, runs all brush/JVM suites, and verifies the
-# production APK/AAB path with a disposable CI-only signing key.
+# Builds and verifies the native Kotlin/Compose/OpenGL application. The Android package must not
+# stage, execute, or verify a browser application.
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'native/**' ]
   pull_request:
   workflow_dispatch:
 
@@ -17,131 +17,39 @@ permissions:
   contents: read
 
 jobs:
-  web-smoke:
-    name: Web and Brush Engine V2
+  native-boundary:
+    name: Kotlin-only runtime contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Node 24
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - name: Install jsdom
-        run: npm install --no-save --prefix /tmp/jsdom jsdom
-      - name: Syntax and release metadata
-        run: |
-          node --check tools/update-release-notes.mjs
-          node --check tools/prepare-release.mjs
-          node --check tools/bump-version.mjs
-          node --check tools/inject-brush-v2-index.mjs
-          node --check web/brush-engine-v2/batch.js
-          node --check web/brush-engine-v2/validator.js
-          node --check web/brush-engine-v2/stabilizer.js
-          node --check web/brush-engine-v2/filters.js
-          node --check web/brush-engine-v2/engine.js
-          node --check web/brush-engine-v2/contact.js
-          node --check web/brush-engine-v2/radius.js
-          node --check web/brush-engine-v2/ghost-trail.js
-          node --check web/brush-engine-v2/ghost-runtime.js
-          node --check web/brush-engine-v2/tuning.js
-          node --check web/brush-engine-v2/user-presets.js
-          node --check web/brush-engine-v2/adapter.js
-          node --check web/brush-engine-v2/session.js
-          node --check web/brush-engine-v2/input.js
-          node --check web/brush-engine-v2/runtime.js
-          node --check web/brush-engine-v2/native.js
-          node --check web/brush-engine-v2/coverage-ui.js
-          node --check web/brush-engine-v2/stabilizer-ui.js
-          node --check web/brush-engine-v2/ghost-ui.js
-          node --check web/brush-engine-v2/lab-ui.js
-          node --check web/brush-engine-v2/preset-ui.js
-          node --check web/brush-engine-v2/preview-compare.js
-          node --check web/brush-engine-v2/preview-pad.js
-          node --check web/brush-engine-v2/preview-replay.js
-          node --check web/brush-engine-v2/brush-coach.js
-          node tools/update-release-notes.mjs --check
-          node web/tests/version-smoke.mjs
-      - name: Brush V2 core geometry and replay
-        run: node web/tests/brush-engine-v2.test.mjs
-      - name: Brush V2 adaptive stabilizer
-        run: node web/tests/brush-engine-v2-stabilizer.test.mjs
-      - name: Brush V2 corner preservation
-        run: node web/tests/brush-engine-v2-corner.test.mjs
-      - name: Brush V2 Ghost Trail
-        run: node web/tests/brush-engine-v2-ghost.test.mjs
-      - name: Brush V2 tablet-first Brush Lab
+      - name: Verify native application ownership
         shell: bash
         run: |
-          set -o pipefail
-          node web/tests/brush-engine-v2-lab-layout.test.mjs 2>&1 | tee native-studio-web-test.log
-      - name: Upload native studio web diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-studio-web-test-log
-          path: native-studio-web-test.log
-          if-no-files-found: ignore
-          retention-days: 14
-      - name: Brush V2 custom preset library
-        run: node web/tests/brush-engine-v2-user-presets.test.mjs
-      - name: Brush V2 non-destructive preview core
-        run: node web/tests/brush-engine-v2-preview-pad.test.mjs
-      - name: Brush V2 deterministic preview comparison
-        run: node web/tests/brush-engine-v2-preview-compare.test.mjs
-      - name: Brush V2 reference-stroke replay model
-        run: node web/tests/brush-engine-v2-preview-replay.test.mjs
-      - name: Brush V2 deterministic local Brush Coach
-        run: node web/tests/brush-engine-v2-brush-coach.test.mjs
-      - name: Brush V2 generated preview isolation
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/brush-engine-v2-preview-boot.test.mjs
-      - name: Brush V2 generated A/B preview isolation
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/brush-engine-v2-preview-compare-boot.test.mjs
-      - name: Brush V2 generated reference replay isolation
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/brush-engine-v2-preview-replay-boot.test.mjs
-      - name: Brush V2 generated Brush Coach workflow
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/brush-engine-v2-brush-coach-boot.test.mjs
-      - name: Brush V2 continuous ribbon coverage
-        run: node web/tests/brush-engine-v2-coverage.test.mjs
-      - name: Brush V2 radius continuity
-        run: node web/tests/brush-engine-v2-radius.test.mjs
-      - name: Brush V2 contact boundaries
-        run: node web/tests/brush-engine-v2-contact.test.mjs
-      - name: Brush V2 live session continuity
-        run: node web/tests/brush-engine-v2-session.test.mjs
-      - name: Brush V2 discontinuity segmentation
-        run: node web/tests/brush-engine-v2-discontinuity.test.mjs
-      - name: Brush V2 coalesced input normalization
-        run: node web/tests/brush-engine-v2-batch.test.mjs
-      - name: Brush V2 native input diagnostics
-        run: node web/tests/brush-engine-v2-native.test.mjs
-      - name: Brush V2 runtime policy
-        run: node web/tests/brush-engine-v2-runtime.test.mjs
-      - name: Brush V2 debug asset structure
-        run: node web/tests/brush-engine-v2-ab.test.mjs
-      - name: Brush V2 release asset structure
-        run: node web/tests/brush-engine-v2-release.test.mjs
-      - name: Brush V2 tuning and replay
-        run: node web/tests/brush-engine-v2-tuning.test.mjs
-      - name: Original engine browser boot
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/boot-smoke.mjs
-      - name: Generated Android debug boot
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
-        run: node web/tests/brush-engine-v2-ab-boot.test.mjs
+          set -euo pipefail
+          test -s gradle/inkframe-app.properties
+          grep -F 'StudioScreen()' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt
+          grep -F 'implementation(project(":feature-canvas"))' app/build.gradle.kts
+          grep -F 'compose = true' app/build.gradle.kts
+
+          if grep -F 'WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity must not host a WebView.' >&2
+            exit 1
+          fi
+          if grep -F 'registerWebAssetPipeline' app/build.gradle.kts; then
+            echo 'Android packaging must not stage web assets.' >&2
+            exit 1
+          fi
+          if grep -F 'androidx.webkit' app/build.gradle.kts; then
+            echo 'The production application must not depend on AndroidX WebKit.' >&2
+            exit 1
+          fi
+          if grep -F 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
+            echo 'The offline native application must not request INTERNET.' >&2
+            exit 1
+          fi
 
   test:
-    name: Unit tests (JVM)
+    name: Native unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -152,16 +60,15 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-      - name: Run unit tests
+      - name: Run JVM and Android unit tests
         shell: bash
         run: |
           set -o pipefail
+          chmod +x ./gradlew
           ./gradlew test --stacktrace --console=plain 2>&1 | tee gradle-test.log
       - name: Upload test reports
         if: always()
@@ -175,16 +82,11 @@ jobs:
           retention-days: 14
 
   build-apk:
-    name: Build debug APK
+    name: Build native debug APK
     runs-on: ubuntu-latest
-    needs: [web-smoke, test]
+    needs: [native-boundary, test]
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Node 24
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          package-manager-cache: false
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -192,26 +94,38 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
       - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --stacktrace
+      - name: Verify debug package is native-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          if unzip -l "$APK" | grep -F 'assets/index.html'; then
+            echo 'Debug APK unexpectedly packages the web application.' >&2
+            exit 1
+          fi
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: inkframe-debug-apk
+          name: inkframe-native-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
   verify-release:
-    name: Verify signed production APK and AAB
+    name: Verify signed native APK and AAB
     runs-on: ubuntu-latest
-    needs: [web-smoke, test]
+    needs: [native-boundary, test]
     env:
       INKFRAME_KEYSTORE_PASSWORD: inkframe-ci-verification-only
       INKFRAME_KEY_ALIAS: inkframe-ci
@@ -219,11 +133,6 @@ jobs:
       INKFRAME_VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Node 24
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          package-manager-cache: false
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -231,8 +140,8 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-      - name: Install Android platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Create disposable verification keystore
@@ -245,7 +154,7 @@ jobs:
             -storepass "$INKFRAME_KEYSTORE_PASSWORD" \
             -alias "$INKFRAME_KEY_ALIAS" \
             -keypass "$INKFRAME_KEY_PASSWORD" \
-            -dname "CN=InkFrame CI Verification, OU=CI, O=InkFrame, L=Aberdeen, ST=Washington, C=US" \
+            -dname "CN=InkFrame Native CI Verification, OU=CI, O=InkFrame, L=Aberdeen, ST=Washington, C=US" \
             -keyalg RSA -keysize 2048 -validity 2
           chmod 600 "$KEYSTORE_PATH"
           echo "INKFRAME_KEYSTORE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
@@ -253,7 +162,7 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew :app:assembleRelease :app:bundleRelease --stacktrace
-      - name: Verify signatures and production assets
+      - name: Verify signatures and native package boundary
         shell: bash
         run: |
           set -euo pipefail
@@ -261,47 +170,34 @@ jobs:
           AAB="app/build/outputs/bundle/release/app-release.aab"
           test -s "$APK"
           test -s "$AAB"
+
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           jarsigner -verify -certs "$AAB" | tee "$RUNNER_TEMP/aab-signature.txt"
           grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
-          unzip -p "$APK" assets/index.html > "$RUNNER_TEMP/inkframe-release-index.html"
-          unzip -p "$APK" assets/brush-engine-v2/preview-compare.js > "$RUNNER_TEMP/preview-compare.js"
-          grep -F '"variant":"release"' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F '"diagnostics":false' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F '"defaultBrushEngine":"v2"' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/ghost-trail.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/ghost-runtime.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/user-presets.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/lab-ui.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/preset-ui.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/preview-compare.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F 'brush-engine-v2/preview-pad.js' "$RUNNER_TEMP/inkframe-release-index.html"
-          grep -F "script.src='brush-engine-v2/preview-replay.js'" "$RUNNER_TEMP/preview-compare.js"
-          grep -F "script.src='brush-engine-v2/brush-coach.js'" "$RUNNER_TEMP/preview-compare.js"
-          unzip -l "$APK" | grep -F 'assets/brush-engine-v2/preview-replay.js'
-          unzip -l "$APK" | grep -F 'assets/brush-engine-v2/brush-coach.js'
-          if grep -F 'brush-engine-v2/native.js' "$RUNNER_TEMP/inkframe-release-index.html"; then
-            echo "Production index unexpectedly loads native diagnostics" >&2
+
+          if unzip -l "$APK" | grep -F 'assets/index.html'; then
+            echo 'Release APK unexpectedly packages the web application.' >&2
             exit 1
           fi
-          if unzip -l "$APK" | grep -F 'assets/brush-engine-v2/native.js'; then
-            echo "Production APK unexpectedly packages native diagnostics" >&2
+          if unzip -l "$APK" | grep -F 'assets/brush-engine-v2/'; then
+            echo 'Release APK unexpectedly packages the JavaScript brush engine.' >&2
             exit 1
           fi
-          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'InkFrameApplication'; then
-            echo "Production manifest unexpectedly registers the debug telemetry application" >&2
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'NativeArtistActivity'; then
+            echo 'Release manifest unexpectedly registers the migration prototype.' >&2
             exit 1
           fi
           if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F 'NativeInkLabActivity'; then
-            echo "Production manifest unexpectedly registers the native ink laboratory" >&2
+            echo 'Release manifest unexpectedly registers the debug ink laboratory.' >&2
             exit 1
           fi
           if unzip -l "$APK" | grep -F 'libgraphics-core.so'; then
-            echo "Production APK unexpectedly packages the debug-only graphics-core native library" >&2
+            echo 'Release APK unexpectedly packages the debug-only front-buffer library.' >&2
             exit 1
           fi
+
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'"
       - name: Explain verification key scope
         run: |
-          echo "The APK/AAB produced in this job use a disposable CI key and are intentionally not uploaded."
-          echo "Distribution artifacts are produced only by Signed Android Release with the protected long-lived key."
+          echo 'The APK/AAB produced in this job use a disposable CI key and are not distribution artifacts.'
