@@ -1,7 +1,8 @@
 name: Android Mainline
 
-# Direct-mainline native Kotlin migration. Every successful main build produces a permanently
-# signed, non-debuggable release APK for physical Galaxy Tab testing. Debug APKs are not built.
+# Direct-mainline native Kotlin migration. Every main build validates the native release source
+# set. A permanently signed, non-debuggable APK is produced only when the long-lived signing
+# secrets are configured. Debug APKs are never built.
 
 on:
   push:
@@ -111,10 +112,74 @@ jobs:
           } > compiler-report.md
           gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file compiler-report.md
 
+  signing-readiness:
+    name: Permanent signing readiness
+    runs-on: ubuntu-latest
+    needs: release-compile-and-tests
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    env:
+      INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
+      INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
+      INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
+      INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
+    steps:
+      - name: Check permanent signing configuration
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${INKFRAME_KEYSTORE_BASE64:-}" ]] || missing+=(INKFRAME_KEYSTORE_BASE64)
+          [[ -n "${INKFRAME_KEYSTORE_PASSWORD:-}" ]] || missing+=(INKFRAME_KEYSTORE_PASSWORD)
+          [[ -n "${INKFRAME_KEY_ALIAS:-}" ]] || missing+=(INKFRAME_KEY_ALIAS)
+          [[ -n "${INKFRAME_KEY_PASSWORD:-}" ]] || missing+=(INKFRAME_KEY_PASSWORD)
+
+          if (( ${#missing[@]} > 0 )); then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            printf '::notice title=Signed APK blocked::Add repository secrets: %s\n' "${missing[*]}"
+            {
+              echo 'Signing status: **blocked — permanent key not configured**'
+              echo
+              echo 'Missing repository secrets:'
+              printf -- '- `%s`\n' "${missing[@]}"
+              echo
+              echo 'Native compilation and tests remain authoritative and are not failed by this configuration state.'
+            } > signing-readiness.md
+          else
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            {
+              echo 'Signing status: **ready**'
+              echo
+              echo 'All four permanent signing inputs are configured. The release APK job may proceed.'
+            } > signing-readiness.md
+          fi
+
+      - name: Report signing readiness to migration issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo "## Permanent signing readiness — ${SHORT_SHA}"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            cat signing-readiness.md
+          } > signing-report.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file signing-report.md
+
   signed-release-apk:
     name: Signed non-debuggable release APK
     runs-on: ubuntu-latest
-    needs: release-compile-and-tests
+    needs:
+      - release-compile-and-tests
+      - signing-readiness
+    if: needs.signing-readiness.outputs.ready == 'true'
     env:
       INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
       INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
@@ -137,12 +202,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$INKFRAME_KEYSTORE_BASE64"
-          test -n "$INKFRAME_KEYSTORE_PASSWORD"
-          test -n "$INKFRAME_KEY_ALIAS"
-          test -n "$INKFRAME_KEY_PASSWORD"
           KEYSTORE="$RUNNER_TEMP/inkframe-permanent-upload.jks"
           printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          test -s "$KEYSTORE"
           chmod 600 "$KEYSTORE"
           keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
           echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
