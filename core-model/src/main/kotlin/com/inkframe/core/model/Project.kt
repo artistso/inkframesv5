@@ -29,13 +29,20 @@ data class Project(
     val activeScene: Scene? get() = scenes.firstOrNull { it.id == activeSceneId } ?: scenes.firstOrNull()
 }
 
-/** Pixel dimensions, frame rate, and pixel aspect of the working surface. */
+/** Persistent project-canvas geometry. Circle is always a true inscribed circle, never an ellipse. */
+enum class CanvasShape {
+    SQUARE,
+    CIRCLE,
+}
+
+/** Pixel dimensions, frame rate, pixel aspect, and shape of the working surface. */
 data class CanvasSpec(
     val widthPx: Int,
     val heightPx: Int,
     val fps: Int = 24,
     val pixelAspect: Float = 1.0f,
     val backgroundColor: RgbaColor = RgbaColor.WHITE,
+    val shape: CanvasShape = CanvasShape.SQUARE,
 ) {
     init {
         require(widthPx in 1..16384) { "widthPx out of range: $widthPx" }
