@@ -288,6 +288,7 @@ class PaintEngine(
         screenW: Int,
         screenH: Int,
         showChecker: Boolean,
+        backgroundColor: RgbaColor,
         invCoeffs: FloatArray,
     ) {
         // If a stroke is wet, build a preview (cel + scratch) and substitute it for the
@@ -318,7 +319,7 @@ class PaintEngine(
             )
         }
         val flat = compositor.flatten(draws)
-        compositor.present(flat, screenW, screenH, showChecker, invCoeffs)
+        compositor.present(flat, screenW, screenH, showChecker, backgroundColor, invCoeffs)
     }
 
     /**

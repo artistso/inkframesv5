@@ -13,6 +13,7 @@ uniform vec2 uScreenSize;   // viewport size in pixels
 uniform vec2 uCanvasSize;   // canvas size in pixels
 uniform vec4 uInv;          // inverse affine: (iax, iay, ibx, iby)
 uniform int uShowChecker;
+uniform vec3 uBackground;
 
 out vec4 fragColor;
 
@@ -32,7 +33,7 @@ void main() {
     cp.x = uInv.x * vp.x - uInv.y * vp.y + uInv.z;
     cp.y = uInv.y * vp.x + uInv.x * vp.y + uInv.w;
 
-    vec3 bg = (uShowChecker == 1) ? checker(vp) : vec3(0.30);
+    vec3 bg = (uShowChecker == 1) ? checker(vp) : uBackground;
 
     // Canvas texture has v=0 at the bottom; canvas pixel y=0 is the top row.
     vec2 uv = vec2(cp.x / uCanvasSize.x, 1.0 - cp.y / uCanvasSize.y);

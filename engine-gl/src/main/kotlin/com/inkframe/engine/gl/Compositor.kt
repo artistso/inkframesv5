@@ -2,6 +2,7 @@ package com.inkframe.engine.gl
 
 import android.content.Context
 import android.opengl.GLES30
+import com.inkframe.core.model.RgbaColor
 
 /**
  * Composites a stack of layer surfaces into a single canvas texture and presents the
@@ -32,6 +33,7 @@ class Compositor(context: Context, private val width: Int, private val height: I
     private val pCanvasSize = GLES30.glGetUniformLocation(presentProgram, "uCanvasSize")
     private val pInv = GLES30.glGetUniformLocation(presentProgram, "uInv")
     private val pChecker = GLES30.glGetUniformLocation(presentProgram, "uShowChecker")
+    private val pBackground = GLES30.glGetUniformLocation(presentProgram, "uBackground")
 
     // Fullscreen quad: pos.xy, uv.xy
     private val quad = floatBuffer(
@@ -113,6 +115,7 @@ class Compositor(context: Context, private val width: Int, private val height: I
         screenW: Int,
         screenH: Int,
         showChecker: Boolean,
+        backgroundColor: RgbaColor,
         invCoeffs: FloatArray,
     ) {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -127,6 +130,7 @@ class Compositor(context: Context, private val width: Int, private val height: I
         GLES30.glUniform2f(pCanvasSize, width.toFloat(), height.toFloat())
         GLES30.glUniform4f(pInv, invCoeffs[0], invCoeffs[1], invCoeffs[2], invCoeffs[3])
         GLES30.glUniform1i(pChecker, if (showChecker) 1 else 0)
+        GLES30.glUniform3f(pBackground, backgroundColor.r, backgroundColor.g, backgroundColor.b)
 
         drawQuad(presentProgram)
     }

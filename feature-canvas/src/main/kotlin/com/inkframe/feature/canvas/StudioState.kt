@@ -70,7 +70,7 @@ class StudioState : ViewModel() {
     var showOnionSettings by mutableStateOf(false)
     var isPlaying by mutableStateOf(false)
         private set
-    var showChecker by mutableStateOf(true)
+    var showChecker by mutableStateOf(false)
 
     // Mirror the engine's history availability for the toolbar buttons.
     var canUndo by mutableStateOf(false)

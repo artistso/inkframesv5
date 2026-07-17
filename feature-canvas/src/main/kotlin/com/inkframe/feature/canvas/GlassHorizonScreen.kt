@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -127,15 +128,25 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
         HorizonAtmosphere(Modifier.fillMaxSize())
         HorizonTitle(Modifier.align(Alignment.TopCenter))
 
-        val reservedWidth = 250.dp
-        val reservedHeight = 190.dp
-        val availableWidth = if (maxWidth > reservedWidth + 420.dp) maxWidth - reservedWidth else maxWidth * 0.72f
-        val availableHeight = if (maxHeight > reservedHeight + 300.dp) maxHeight - reservedHeight else maxHeight * 0.65f
-        val documentAspect = state.project.canvas.widthPx.toFloat() / state.project.canvas.heightPx.toFloat()
-        val canvasWidth = minOf(availableWidth, availableHeight * documentAspect)
+        // Preserve the command field around the fitted 4:3 drawing stage.
+        val documentAspect = state.project.canvas.aspectRatio
+        val canvasWidthLimit = maxWidth * 0.58f
+        val canvasHeightLimit = maxHeight * 0.61f
+        val canvasWidth = minOf(canvasWidthLimit, canvasHeightLimit * documentAspect)
         val canvasHeight = canvasWidth / documentAspect
         val frameWidth = canvasWidth + 28.dp
         val frameHeight = canvasHeight + 28.dp
+        val stageCenterY = maxHeight / 2 - 8.dp
+        val frameLeft = (maxWidth - frameWidth) / 2
+        val frameTop = stageCenterY - frameHeight / 2
+        val frameRight = frameLeft + frameWidth
+        val frameBottom = frameTop + frameHeight
+        val leftNodeX = (frameLeft - 88.dp).coerceAtLeast(18.dp)
+        val rightNodeX = (frameRight + 30.dp).coerceAtMost(maxWidth - 76.dp)
+        val topNodeY = (frameTop + 44.dp).coerceAtLeast(76.dp)
+        val middleNodeY = topNodeY + 112.dp
+        val lowerNodeY = (topNodeY + 224.dp).coerceAtMost(frameBottom - 72.dp)
+        val bottomNodeY = (frameBottom + 28.dp).coerceAtMost(maxHeight - 82.dp)
 
         GlassStage(
             state = state,
@@ -146,7 +157,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
             onCanvasReady = { canvasView = it },
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(y = (-15).dp),
+                .offset(y = (-8).dp),
         )
 
         TimelineRail(
@@ -161,8 +172,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = (-34).dp)
-                .width(minOf(maxWidth * 0.58f, 720.dp)),
+      .offset(y = (-14).dp)
+      .width(minOf(maxWidth * 0.52f, 620.dp)),
         )
 
         val activeLayers = state.scene.layers
@@ -184,7 +195,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             onToggle = { openNode = openNode.toggle(PrimaryNode.TOOLS) },
-            modifier = Modifier.align(Alignment.CenterStart).offset(x = 22.dp, y = (-150).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftNodeX, y = topNodeY),
         )
 
         PrimaryGlassNode(
@@ -204,7 +215,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.LINE) },
-            modifier = Modifier.align(Alignment.CenterStart).offset(x = 22.dp, y = (-55).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftNodeX, y = middleNodeY),
         )
 
         val swatches = listOf(
@@ -227,7 +238,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             onToggle = { openNode = openNode.toggle(PrimaryNode.COLOR) },
-            modifier = Modifier.align(Alignment.CenterEnd).offset(x = (-22).dp, y = (-155).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightNodeX, y = topNodeY),
         )
 
         PrimaryGlassNode(
@@ -247,7 +258,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.LAYERS) },
-            modifier = Modifier.align(Alignment.CenterEnd).offset(x = (-22).dp, y = (-55).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightNodeX, y = middleNodeY),
         )
 
         PrimaryGlassNode(
@@ -261,7 +272,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 RadialAction("100%") { canvasView?.resetZoom() },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.ACTIONS) },
-            modifier = Modifier.align(Alignment.CenterEnd).offset(x = (-22).dp, y = 50.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightNodeX, y = lowerNodeY),
         )
 
         PrimaryGlassNode(
@@ -269,20 +280,20 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
             direction = FanDirection.UP,
             isOpen = openNode == PrimaryNode.FRAMES,
             actions = listOf(
-                RadialAction("Previous") {
+                RadialAction("‹") {
                     state.setFrame((state.currentFrame - 1).coerceAtLeast(0)); canvasView?.requestRender()
                 },
-                RadialAction(if (state.isPlaying) "Pause" else "Play", selected = state.isPlaying) {
+                RadialAction(if (state.isPlaying) "Ⅱ" else "▶", selected = state.isPlaying) {
                     state.togglePlay()
                 },
-                RadialAction("Next") {
+                RadialAction("›") {
                     state.setFrame((state.currentFrame + 1).coerceAtMost(state.scene.frameCount - 1)); canvasView?.requestRender()
                 },
-                RadialAction("Insert") { state.insertFrame(); canvasView?.requestRender() },
-                RadialAction("Remove") { state.removeFrame(); canvasView?.requestRender() },
+                RadialAction("+") { state.insertFrame(); canvasView?.requestRender() },
+                RadialAction("−") { state.removeFrame(); canvasView?.requestRender() },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.FRAMES) },
-            modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-36).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = (maxWidth - 58.dp) / 2, y = bottomNodeY),
         )
 
         PrimaryGlassNode(
@@ -301,7 +312,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.STUDIO) },
-            modifier = Modifier.align(Alignment.BottomStart).offset(x = 22.dp, y = (-22).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftNodeX, y = lowerNodeY),
         )
 
         PrimaryGlassNode(
@@ -315,7 +326,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 RadialAction("Save") { state.statusMessage = "Native archive save is preserved and being moved into Gallery" },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.GALLERY) },
-            modifier = Modifier.align(Alignment.BottomStart).offset(x = 106.dp, y = (-22).dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft + 34.dp, y = bottomNodeY),
         )
 
         state.statusMessage?.let { message ->
@@ -443,15 +454,16 @@ private fun HorizonTitle(modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
                 letterSpacing = 4.4.sp,
-                shadow = Shadow(Color.White.copy(alpha = 0.28f), blurRadius = 14f),
+                shadow = Shadow(Color(0xDD2A001A), Offset(0f, 2f), blurRadius = 12f),
             ),
         )
         androidx.compose.material3.Text(
             text = "THE GLASS HORIZON",
-            color = HorizonDim,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 2.8.sp,
+            color = HorizonBlush,
+  fontSize = 10.sp,
+  fontWeight = FontWeight.Bold,
+  letterSpacing = 2.8.sp,
+  style = TextStyle(shadow = Shadow(Color(0xDD2A001A), Offset(0f, 1.5f), blurRadius = 8f)),
         )
     }
 }
@@ -477,6 +489,7 @@ private fun GlassStage(
             width = frameWidth,
             height = frameHeight,
             onFrame = state::setFrame,
+            onAddFrame = state::insertFrame,
             modifier = Modifier.align(Alignment.Center),
         )
 
@@ -509,6 +522,7 @@ private fun GlassStage(
                             canvasWidth = state.project.canvas.widthPx,
                             canvasHeight = state.project.canvas.heightPx,
                             sceneProvider = { state.buildDrawList() },
+                            backgroundColorProvider = { state.project.canvas.backgroundColor },
                             strokeConfig = {
                                 CanvasView.StrokeConfig(
                                     targetSurfaceId = state.ensureActiveCel(),
@@ -519,6 +533,7 @@ private fun GlassStage(
                             onEngineReady = state::bindEngine,
                         ).also { view ->
                             onCanvasReady(view)
+                            view.setShowChecker(state.showChecker)
                             state.onUiInvalidate = { view.post { view.requestRender() } }
                             state.postEngineWork = { block -> view.runOnEngine(block) }
                             view.onViewportChanged = { scale -> view.post { state.setZoom(scale) } }
@@ -560,40 +575,78 @@ private fun PerimeterFrameBoard(
     width: Dp,
     height: Dp,
     onFrame: (Int) -> Unit,
+    onAddFrame: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val capacity = 48
+    val slotCount = maxOf(frameCount + 1, 24).coerceAtMost(capacity)
     Box(modifier.size(width, height)) {
-        val count = frameCount.coerceAtMost(48)
-        repeat(count) { index ->
-            val point = perimeterPoint(index, count, width, height)
-            val current = index == currentFrame
-            val filled = index in filledFrames
-            val shape = RoundedCornerShape(5.dp)
-            Box(
-                modifier = Modifier
-                    .offset(x = point.first - 9.dp, y = point.second - 9.dp)
-                    .size(18.dp)
-                    .shadow(if (current) 10.dp else 3.dp, shape, clip = false)
-                    .clip(shape)
-                    .background(
-                        when {
-                            current -> UiBrush.linearGradient(listOf(HorizonBlush, HorizonAccent))
-                            filled -> UiBrush.linearGradient(listOf(GlassStrong, HorizonAccent.copy(alpha = 0.22f)))
-                            else -> UiBrush.linearGradient(listOf(Color(0x18FFF0F3), Color(0x120A000A)))
-                        },
-                    )
-                    .border(1.dp, if (current) Color.White else GlassStroke, shape)
-                    .clickable { onFrame(index) },
-                contentAlignment = Alignment.Center,
-            ) {
-                androidx.compose.material3.Text(
-                    text = "${index + 1}",
-                    color = Color.White,
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center,
-                )
-            }
+        repeat(slotCount) { index ->
+  val point = perimeterPoint(index, slotCount, width, height)
+  val existing = index < frameCount
+  val next = index == frameCount && frameCount < capacity
+  val current = existing && index == currentFrame
+  val filled = existing && index in filledFrames
+  val shape = RoundedCornerShape(5.dp)
+  Box(
+      modifier = Modifier
+          .offset(x = point.first - 9.dp, y = point.second - 9.dp)
+          .size(18.dp)
+          .scale(if (current) 1.35f else 1f)
+          .shadow(if (current) 12.dp else 3.dp, shape, clip = false)
+          .clip(shape)
+          .background(
+              when {
+                  current -> UiBrush.linearGradient(listOf(HorizonBlush, HorizonAccent))
+                  filled -> UiBrush.linearGradient(listOf(GlassStrong, HorizonAccent.copy(alpha = 0.22f)))
+                  next -> UiBrush.linearGradient(listOf(GlassStrong, Color(0x4414000E)))
+                  existing -> UiBrush.linearGradient(listOf(Color(0x24FFF0F3), Color(0x2214000E)))
+                  else -> UiBrush.linearGradient(listOf(Color(0x12FFF0F3), Color(0x0A14000E)))
+              },
+          )
+          .border(
+              1.dp,
+              when {
+                  current -> Color.White
+                  next -> GlassRim
+                  else -> GlassStroke.copy(alpha = if (existing) 1f else 0.55f)
+              },
+              shape,
+          )
+          .clickable(enabled = existing || next) {
+              if (existing) onFrame(index) else onAddFrame()
+          },
+      contentAlignment = Alignment.Center,
+  ) {
+      androidx.compose.material3.Text(
+          text = when {
+              existing -> "${index + 1}"
+              next -> "+"
+              else -> ""
+          },
+          color = Color.White,
+          fontSize = if (next) 10.sp else 7.sp,
+          fontWeight = FontWeight.ExtraBold,
+          textAlign = TextAlign.Center,
+      )
+  }
+        }
+        Box(
+  modifier = Modifier
+      .align(Alignment.BottomCenter)
+      .offset(y = 30.dp)
+      .clip(RoundedCornerShape(999.dp))
+      .background(Color(0x9914000E))
+      .border(1.dp, GlassStroke.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
+      .padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+  androidx.compose.material3.Text(
+      text = "$frameCount / $capacity FRAMES",
+      color = HorizonDim,
+      fontSize = 8.sp,
+      fontWeight = FontWeight.ExtraBold,
+      letterSpacing = 1.sp,
+  )
         }
     }
 }
@@ -647,21 +700,27 @@ private fun TimelineRail(
                 .clip(RoundedCornerShape(999.dp))
                 .background(Color(0x4414000E)),
         ) {
-            repeat(state.scene.frameCount) { frame ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(
-                            if (frame == state.currentFrame) HorizonAccent
-                            else if (state.activeLayer.cels.containsKey(frame)) HorizonRose.copy(alpha = 0.42f)
-                            else Color.Transparent,
-                        )
-                        .clickable {
-                            state.setFrame(frame)
-                        },
-                )
-            }
+            val visibleSlots = maxOf(state.scene.frameCount + 1, 12).coerceAtMost(48)
+  repeat(visibleSlots) { frame ->
+      val existing = frame < state.scene.frameCount
+      val next = frame == state.scene.frameCount
+      Box(
+          modifier = Modifier
+              .weight(1f)
+              .fillMaxHeight()
+              .background(
+                  when {
+                      existing && frame == state.currentFrame -> HorizonAccent
+                      existing && state.activeLayer.cels.containsKey(frame) -> HorizonRose.copy(alpha = 0.42f)
+                      next -> HorizonRose.copy(alpha = 0.16f)
+                      else -> Color.Transparent
+                  },
+              )
+              .clickable(enabled = existing || next) {
+                  if (existing) state.setFrame(frame) else state.insertFrame()
+              },
+      )
+  }
         }
         RailStep("›", onNext)
         androidx.compose.material3.Text(
@@ -696,8 +755,8 @@ private fun BoxScope.PrimaryGlassNode(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var dragX by rememberSaveable(node.name) { mutableStateOf(0f) }
-    var dragY by rememberSaveable(node.name) { mutableStateOf(0f) }
+    var dragX by rememberSaveable("glass-device-layout-v2", node.name) { mutableStateOf(0f) }
+    var dragY by rememberSaveable("glass-device-layout-v2", node.name) { mutableStateOf(0f) }
 
     Box(
         modifier = modifier.offset { IntOffset(dragX.roundToInt(), dragY.roundToInt()) },

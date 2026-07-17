@@ -34,6 +34,7 @@ class CanvasView(
     canvasWidth: Int,
     canvasHeight: Int,
     private val sceneProvider: () -> List<PaintEngine.LayerDrawSpec>,
+    private val backgroundColorProvider: () -> RgbaColor = { RgbaColor.WHITE },
     private val strokeConfig: () -> StrokeConfig,
     private val onEngineReady: (PaintEngine) -> Unit,
 ) : GLSurfaceView(context) {
@@ -58,6 +59,7 @@ class CanvasView(
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
             sceneProvider = sceneProvider,
+            backgroundColorProvider = backgroundColorProvider,
             onEngineReady = onEngineReady,
             backupStore = backupStore,
             onContextRestored = { post { onContextRestored?.invoke() } },
