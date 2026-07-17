@@ -41,62 +41,22 @@ jobs:
 
           canvas = 'feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/CanvasView.kt'
           replace_once(canvas, 'import android.content.Context\n', 'import android.content.Context\nimport android.graphics.PixelFormat\n')
-          replace_once(
-              canvas,
-              '''        setEGLContextClientVersion(3)\n        setEGLConfigChooser(8, 8, 8, 8, 0, 0)\n''',
-              '''        setEGLContextClientVersion(3)\n        setEGLConfigChooser(8, 8, 8, 8, 0, 0)\n        // GLSurfaceView owns a separate Surface. Keep it visible above the Compose window\n        // inside the canvas bounds; otherwise the cream Compose backdrop can hide every dab.\n        setZOrderOnTop(true)\n        holder.setFormat(PixelFormat.RGBA_8888)\n        isClickable = true\n        isFocusable = true\n''',
-          )
-          replace_once(
-              canvas,
-              '''            MotionEvent.ACTION_DOWN -> {\n                when {\n''',
-              '''            MotionEvent.ACTION_DOWN -> {\n                parent?.requestDisallowInterceptTouchEvent(true)\n                when {\n''',
-          )
+          replace_once(canvas, '''        setEGLContextClientVersion(3)\n        setEGLConfigChooser(8, 8, 8, 8, 0, 0)\n''', '''        setEGLContextClientVersion(3)\n        setEGLConfigChooser(8, 8, 8, 8, 0, 0)\n        setZOrderOnTop(true)\n        holder.setFormat(PixelFormat.RGBA_8888)\n        isClickable = true\n        isFocusable = true\n''')
+          replace_once(canvas, '''            MotionEvent.ACTION_DOWN -> {\n                when {\n''', '''            MotionEvent.ACTION_DOWN -> {\n                parent?.requestDisallowInterceptTouchEvent(true)\n                when {\n''')
 
           state = 'feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/StudioState.kt'
-          replace_once(
-              state,
-              '    fun togglePlay() { isPlaying = !isPlaying }\n',
-              '''    fun togglePlay() {\n        if (isPlaying) {\n            isPlaying = false\n            return\n        }\n        val range = PlaybackOps.clampRange(scene.playbackRange, scene.frameCount)\n        if (PlaybackOps.length(range) <= 1) {\n            isPlaying = false\n            statusMessage = "ADD AT LEAST 2 FRAMES TO PLAY"\n            return\n        }\n        if (currentFrame !in range || currentFrame == range.last) currentFrame = range.first\n        isPlaying = true\n    }\n''',
-          )
-          replace_once(
-              state,
-              '''    fun insertFrame() {\n        updateScene { TimelineOps.insertFrames(it, currentFrame, 1) }\n    }\n''',
-              '''    fun insertFrame() {\n        val insertionFrame = (currentFrame + 1).coerceAtMost(scene.frameCount)\n        updateScene { currentScene ->\n            val inserted = TimelineOps.insertFrames(currentScene, insertionFrame, 1)\n            inserted.copy(playbackRange = PlaybackOps.fullRange(inserted.frameCount))\n        }\n        currentFrame = insertionFrame\n        isPlaying = false\n    }\n''',
-          )
+          replace_once(state, '    fun togglePlay() { isPlaying = !isPlaying }\n', '''    fun togglePlay() {\n        if (isPlaying) {\n            isPlaying = false\n            return\n        }\n        val range = PlaybackOps.clampRange(scene.playbackRange, scene.frameCount)\n        if (PlaybackOps.length(range) <= 1) {\n            isPlaying = false\n            statusMessage = "ADD AT LEAST 2 FRAMES TO PLAY"\n            return\n        }\n        if (currentFrame !in range || currentFrame == range.last) currentFrame = range.first\n        isPlaying = true\n    }\n''')
+          replace_once(state, '''    fun insertFrame() {\n        updateScene { TimelineOps.insertFrames(it, currentFrame, 1) }\n    }\n''', '''    fun insertFrame() {\n        val insertionFrame = (currentFrame + 1).coerceAtMost(scene.frameCount)\n        updateScene { currentScene ->\n            val inserted = TimelineOps.insertFrames(currentScene, insertionFrame, 1)\n            inserted.copy(playbackRange = PlaybackOps.fullRange(inserted.frameCount))\n        }\n        currentFrame = insertionFrame\n        isPlaying = false\n    }\n''')
 
           main = 'app/src/main/kotlin/com/inkframe/studio/MainActivity.kt'
           replace_once(main, 'import com.inkframe.feature.canvas.GlassHorizonRecoveryScreen\n', 'import com.inkframe.feature.canvas.GlassHorizonScreen\n')
           replace_once(main, '                GlassHorizonRecoveryScreen(state = studioState)\n', '                GlassHorizonScreen(state = studioState)\n')
-          replace_once(
-              main,
-              ''' *\n * The temporary [GlassHorizonRecoveryScreen] delegates to the real GlassHorizonScreen while basic\n * drawing and playback are revalidated on the Galaxy Tab. It is not a replacement design.\n''',
-              ''' *\n * [GlassHorizonScreen] is the sole artist-facing workspace. Canvas contact is routed directly to\n * the native drawing surface so Compose overlays cannot swallow S Pen or finger strokes.\n''',
-          )
-          replace_once(
-              main,
-              '''    private lateinit var stylusLens: StylusLensOverlayView\n    private var nativeCanvas: CanvasView? = null\n''',
-              '''    private lateinit var stylusLens: StylusLensOverlayView\n    private var nativeCanvas: CanvasView? = null\n    private var routingCanvasGesture = false\n''',
-          )
-          replace_once(
-              main,
-              '''        installStylusLens()\n        hideSystemBars()\n''',
-              '''        installStylusLens()\n        window.decorView.post { currentNativeCanvas() }\n        hideSystemBars()\n''',
-          )
-          replace_once(
-              main,
-              '''    override fun dispatchTouchEvent(event: MotionEvent): Boolean {\n        observeStylus(event)\n        return super.dispatchTouchEvent(event)\n    }\n''',
-              '''    override fun dispatchTouchEvent(event: MotionEvent): Boolean {\n        observeStylus(event)\n        val canvas = currentNativeCanvas()\n        if (canvas != null) {\n            if (event.actionMasked == MotionEvent.ACTION_DOWN) {\n                routingCanvasGesture = canvas.containsWindowPoint(event.x, event.y)\n            }\n            if (routingCanvasGesture) {\n                val routed = event.copyFor(canvas)\n                val handled = canvas.dispatchTouchEvent(routed)\n                routed.recycle()\n                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {\n                    routingCanvasGesture = false\n                }\n                if (handled) return true\n            }\n        }\n        return super.dispatchTouchEvent(event)\n    }\n''',
-          )
-          replace_once(
-              main,
-              '''    private fun currentNativeCanvas(): CanvasView? {\n        nativeCanvas?.takeIf { it.isAttachedToWindow }?.let { return it }\n        nativeCanvas = findViewById<ViewGroup>(android.R.id.content).findCanvasView()\n        return nativeCanvas\n    }\n''',
-              '''    private fun currentNativeCanvas(): CanvasView? {\n        nativeCanvas?.takeIf { it.isAttachedToWindow }?.let { return it }\n        nativeCanvas = findViewById<ViewGroup>(android.R.id.content).findCanvasView()?.also { canvas ->\n            canvas.isClickable = true\n            canvas.isFocusable = true\n        }\n        return nativeCanvas\n    }\n''',
-          )
-          replace_once(
-              main,
-              '''private fun MotionEvent.firstStylusPointerIndex(): Int {\n''',
-              '''private fun MotionEvent.copyFor(canvas: CanvasView): MotionEvent {\n    val copy = MotionEvent.obtain(this)\n    val canvasLocation = IntArray(2)\n    val rootLocation = IntArray(2)\n    canvas.getLocationOnScreen(canvasLocation)\n    canvas.rootView.getLocationOnScreen(rootLocation)\n    copy.offsetLocation(\n        (rootLocation[0] - canvasLocation[0]).toFloat(),\n        (rootLocation[1] - canvasLocation[1]).toFloat(),\n    )\n    return copy\n}\n\nprivate fun MotionEvent.firstStylusPointerIndex(): Int {\n''',
-          )
+          replace_once(main, ''' *\n * The temporary [GlassHorizonRecoveryScreen] delegates to the real GlassHorizonScreen while basic\n * drawing and playback are revalidated on the Galaxy Tab. It is not a replacement design.\n''', ''' *\n * [GlassHorizonScreen] is the sole artist-facing workspace. Canvas contact is routed directly to\n * the native drawing surface so Compose overlays cannot swallow S Pen or finger strokes.\n''')
+          replace_once(main, '''    private lateinit var stylusLens: StylusLensOverlayView\n    private var nativeCanvas: CanvasView? = null\n''', '''    private lateinit var stylusLens: StylusLensOverlayView\n    private var nativeCanvas: CanvasView? = null\n    private var routingCanvasGesture = false\n''')
+          replace_once(main, '''        installStylusLens()\n        hideSystemBars()\n''', '''        installStylusLens()\n        window.decorView.post { currentNativeCanvas() }\n        hideSystemBars()\n''')
+          replace_once(main, '''    override fun dispatchTouchEvent(event: MotionEvent): Boolean {\n        observeStylus(event)\n        return super.dispatchTouchEvent(event)\n    }\n''', '''    override fun dispatchTouchEvent(event: MotionEvent): Boolean {\n        observeStylus(event)\n        val canvas = currentNativeCanvas()\n        if (canvas != null) {\n            if (event.actionMasked == MotionEvent.ACTION_DOWN) {\n                routingCanvasGesture = canvas.containsWindowPoint(event.x, event.y)\n            }\n            if (routingCanvasGesture) {\n                val routed = event.copyFor(canvas)\n                val handled = canvas.dispatchTouchEvent(routed)\n                routed.recycle()\n                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {\n                    routingCanvasGesture = false\n                }\n                if (handled) return true\n            }\n        }\n        return super.dispatchTouchEvent(event)\n    }\n''')
+          replace_once(main, '''    private fun currentNativeCanvas(): CanvasView? {\n        nativeCanvas?.takeIf { it.isAttachedToWindow }?.let { return it }\n        nativeCanvas = findViewById<ViewGroup>(android.R.id.content).findCanvasView()\n        return nativeCanvas\n    }\n''', '''    private fun currentNativeCanvas(): CanvasView? {\n        nativeCanvas?.takeIf { it.isAttachedToWindow }?.let { return it }\n        nativeCanvas = findViewById<ViewGroup>(android.R.id.content).findCanvasView()?.also { canvas ->\n            canvas.isClickable = true\n            canvas.isFocusable = true\n        }\n        return nativeCanvas\n    }\n''')
+          replace_once(main, '''private fun MotionEvent.firstStylusPointerIndex(): Int {\n''', '''private fun MotionEvent.copyFor(canvas: CanvasView): MotionEvent {\n    val copy = MotionEvent.obtain(this)\n    val canvasLocation = IntArray(2)\n    val rootLocation = IntArray(2)\n    canvas.getLocationOnScreen(canvasLocation)\n    canvas.rootView.getLocationOnScreen(rootLocation)\n    copy.offsetLocation(\n        (rootLocation[0] - canvasLocation[0]).toFloat(),\n        (rootLocation[1] - canvasLocation[1]).toFloat(),\n    )\n    return copy\n}\n\nprivate fun MotionEvent.firstStylusPointerIndex(): Int {\n''')
 
           screen = 'feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt'
           replace_once(screen, 'modifier = modifier.padding(top = 8.dp)', 'modifier = modifier.padding(top = 14.dp)')
@@ -108,35 +68,29 @@ jobs:
           replace_once(screen, '.size(50.dp)\n                .shadow(if (action.selected)', '.size(48.dp)\n                .shadow(if (action.selected)')
 
           test = Path('feature-canvas/src/test/kotlin/com/inkframe/feature/canvas/StudioStatePlaybackTest.kt')
-          test.write_text('''package com.inkframe.feature.canvas\n\nimport com.inkframe.core.model.InkFrameDefaults\nimport org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\nimport org.junit.Test\n\nclass StudioStatePlaybackTest {\n    @Test\n    fun insertFrameAddsAfterCurrentAndExpandsPlaybackRange() {\n        val state = StudioState()\n        state.replaceProject(InkFrameDefaults.createProject())\n\n        state.insertFrame()\n\n        assertEquals(2, state.scene.frameCount)\n        assertEquals(1, state.currentFrame)\n        assertEquals(0..1, state.scene.playbackRange)\n    }\n\n    @Test\n    fun playbackRestartsAtRangeStartWhenPressedAtEnd() {\n        val state = StudioState()\n        state.replaceProject(InkFrameDefaults.createProject())\n        state.insertFrame()\n\n        state.togglePlay()\n\n        assertTrue(state.isPlaying)\n        assertEquals(0, state.currentFrame)\n        state.stop()\n        assertFalse(state.isPlaying)\n    }\n\n    @Test\n    fun oneFrameProjectDoesNotPretendToPlay() {\n        val state = StudioState()\n        state.replaceProject(InkFrameDefaults.createProject())\n\n        state.togglePlay()\n\n        assertFalse(state.isPlaying)\n        assertEquals("ADD AT LEAST 2 FRAMES TO PLAY", state.statusMessage)\n    }\n}\n''')
+          test.write_text('''package com.inkframe.feature.canvas\n\nimport com.inkframe.core.model.InkFrameDefaults\nimport org.junit.Assert.assertEquals\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\nimport org.junit.Test\n\nclass StudioStatePlaybackTest {\n    @Test\n    fun insertFrameAddsAfterCurrentAndExpandsPlaybackRange() {\n        val state = StudioState()\n        state.replaceProject(InkFrameDefaults.createProject())\n        state.insertFrame()\n        assertEquals(2, state.scene.frameCount)\n        assertEquals(1, state.currentFrame)\n        assertEquals(0..1, state.scene.playbackRange)\n    }\n\n    @Test\n    fun playbackRestartsAtRangeStartWhenPressedAtEnd() {\n        val state = StudioState()\n        state.replaceProject(InkFrameDefaults.createProject())\n        state.insertFrame()\n        state.togglePlay()\n        assertTrue(state.isPlaying)\n        assertEquals(0, state.currentFrame)\n        state.stop()\n        assertFalse(state.isPlaying)\n    }\n\n    @Test\n    fun oneFrameProjectDoesNotPretendToPlay() {\n        val state = StudioState()\n        state.replaceProject(InkFrameDefaults.createProject())\n        state.togglePlay()\n        assertFalse(state.isPlaying)\n        assertEquals("ADD AT LEAST 2 FRAMES TO PLAY", state.statusMessage)\n    }\n}\n''')
           PY
 
-          rm -f \
-            feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonRecoveryScreen.kt \
-            feature-canvas/src/test/kotlin/com/inkframe/feature/canvas/GlassHorizonRecoveryScreenTest.kt
+          rm -f feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonRecoveryScreen.kt
+          rm -f feature-canvas/src/test/kotlin/com/inkframe/feature/canvas/GlassHorizonRecoveryScreenTest.kt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-
       - name: Install Android API 36
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
       - name: Compile release Kotlin and run complete tests
         shell: bash
         run: |
           set -o pipefail
           chmod +x ./gradlew
           ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/core-repair-gradle.log
-
       - name: Commit verified repair and remove executor
         shell: bash
         run: |
@@ -147,7 +101,6 @@ jobs:
           git add -A
           git commit -m 'Restore direct drawing and real timeline playback'
           git push origin HEAD:main
-
       - name: Publish failure diagnostics
         if: failure()
         shell: bash
@@ -170,3 +123,5 @@ jobs:
             echo '```'
           } > /tmp/core-repair-failure.md
           gh issue comment 144 --repo "$GITHUB_REPOSITORY" --body-file /tmp/core-repair-failure.md
+
+# Triggered after registration.
