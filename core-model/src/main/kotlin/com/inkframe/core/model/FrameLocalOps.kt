@@ -162,14 +162,14 @@ object FrameLocalOps {
         var sceneFound = false
         var frameFound = false
         var layerFound = false
-        val scenes = project.scenes.map { scene ->
-            if (scene.id != sceneId) return@map scene
+        val scenes = project.scenes.map sceneMap@{ scene ->
+            if (scene.id != sceneId) return@sceneMap scene
             sceneFound = true
-            val frames = scene.frames.map { frame ->
-                if (frame.id != frameId) return@map frame
+            val frames = scene.frames.map frameMap@{ frame ->
+                if (frame.id != frameId) return@frameMap frame
                 frameFound = true
-                val layers = frame.layers.map { layer ->
-                    if (layer.id != layerId) return@map layer
+                val layers = frame.layers.map layerMap@{ layer ->
+                    if (layer.id != layerId) return@layerMap layer
                     layerFound = true
                     layer.copy(rasterId = rasterId)
                 }
