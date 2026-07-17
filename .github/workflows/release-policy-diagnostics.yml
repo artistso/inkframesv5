@@ -38,10 +38,20 @@ jobs:
           grep -F 'applicationId=com.inkframe.studio' gradle/inkframe-app.properties
           grep -F 'targetSdk=36' gradle/inkframe-app.properties
 
-          echo 'Checking native application entrypoint...'
-          grep -F 'StudioScreen()' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt
+          echo 'Checking Glass Canvas application entrypoint...'
+          grep -F 'import com.inkframe.feature.canvas.GlassCanvasScreen' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt
+          grep -F 'GlassCanvasScreen()' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt
           grep -F 'implementation(project(":feature-canvas"))' app/build.gradle.kts
           grep -F 'compose = true' app/build.gradle.kts
+
+          if grep -F 'import com.inkframe.feature.canvas.StudioScreen' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity imports the legacy flat StudioScreen.' >&2
+            exit 1
+          fi
+          if grep -F 'StudioScreen()' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity launches the legacy flat StudioScreen.' >&2
+            exit 1
+          fi
 
           echo 'Rejecting browser runtime dependencies...'
           if grep -F 'import android.webkit.WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
@@ -71,7 +81,7 @@ jobs:
 
           echo 'Checking release safety documentation...'
           grep -F 'No merge to `main`, release tag, Play upload or public rollout' docs/KOTLIN_ONLY_MIGRATION.md
-          echo 'Native release policy passed.'
+          echo 'Native Glass Canvas release policy passed.'
       - name: Upload release policy transcript
         if: always()
         uses: actions/upload-artifact@v4
