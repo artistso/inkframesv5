@@ -564,6 +564,7 @@ private fun GlassStage(
                                 state.fillActive = false
                                 view.fillActive = false
                             }
+                            view.onStrokeInput = { status -> state.statusMessage = status }
                         }
                     },
                 )
@@ -717,6 +718,7 @@ private fun TimelineRail(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         RailStep("‹", onPrevious)
+        RailStep(if (state.isPlaying) "Ⅱ" else "▶") { state.togglePlay() }
         BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)

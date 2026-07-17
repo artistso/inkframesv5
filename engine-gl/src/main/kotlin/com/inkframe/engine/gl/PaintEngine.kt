@@ -47,6 +47,7 @@ class PaintEngine(
     private var strokeColor: RgbaColor = RgbaColor.BLACK
     private var strokeOpacity: Float = 1f
     private val dirty = DirtyRegion()
+    private val strokeDabs = ArrayList<Dab>()
 
     /** Undo/redo history for committed strokes (and future structural edits). */
     val undoStack = UndoStack()
@@ -98,6 +99,7 @@ class PaintEngine(
         strokeColor = color
         strokeOpacity = brush.opacity
         dirty.reset()
+        strokeDabs.clear()
 
         scratch().clear(0f, 0f, 0f, 0f)   // fresh wet layer
         addDabs(activeStroke!!.add(first))
@@ -123,12 +125,25 @@ class PaintEngine(
                 val glRect = topToGlRect(topRect)
                 val before = cel.readPixels(glRect.x, glRect.y, glRect.w, glRect.h)
 
+                // Keep the GPU preview path, then replace the committed dirty rectangle with
+                // deterministic CPU-rasterized pixels. This prevents device-specific FBO/blend
+                // failures from accepting input without leaving artwork.
                 brushRenderer.compositeScratchToCel(
                     target = cel,
                     scratch = scratch(),
                     opacity = strokeOpacity,
                     erase = brush.kind == BrushKind.ERASER,
                 )
+                val committed = CpuStrokeRasterizer.commit(
+                    baseBottomUpRgba = before,
+                    topRect = topRect,
+                    brush = brush,
+                    color = strokeColor,
+                    opacity = strokeOpacity,
+                    erase = brush.kind == BrushKind.ERASER,
+                    dabs = strokeDabs,
+                )
+                cel.writePixels(glRect.x, glRect.y, glRect.w, glRect.h, committed)
 
                 val after = cel.readPixels(glRect.x, glRect.y, glRect.w, glRect.h)
                 val snapshot = StrokeSnapshot(celId, glRect, before, after)
@@ -143,6 +158,7 @@ class PaintEngine(
         strokeCel = null
         strokeCelId = -1L
         strokeBrush = null
+        strokeDabs.clear()
     }
 
     /**
@@ -204,6 +220,7 @@ class PaintEngine(
     private fun addDabs(dabs: List<Dab>) {
         if (dabs.isEmpty()) return
         val brush = strokeBrush ?: return
+        strokeDabs.addAll(dabs)
         for (d in dabs) dirty.addCircle(d.center.x, d.center.y, d.size)
         brushRenderer.stampToScratch(scratch(), brush, strokeColor, dabs, buildUp = brush.buildUp)
     }
@@ -247,6 +264,7 @@ class PaintEngine(
         strokeCel = null
         strokeCelId = -1L
         strokeBrush = null
+        strokeDabs.clear()
         surfaces.values.forEach { it.release() }
         surfaces.clear()
         undoStack.clear()

@@ -51,7 +51,7 @@ class CanvasView(
     init {
         setEGLContextClientVersion(3)
         setEGLConfigChooser(8, 8, 8, 8, 0, 0)
-        setZOrderOnTop(true)
+        setZOrderMediaOverlay(true)
         holder.setFormat(PixelFormat.RGBA_8888)
         isClickable = true
         isFocusable = true
@@ -84,6 +84,9 @@ class CanvasView(
 
     /** Invoked (main thread) after a fill; arg = whether anything changed. */
     var onFilled: ((Boolean) -> Unit)? = null
+
+    /** Visible QA signal proving that Android contact reached the native canvas. */
+    var onStrokeInput: ((String) -> Unit)? = null
 
     /** Flood-fills the active cel at a view-space point with the current stroke colour. */
     private fun floodFillAtView(vx: Float, vy: Float) {
@@ -386,6 +389,9 @@ class CanvasView(
                     }
                     else -> {
                         mode = Mode.DRAW
+                        onStrokeInput?.invoke(
+                            "INK CONTACT · ${cfg.brush.name.uppercase()} · ${cfg.brush.sizePx.toInt()} PX",
+                        )
                         renderer.post(CanvasRenderer.EngineEvent.Begin(cfg.targetSurfaceId, cfg.brush, cfg.color, sample(0)))
                         requestRender()
                     }
@@ -424,7 +430,10 @@ class CanvasView(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (mode == Mode.DRAW) renderer.post(CanvasRenderer.EngineEvent.End)
+                if (mode == Mode.DRAW) {
+                    renderer.post(CanvasRenderer.EngineEvent.End)
+                    onStrokeInput?.invoke("INK COMMITTED · FRAME ${cfg.targetSurfaceId}")
+                }
                 mode = Mode.IDLE
                 navIdA = -1; navIdB = -1
                 requestRender()
