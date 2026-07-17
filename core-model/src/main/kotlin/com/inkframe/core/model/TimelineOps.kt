@@ -85,28 +85,45 @@ object TimelineOps {
         return layer.copy(cels = result)
     }
 
+    // ---- Timing edits -------------------------------------------------------
+
+    /** Sets one frame's display hold, clamped to the artist-facing 1..8 contract. */
+    fun setFrameHold(scene: Scene, frame: Int, hold: Int): Scene {
+        require(frame in 0 until scene.frameCount) { "frame out of range: $frame" }
+        val normalized = hold.coerceIn(Scene.MIN_FRAME_HOLD, Scene.MAX_FRAME_HOLD)
+        if (scene.frameHolds[frame] == normalized) return scene
+        val holds = scene.frameHolds.toMutableList()
+        holds[frame] = normalized
+        return scene.copy(frameHolds = holds)
+    }
+
     // ---- Frame edits (whole scene) -----------------------------------------
 
     /**
      * Inserts [count] blank frames before index [at] across all layers (cels at frame
      * >= [at] shift right by [count]); grows [Scene.frameCount] and the playback range.
+     * New frames receive the canonical one-frame hold.
      */
     fun insertFrames(scene: Scene, at: Int, count: Int = 1): Scene {
         require(count >= 1) { "count must be >= 1" }
         val clampedAt = at.coerceIn(0, scene.frameCount)
         val layers = scene.layers.map { shiftCels(it, clampedAt, count) }
         val newCount = scene.frameCount + count
+        val holds = scene.frameHolds.toMutableList().apply {
+            addAll(clampedAt, List(count) { Scene.MIN_FRAME_HOLD })
+        }
         return scene.copy(
             layers = layers,
             frameCount = newCount,
             playbackRange = expandRange(scene.playbackRange, clampedAt, count, newCount),
+            frameHolds = holds,
         )
     }
 
     /**
      * Removes [count] frames starting at [at] across all layers. Explicit cels on the
      * removed frames are deleted; later cels shift left. [Scene.frameCount] never drops
-     * below 1.
+     * below 1. Holds are removed with their corresponding frames.
      */
     fun removeFrames(scene: Scene, at: Int, count: Int = 1): Scene {
         require(count >= 1) { "count must be >= 1" }
@@ -126,17 +143,27 @@ object TimelineOps {
             }
             layer.copy(cels = result)
         }
+        val retainedHolds = scene.frameHolds.filterIndexed { index, _ ->
+            index < clampedAt || index >= clampedAt + removable
+        }
+        val holds = if (retainedHolds.isEmpty()) {
+            listOf(Scene.MIN_FRAME_HOLD)
+        } else {
+            retainedHolds.take(keepCount)
+        }
         return scene.copy(
             layers = layers,
             frameCount = keepCount,
             playbackRange = clampRange(scene.playbackRange, keepCount),
+            frameHolds = holds,
         )
     }
 
     /**
      * Extends the exposure of the cel exposed at [frame] by [holdFrames]: inserts blank
      * frames immediately after [frame] so the current drawing holds longer on screen.
-     * Convenience over [insertFrames].
+     * Convenience over [insertFrames]. Explicit timing multipliers are edited through
+     * [setFrameHold].
      */
     fun extendExposure(scene: Scene, frame: Int, holdFrames: Int = 1): Scene =
         insertFrames(scene, frame + 1, holdFrames)
