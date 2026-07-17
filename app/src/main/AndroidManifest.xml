@@ -1,18 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Needed only if the WebView ever tries to fetch a remote URL; the bundled
-         app is fully offline, but include it so future features (e.g. cloud
-         export) don't require a manifest change. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Save exported PNGs to shared storage on pre-Q devices. On Android 10+
-         MediaStore doesn't need this permission at all. -->
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-
-    <!-- Phones + tablets both welcome; the app is landscape-first. -->
     <supports-screens
         android:largeScreens="true"
         android:xlargeScreens="true"
