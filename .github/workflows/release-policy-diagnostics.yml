@@ -3,9 +3,14 @@ name: Release Policy Diagnostics
 on:
   pull_request:
     paths:
-      - 'tools/**'
-      - 'web/**'
+      - 'app/**'
+      - 'core-common/**'
+      - 'core-model/**'
+      - 'engine-gl/**'
+      - 'feature-*/**'
+      - 'gradle/inkframe-app.properties'
       - '.github/workflows/release-policy-diagnostics.yml'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,34 +22,57 @@ concurrency:
 
 jobs:
   release-policy:
-    name: Generated release policy
+    name: Native release policy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Set up Node 24
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - name: Install jsdom
-        run: npm install --no-save --prefix /tmp/jsdom jsdom
-      - name: Run release policy with captured transcript
-        id: policy
+      - name: Verify native release contract
         shell: bash
-        env:
-          NODE_PATH: /tmp/jsdom/node_modules
         run: |
-          set +e
-          node web/tests/brush-engine-v2-release.test.mjs > "$RUNNER_TEMP/release-policy.log" 2>&1
-          status=$?
-          cat "$RUNNER_TEMP/release-policy.log"
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit "$status"
+          set -euo pipefail
+          LOG="$RUNNER_TEMP/release-policy.log"
+          exec > >(tee "$LOG") 2>&1
+
+          echo 'Checking canonical native metadata...'
+          test -s gradle/inkframe-app.properties
+          grep -F 'applicationId=com.inkframe.studio' gradle/inkframe-app.properties
+          grep -F 'targetSdk=36' gradle/inkframe-app.properties
+
+          echo 'Checking native application entrypoint...'
+          grep -F 'StudioScreen()' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt
+          grep -F 'implementation(project(":feature-canvas"))' app/build.gradle.kts
+          grep -F 'compose = true' app/build.gradle.kts
+
+          echo 'Rejecting browser runtime dependencies...'
+          if grep -F 'WebView' app/src/main/kotlin/com/inkframe/studio/MainActivity.kt; then
+            echo 'MainActivity contains a WebView reference.' >&2
+            exit 1
+          fi
+          if grep -F 'registerWebAssetPipeline' app/build.gradle.kts; then
+            echo 'Android Gradle still stages web assets.' >&2
+            exit 1
+          fi
+          if grep -F 'androidx.webkit' app/build.gradle.kts; then
+            echo 'Android app still declares AndroidX WebKit.' >&2
+            exit 1
+          fi
+          if grep -F 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
+            echo 'Offline native manifest still requests INTERNET.' >&2
+            exit 1
+          fi
+          if grep -F 'NativeArtistActivity' app/src/main/AndroidManifest.xml; then
+            echo 'Production manifest still registers the migration prototype.' >&2
+            exit 1
+          fi
+
+          echo 'Checking release safety documentation...'
+          grep -F 'No merge to `main`, release tag, Play upload or public rollout' docs/KOTLIN_ONLY_MIGRATION.md
+          echo 'Native release policy passed.'
       - name: Upload release policy transcript
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: release-policy-transcript
+          name: native-release-policy-transcript
           path: ${{ runner.temp }}/release-policy.log
           if-no-files-found: error
           retention-days: 7
