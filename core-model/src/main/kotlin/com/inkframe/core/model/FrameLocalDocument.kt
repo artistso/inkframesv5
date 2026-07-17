@@ -4,31 +4,31 @@ import java.util.UUID
 
 @JvmInline
 value class ProjectId(val value: String) {
-    init { require(value.isNotBlank()) { "ProjectId cannot be blank" } }
+    init { requireDocumentId(value, "ProjectId") }
     companion object { fun random(): ProjectId = ProjectId(UUID.randomUUID().toString()) }
 }
 
 @JvmInline
 value class SceneId(val value: String) {
-    init { require(value.isNotBlank()) { "SceneId cannot be blank" } }
+    init { requireDocumentId(value, "SceneId") }
     companion object { fun random(): SceneId = SceneId(UUID.randomUUID().toString()) }
 }
 
 @JvmInline
 value class FrameId(val value: String) {
-    init { require(value.isNotBlank()) { "FrameId cannot be blank" } }
+    init { requireDocumentId(value, "FrameId") }
     companion object { fun random(): FrameId = FrameId(UUID.randomUUID().toString()) }
 }
 
 @JvmInline
 value class LayerId(val value: String) {
-    init { require(value.isNotBlank()) { "LayerId cannot be blank" } }
+    init { requireDocumentId(value, "LayerId") }
     companion object { fun random(): LayerId = LayerId(UUID.randomUUID().toString()) }
 }
 
 @JvmInline
 value class RasterAssetId(val value: String) {
-    init { require(value.isNotBlank()) { "RasterAssetId cannot be blank" } }
+    init { requireDocumentId(value, "RasterAssetId") }
     companion object { fun random(): RasterAssetId = RasterAssetId(UUID.randomUUID().toString()) }
 }
 
@@ -155,6 +155,14 @@ data class FrameLocalProject(
 
     companion object {
         const val MAX_NAME_CHARS = 256
+    }
+}
+
+private val DOCUMENT_ID_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+
+private fun requireDocumentId(value: String, label: String) {
+    require(DOCUMENT_ID_PATTERN.matches(value)) {
+        "$label must be 1..128 safe identifier characters"
     }
 }
 
