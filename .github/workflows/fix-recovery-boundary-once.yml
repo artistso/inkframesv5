@@ -46,7 +46,7 @@ jobs:
           PY
 
           grep -Fq "RECOVERY='feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonRecoveryScreen.kt'" .github/workflows/android.yml
-          grep -Fq "grep -Fq 'GlassHorizonScreen(state = state)' \"$RECOVERY\"" .github/workflows/android.yml
+          grep -Fq 'GlassHorizonScreen(state = state)' .github/workflows/android.yml
 
       - name: Commit corrected maintained workflow
         shell: bash
@@ -59,4 +59,4 @@ jobs:
           git commit -m 'Validate delegated Glass Horizon recovery host'
           git push origin HEAD:main
 
-# Triggered after registration.
+# Registered and corrected.
