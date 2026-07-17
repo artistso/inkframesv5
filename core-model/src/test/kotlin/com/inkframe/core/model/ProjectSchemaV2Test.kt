@@ -107,4 +107,28 @@ class ProjectSchemaV2Test {
 
         assertEquals(listOf(8, 1), low.frameHolds)
     }
+
+    @Test
+    fun exportPlanner_preservesHeldTimingAndFrameStepDuration() {
+        val scene = Scene(
+            name = "Scene",
+            frameCount = 3,
+            frameHolds = listOf(1, 2, 3),
+        )
+        val canvas = CanvasSpec(widthPx = 100, heightPx = 100, fps = 10)
+
+        val allFrames = ExportPlanner.plan(scene, canvas, ExportPlanner.Range.ALL)
+        assertEquals(listOf(100, 200, 300), allFrames.frames.map { it.durationMs })
+        assertEquals(600, allFrames.totalDurationMs)
+
+        val stepped = ExportPlanner.plan(
+            scene = scene,
+            canvas = canvas,
+            range = ExportPlanner.Range.ALL,
+            frameStep = 2,
+        )
+        assertEquals(listOf(0, 2), stepped.frames.map { it.frameIndex })
+        assertEquals(listOf(300, 300), stepped.frames.map { it.durationMs })
+        assertEquals(600, stepped.totalDurationMs)
+    }
 }
