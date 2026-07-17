@@ -1,5 +1,7 @@
 name: Execute Guarded S Pen Upgrade
 
+# This second commit triggers the workflow after GitHub has registered it on main.
+
 on:
   push:
     branches: [main]
