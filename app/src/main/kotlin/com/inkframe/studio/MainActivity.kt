@@ -12,13 +12,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.inkframe.feature.canvas.StudioScreen
+import com.inkframe.feature.canvas.GlassCanvasScreen
 
 /**
  * Kotlin-only InkFrame application host.
  *
- * The production activity owns a native Compose studio and native OpenGL canvas. No WebView,
- * JavaScript bridge, browser storage, or packaged web asset participates in application startup.
+ * The production activity owns the native Glass Canvas Compose workspace and native OpenGL canvas.
+ * No WebView, JavaScript bridge, browser storage, or packaged web asset participates in startup.
  */
 class MainActivity : ComponentActivity() {
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color(0xFF1A001A),
                 ) {
-                    StudioScreen()
+                    GlassCanvasScreen()
                 }
             }
         }
