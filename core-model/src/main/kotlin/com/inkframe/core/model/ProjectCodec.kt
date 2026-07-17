@@ -22,7 +22,7 @@ import com.inkframe.core.common.parseJson
 object ProjectCodec {
 
     /** Bumped when the on-disk schema changes; [fromJson] can branch on it. */
-    const val FORMAT_VERSION = 1
+    const val FORMAT_VERSION = 2
 
     fun toJsonString(project: Project, pretty: Boolean = true): String =
         encode(project).toJsonString(pretty)
@@ -50,6 +50,7 @@ object ProjectCodec {
         "fps" to JsonValue.of(c.fps),
         "pixelAspect" to JsonValue.of(c.pixelAspect),
         "background" to encodeColor(c.backgroundColor),
+        "shape" to JsonValue.of(c.shape.name),
     )
 
     private fun encodeColor(c: RgbaColor): JsonValue = JsonValue.arr(
@@ -63,6 +64,7 @@ object ProjectCodec {
         "playbackStart" to JsonValue.of(s.playbackRange.first),
         "playbackEnd" to JsonValue.of(s.playbackRange.last),
         "loop" to JsonValue.of(s.loop),
+        "holds" to JsonValue.arr(s.frameHolds.map { JsonValue.of(it) }),
         "layers" to JsonValue.arr(s.layers.map { encodeLayer(it) }),
     )
 
@@ -122,6 +124,9 @@ object ProjectCodec {
         fps = v["fps"].asInt(),
         pixelAspect = v.optional("pixelAspect")?.asFloat() ?: 1f,
         backgroundColor = v.optional("background")?.let { decodeColor(it) } ?: RgbaColor.WHITE,
+        shape = v.optional("shape")?.asString()?.let { encoded ->
+            runCatching { CanvasShape.valueOf(encoded.uppercase()) }.getOrDefault(CanvasShape.SQUARE)
+        } ?: CanvasShape.SQUARE,
     )
 
     private fun decodeColor(v: JsonValue): RgbaColor {
@@ -133,6 +138,8 @@ object ProjectCodec {
         val frameCount = v["frameCount"].asInt()
         val start = v.optional("playbackStart")?.asInt() ?: 0
         val end = v.optional("playbackEnd")?.asInt() ?: (frameCount - 1)
+        val holds = v.optional("holds")?.asArr()?.items?.map { it.asInt() }
+            ?: List(frameCount) { Scene.MIN_FRAME_HOLD }
         return Scene(
             id = v["id"].asString(),
             name = v["name"].asString(),
@@ -140,6 +147,7 @@ object ProjectCodec {
             layers = v["layers"].asArr().items.map { decodeLayer(it) },
             playbackRange = start..end,
             loop = v.optional("loop")?.asBool() ?: true,
+            frameHolds = holds,
         )
     }
 
