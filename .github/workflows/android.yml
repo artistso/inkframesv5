@@ -1,8 +1,7 @@
 name: Android Mainline
 
-# Direct-mainline Kotlin migration. This workflow validates the real release source set.
-# Signed APK production is enabled only after the permanent signing secrets and package
-# inspection gate are present; no debug APK is produced.
+# Direct-mainline native Kotlin migration. Every successful main build produces a permanently
+# signed, non-debuggable release APK for physical Galaxy Tab testing. Debug APKs are not built.
 
 on:
   push:
@@ -85,3 +84,83 @@ jobs:
             gradle-test.log
           if-no-files-found: ignore
           retention-days: 14
+
+  signed-release-apk:
+    name: Signed non-debuggable release APK
+    runs-on: ubuntu-latest
+    needs: release-compile-and-tests
+    env:
+      INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
+      INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
+      INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
+      INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Restore permanent InkFrame signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$INKFRAME_KEYSTORE_BASE64"
+          test -n "$INKFRAME_KEYSTORE_PASSWORD"
+          test -n "$INKFRAME_KEY_ALIAS"
+          test -n "$INKFRAME_KEY_PASSWORD"
+          KEYSTORE="$RUNNER_TEMP/inkframe-permanent-upload.jks"
+          printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
+          echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$((50000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - name: Assemble signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease --stacktrace --console=plain
+      - name: Verify release package boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.inkframe.studio'"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'"
+
+          if unzip -l "$APK" | grep -Eq 'assets/index\.html|assets/brush-engine-v2/|\.js$|\.html$'; then
+            echo 'Release APK unexpectedly packages the retired web application.' >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -Fq 'android.permission.INTERNET'; then
+            echo 'Release APK unexpectedly requests INTERNET.' >&2
+            exit 1
+          fi
+          if strings "$APK" | grep -Eq 'android/webkit/WebView|addJavascriptInterface|GlassCanvasScreen|StudioScreen\('; then
+            echo 'Release APK contains a rejected runtime marker.' >&2
+            exit 1
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          OUT="InkFrame-release-${SHORT_SHA}.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "INKFRAME_APK=$OUT" >> "$GITHUB_ENV"
+      - name: Upload signed release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-release-${{ github.sha }}
+          path: |
+            ${{ env.INKFRAME_APK }}
+            ${{ env.INKFRAME_APK }}.sha256
+          if-no-files-found: error
+          retention-days: 30
