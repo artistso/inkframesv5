@@ -153,7 +153,7 @@ private fun View.findCanvasView(): CanvasView? {
     if (this !is ViewGroup) return null
 
     for (index in 0 until childCount) {
-        childAt(index).findCanvasView()?.let { return it }
+        getChildAt(index).findCanvasView()?.let { return it }
     }
     return null
 }
