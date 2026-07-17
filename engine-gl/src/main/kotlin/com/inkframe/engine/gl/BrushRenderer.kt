@@ -94,6 +94,7 @@ class BrushRenderer(context: Context) {
             cpuBuffer.put(d.size)
             cpuBuffer.put(d.rotationRad)
             cpuBuffer.put(d.flow)
+            cpuBuffer.put(d.aspectRatio)
         }
         cpuBuffer.position(0)
 
@@ -112,6 +113,8 @@ class BrushRenderer(context: Context) {
         GLES30.glVertexAttribPointer(2, 1, GLES30.GL_FLOAT, false, stride, 3 * Float.SIZE_BYTES)
         GLES30.glEnableVertexAttribArray(3) // aFlow
         GLES30.glVertexAttribPointer(3, 1, GLES30.GL_FLOAT, false, stride, 4 * Float.SIZE_BYTES)
+        GLES30.glEnableVertexAttribArray(4) // aAspect
+        GLES30.glVertexAttribPointer(4, 1, GLES30.GL_FLOAT, false, stride, 5 * Float.SIZE_BYTES)
 
         GLES30.glDrawArrays(GLES30.GL_POINTS, 0, dabs.size)
 
@@ -119,6 +122,7 @@ class BrushRenderer(context: Context) {
         GLES30.glDisableVertexAttribArray(1)
         GLES30.glDisableVertexAttribArray(2)
         GLES30.glDisableVertexAttribArray(3)
+        GLES30.glDisableVertexAttribArray(4)
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
 
         // Restore default blend equation for subsequent passes.
@@ -196,7 +200,7 @@ class BrushRenderer(context: Context) {
     }
 
     private companion object {
-        const val FLOATS_PER_DAB = 5   // x, y, size, angle, flow
+        const val FLOATS_PER_DAB = 6   // x, y, size, angle, flow, aspect
         const val INITIAL_DABS = 1024
     }
 }
