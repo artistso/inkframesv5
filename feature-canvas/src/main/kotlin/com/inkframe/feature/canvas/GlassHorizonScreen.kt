@@ -455,7 +455,7 @@ private fun HorizonAtmosphere(modifier: Modifier = Modifier) {
 @Composable
 private fun HorizonTitle(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.padding(top = 8.dp),
+        modifier = modifier.padding(top = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         androidx.compose.material3.Text(
@@ -464,17 +464,17 @@ private fun HorizonTitle(modifier: Modifier = Modifier) {
                 brush = UiBrush.verticalGradient(listOf(Color.White, HorizonRose, HorizonAccent)),
                 fontFamily = FontFamily.Serif,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 24.sp,
-                letterSpacing = 5.2.sp,
+                fontSize = 20.sp,
+                letterSpacing = 4.4.sp,
                 shadow = Shadow(Color(0xF02A001A), Offset(0f, 2.5f), blurRadius = 14f),
             ),
         )
         androidx.compose.material3.Text(
             text = "THE GLASS HORIZON",
             color = Color.White,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 3.1.sp,
+            letterSpacing = 2.8.sp,
             style = TextStyle(shadow = Shadow(Color(0xF02A001A), Offset(0f, 1.5f), blurRadius = 9f)),
         )
     }
@@ -602,8 +602,8 @@ private fun PerimeterFrameBoard(
             val shape = RoundedCornerShape(6.dp)
             Box(
                 modifier = Modifier
-                    .offset(x = point.first - 10.dp, y = point.second - 10.dp)
-                    .size(20.dp)
+                    .offset(x = point.first - 9.dp, y = point.second - 9.dp)
+                    .size(18.dp)
                     .scale(if (current) 1.45f else 1f)
                     .shadow(if (current) 14.dp else 4.dp, shape, clip = false)
                     .clip(shape)
@@ -836,7 +836,7 @@ private fun BoxScope.PrimaryGlassNode(
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .size(60.dp)
+                .size(58.dp)
                 .pointerInput(node) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -863,7 +863,7 @@ private fun BoxScope.PrimaryGlassNode(
                     ),
                 )
             }
-            NodeGlyph(node, Modifier.size(29.dp))
+            NodeGlyph(node, Modifier.size(26.dp))
         }
 
         androidx.compose.material3.Text(
@@ -888,7 +888,7 @@ private fun RadialChild(action: RadialAction, modifier: Modifier = Modifier) {
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .size(50.dp)
+                .size(48.dp)
                 .shadow(if (action.selected) 15.dp else 9.dp, shape, clip = false)
                 .clip(shape)
                 .background(

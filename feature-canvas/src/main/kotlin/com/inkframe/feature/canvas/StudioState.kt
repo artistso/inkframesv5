@@ -202,7 +202,20 @@ class StudioState : ViewModel() {
         currentFrame = frame.coerceIn(0, scene.frameCount - 1)
     }
 
-    fun togglePlay() { isPlaying = !isPlaying }
+    fun togglePlay() {
+        if (isPlaying) {
+            isPlaying = false
+            return
+        }
+        val range = PlaybackOps.clampRange(scene.playbackRange, scene.frameCount)
+        if (PlaybackOps.length(range) <= 1) {
+            isPlaying = false
+            statusMessage = "ADD AT LEAST 2 FRAMES TO PLAY"
+            return
+        }
+        if (currentFrame !in range || currentFrame == range.last) currentFrame = range.first
+        isPlaying = true
+    }
     fun stop() { isPlaying = false }
 
     /** Milliseconds per frame at the project frame rate (drives the playback loop). */
@@ -355,7 +368,13 @@ class StudioState : ViewModel() {
 
     /** Inserts a blank frame at the current position (shifts later cels right). */
     fun insertFrame() {
-        updateScene { TimelineOps.insertFrames(it, currentFrame, 1) }
+        val insertionFrame = (currentFrame + 1).coerceAtMost(scene.frameCount)
+        updateScene { currentScene ->
+            val inserted = TimelineOps.insertFrames(currentScene, insertionFrame, 1)
+            inserted.copy(playbackRange = PlaybackOps.fullRange(inserted.frameCount))
+        }
+        currentFrame = insertionFrame
+        isPlaying = false
     }
 
     /** Removes the current frame across all layers (shifts later cels left). */

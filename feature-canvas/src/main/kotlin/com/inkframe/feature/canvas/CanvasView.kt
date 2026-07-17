@@ -2,6 +2,7 @@ package com.inkframe.feature.canvas
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.PixelFormat
 import android.opengl.GLSurfaceView
 import android.view.MotionEvent
 import com.inkframe.core.common.Vec2
@@ -50,6 +51,10 @@ class CanvasView(
     init {
         setEGLContextClientVersion(3)
         setEGLConfigChooser(8, 8, 8, 8, 0, 0)
+        setZOrderOnTop(true)
+        holder.setFormat(PixelFormat.RGBA_8888)
+        isClickable = true
+        isFocusable = true
         // First line of defence: ask the system to keep the EGL context across pauses.
         // Many devices honour this, avoiding loss entirely; the backup store covers the
         // rest (low-memory devices / forced context loss).
@@ -367,6 +372,7 @@ class CanvasView(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
                 when {
                     eyedropperActive -> {
                         // Eyedropper: sample the colour under the finger; don't draw.
