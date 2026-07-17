@@ -94,6 +94,15 @@ private enum class PrimaryNode(val label: String) {
 private enum class FanDirection { RIGHT, LEFT, UP }
 private enum class OverlayKind { STUDIO, GALLERY }
 
+private enum class RadialGlyph {
+    BRUSH, SMALLER, SIZE, LARGER, SMOOTH,
+    ADD, NEXT, VISIBLE, DELETE,
+    UNDO, REDO, FIT, RESET,
+    PREVIOUS, PLAY, PAUSE, FORWARD, INSERT, REMOVE, LOOP,
+    ABOUT, CHECKER, ONION,
+    PROJECTS, NEW, OPEN, SAVE,
+}
+
 private data class RadialAction(
     val label: String,
     val selected: Boolean = false,
@@ -291,6 +300,9 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
                 RadialAction("+") { state.insertFrame(); canvasView?.requestRender() },
                 RadialAction("−") { state.removeFrame(); canvasView?.requestRender() },
+                RadialAction(if (state.scene.loop) "Loop On" else "Loop Off", selected = state.scene.loop) {
+                    state.toggleLoop()
+                },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.FRAMES) },
             modifier = Modifier.align(Alignment.TopStart).offset(x = (maxWidth - 58.dp) / 2, y = bottomNodeY),
@@ -443,7 +455,7 @@ private fun HorizonAtmosphere(modifier: Modifier = Modifier) {
 @Composable
 private fun HorizonTitle(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.padding(top = 12.dp),
+        modifier = modifier.padding(top = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         androidx.compose.material3.Text(
@@ -451,19 +463,19 @@ private fun HorizonTitle(modifier: Modifier = Modifier) {
             style = TextStyle(
                 brush = UiBrush.verticalGradient(listOf(Color.White, HorizonRose, HorizonAccent)),
                 fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
-                letterSpacing = 4.4.sp,
-                shadow = Shadow(Color(0xDD2A001A), Offset(0f, 2f), blurRadius = 12f),
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                letterSpacing = 5.2.sp,
+                shadow = Shadow(Color(0xF02A001A), Offset(0f, 2.5f), blurRadius = 14f),
             ),
         )
         androidx.compose.material3.Text(
             text = "THE GLASS HORIZON",
-            color = HorizonBlush,
-  fontSize = 10.sp,
-  fontWeight = FontWeight.Bold,
-  letterSpacing = 2.8.sp,
-  style = TextStyle(shadow = Shadow(Color(0xDD2A001A), Offset(0f, 1.5f), blurRadius = 8f)),
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 3.1.sp,
+            style = TextStyle(shadow = Shadow(Color(0xF02A001A), Offset(0f, 1.5f), blurRadius = 9f)),
         )
     }
 }
@@ -582,71 +594,83 @@ private fun PerimeterFrameBoard(
     val slotCount = maxOf(frameCount + 1, 24).coerceAtMost(capacity)
     Box(modifier.size(width, height)) {
         repeat(slotCount) { index ->
-  val point = perimeterPoint(index, slotCount, width, height)
-  val existing = index < frameCount
-  val next = index == frameCount && frameCount < capacity
-  val current = existing && index == currentFrame
-  val filled = existing && index in filledFrames
-  val shape = RoundedCornerShape(5.dp)
-  Box(
-      modifier = Modifier
-          .offset(x = point.first - 9.dp, y = point.second - 9.dp)
-          .size(18.dp)
-          .scale(if (current) 1.35f else 1f)
-          .shadow(if (current) 12.dp else 3.dp, shape, clip = false)
-          .clip(shape)
-          .background(
-              when {
-                  current -> UiBrush.linearGradient(listOf(HorizonBlush, HorizonAccent))
-                  filled -> UiBrush.linearGradient(listOf(GlassStrong, HorizonAccent.copy(alpha = 0.22f)))
-                  next -> UiBrush.linearGradient(listOf(GlassStrong, Color(0x4414000E)))
-                  existing -> UiBrush.linearGradient(listOf(Color(0x24FFF0F3), Color(0x2214000E)))
-                  else -> UiBrush.linearGradient(listOf(Color(0x12FFF0F3), Color(0x0A14000E)))
-              },
-          )
-          .border(
-              1.dp,
-              when {
-                  current -> Color.White
-                  next -> GlassRim
-                  else -> GlassStroke.copy(alpha = if (existing) 1f else 0.55f)
-              },
-              shape,
-          )
-          .clickable(enabled = existing || next) {
-              if (existing) onFrame(index) else onAddFrame()
-          },
-      contentAlignment = Alignment.Center,
-  ) {
-      androidx.compose.material3.Text(
-          text = when {
-              existing -> "${index + 1}"
-              next -> "+"
-              else -> ""
-          },
-          color = Color.White,
-          fontSize = if (next) 10.sp else 7.sp,
-          fontWeight = FontWeight.ExtraBold,
-          textAlign = TextAlign.Center,
-      )
-  }
+            val point = perimeterPoint(index, slotCount, width, height)
+            val existing = index < frameCount
+            val next = index == frameCount && frameCount < capacity
+            val current = existing && index == currentFrame
+            val filled = existing && index in filledFrames
+            val shape = RoundedCornerShape(6.dp)
+            Box(
+                modifier = Modifier
+                    .offset(x = point.first - 10.dp, y = point.second - 10.dp)
+                    .size(20.dp)
+                    .scale(if (current) 1.45f else 1f)
+                    .shadow(if (current) 14.dp else 4.dp, shape, clip = false)
+                    .clip(shape)
+                    .background(
+                        when {
+                            current -> UiBrush.linearGradient(listOf(Color.White, HorizonRose, HorizonAccent))
+                            filled -> UiBrush.linearGradient(listOf(HorizonRose.copy(alpha = 0.70f), HorizonAccentDeep.copy(alpha = 0.48f)))
+                            next -> UiBrush.linearGradient(listOf(GlassStrong, HorizonAccent.copy(alpha = 0.32f)))
+                            existing -> UiBrush.linearGradient(listOf(Color(0x3DFFF0F3), Color(0x3814000E)))
+                            else -> UiBrush.linearGradient(listOf(Color(0x18FFF0F3), Color(0x1114000E)))
+                        },
+                    )
+                    .border(
+                        if (current) 1.5.dp else 1.dp,
+                        when {
+                            current -> Color.White
+                            next -> GlassRim
+                            filled -> HorizonRose.copy(alpha = 0.88f)
+                            else -> GlassStroke.copy(alpha = if (existing) 1f else 0.50f)
+                        },
+                        shape,
+                    )
+                    .clickable(enabled = existing || next) {
+                        if (existing) onFrame(index) else onAddFrame()
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.Text(
+                    text = when {
+                        existing -> "${index + 1}"
+                        next -> "+"
+                        else -> ""
+                    },
+                    color = if (current) HorizonViolet else Color.White,
+                    fontSize = if (next) 11.sp else 8.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                )
+                if (filled && !current) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(y = (-2).dp)
+                            .size(3.dp)
+                            .clip(CircleShape)
+                            .background(Color.White),
+                    )
+                }
+            }
         }
+
         Box(
-  modifier = Modifier
-      .align(Alignment.BottomCenter)
-      .offset(y = 30.dp)
-      .clip(RoundedCornerShape(999.dp))
-      .background(Color(0x9914000E))
-      .border(1.dp, GlassStroke.copy(alpha = 0.55f), RoundedCornerShape(999.dp))
-      .padding(horizontal = 10.dp, vertical = 5.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = 31.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0xB314000E))
+                .border(1.dp, GlassStroke.copy(alpha = 0.72f), RoundedCornerShape(999.dp))
+                .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
-  androidx.compose.material3.Text(
-      text = "$frameCount / $capacity FRAMES",
-      color = HorizonDim,
-      fontSize = 8.sp,
-      fontWeight = FontWeight.ExtraBold,
-      letterSpacing = 1.sp,
-  )
+            androidx.compose.material3.Text(
+                text = "${currentFrame + 1} OF $frameCount  ·  $frameCount / $capacity FRAMES",
+                color = HorizonBlush,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.1.sp,
+            )
         }
     }
 }
@@ -680,55 +704,92 @@ private fun TimelineRail(
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = modifier
-            .height(42.dp)
-            .shadow(14.dp, shape, clip = false)
+            .height(48.dp)
+            .shadow(16.dp, shape, clip = false)
             .clip(shape)
-            .background(UiBrush.linearGradient(listOf(GlassStrong, Color(0x7714000E))))
+            .background(UiBrush.linearGradient(listOf(GlassStrong, Color(0x8F14000E))))
             .border(1.dp, GlassStroke, shape)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         RailStep("‹", onPrevious)
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
-                .height(12.dp)
+                .height(20.dp)
                 .clip(RoundedCornerShape(999.dp))
-                .background(Color(0x4414000E)),
+                .background(Color(0x6614000E))
+                .border(1.dp, GlassStroke.copy(alpha = 0.48f), RoundedCornerShape(999.dp)),
         ) {
             val visibleSlots = maxOf(state.scene.frameCount + 1, 12).coerceAtMost(48)
-  repeat(visibleSlots) { frame ->
-      val existing = frame < state.scene.frameCount
-      val next = frame == state.scene.frameCount
-      Box(
-          modifier = Modifier
-              .weight(1f)
-              .fillMaxHeight()
-              .background(
-                  when {
-                      existing && frame == state.currentFrame -> HorizonAccent
-                      existing && state.activeLayer.cels.containsKey(frame) -> HorizonRose.copy(alpha = 0.42f)
-                      next -> HorizonRose.copy(alpha = 0.16f)
-                      else -> Color.Transparent
-                  },
-              )
-              .clickable(enabled = existing || next) {
-                  if (existing) state.setFrame(frame) else state.insertFrame()
-              },
-      )
-  }
+            val slotWidth = maxWidth / visibleSlots
+            val loopStart = state.scene.playbackRange.first.coerceIn(0, state.scene.frameCount - 1)
+            val loopEnd = state.scene.playbackRange.last.coerceIn(loopStart, state.scene.frameCount - 1)
+
+            if (state.scene.loop) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = slotWidth * loopStart)
+                        .width(slotWidth * (loopEnd - loopStart + 1))
+                        .height(4.dp)
+                        .background(HorizonRose.copy(alpha = 0.78f)),
+                )
+            }
+
+            Row(Modifier.fillMaxSize()) {
+                repeat(visibleSlots) { frame ->
+                    val existing = frame < state.scene.frameCount
+                    val next = frame == state.scene.frameCount
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(
+                                when {
+                                    existing && frame == state.currentFrame -> HorizonAccent.copy(alpha = 0.72f)
+                                    existing && state.activeLayer.cels.containsKey(frame) -> HorizonRose.copy(alpha = 0.36f)
+                                    next -> HorizonRose.copy(alpha = 0.12f)
+                                    else -> Color.Transparent
+                                },
+                            )
+                            .border(0.5.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(1.dp))
+                            .clickable(enabled = existing || next) {
+                                if (existing) state.setFrame(frame) else state.insertFrame()
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (next) {
+                            androidx.compose.material3.Text(
+                                text = "+",
+                                color = HorizonBlush.copy(alpha = 0.82f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset(x = slotWidth * state.currentFrame + slotWidth / 2 - 1.5.dp)
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(Color.White),
+            )
         }
         RailStep("›", onNext)
         androidx.compose.material3.Text(
-            text = "${state.currentFrame + 1} / ${state.scene.frameCount}",
-            color = HorizonBlush,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
+            text = "${state.currentFrame + 1} / ${state.scene.frameCount}  ·  ${state.project.canvas.fps} FPS",
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.8.sp,
         )
     }
 }
@@ -755,8 +816,8 @@ private fun BoxScope.PrimaryGlassNode(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var dragX by rememberSaveable("glass-device-layout-v2", node.name) { mutableStateOf(0f) }
-    var dragY by rememberSaveable("glass-device-layout-v2", node.name) { mutableStateOf(0f) }
+    var dragX by rememberSaveable("glass-device-layout-v3", node.name) { mutableStateOf(0f) }
+    var dragY by rememberSaveable("glass-device-layout-v3", node.name) { mutableStateOf(0f) }
 
     Box(
         modifier = modifier.offset { IntOffset(dragX.roundToInt(), dragY.roundToInt()) },
@@ -775,7 +836,7 @@ private fun BoxScope.PrimaryGlassNode(
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .size(58.dp)
+                .size(60.dp)
                 .pointerInput(node) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -802,48 +863,252 @@ private fun BoxScope.PrimaryGlassNode(
                     ),
                 )
             }
-            NodeGlyph(node, Modifier.size(27.dp))
+            NodeGlyph(node, Modifier.size(29.dp))
         }
 
         androidx.compose.material3.Text(
             text = node.label.uppercase(),
-            modifier = Modifier.offset(y = 38.dp),
-            color = HorizonDim,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 1.2.sp,
+            modifier = Modifier.offset(y = 40.dp),
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 1.35.sp,
             maxLines = 1,
+            style = TextStyle(shadow = Shadow(Color(0xE62A001A), Offset(0f, 1.5f), blurRadius = 7f)),
         )
     }
 }
 
 @Composable
 private fun RadialChild(action: RadialAction, modifier: Modifier = Modifier) {
-    val shape = CircleShape
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .shadow(if (action.selected) 14.dp else 8.dp, shape, clip = false)
-            .clip(shape)
-            .background(
-                action.color?.let { UiBrush.radialGradient(listOf(it.copy(alpha = 0.95f), it.copy(alpha = 0.55f))) }
-                    ?: UiBrush.linearGradient(
-                        if (action.selected) listOf(HorizonAccent, HorizonAccentDeep)
-                        else listOf(GlassStrong, Color(0x8814000E)),
-                    ),
-            )
-            .border(1.dp, if (action.selected) GlassRim else GlassStroke, shape)
-            .clickable(onClick = action.onClick),
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier = modifier.width(68.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (action.color == null) {
-            androidx.compose.material3.Text(
-                text = action.label.take(3).uppercase(),
-                color = Color.White,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.ExtraBold,
-                textAlign = TextAlign.Center,
-            )
+        val shape = CircleShape
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .shadow(if (action.selected) 15.dp else 9.dp, shape, clip = false)
+                .clip(shape)
+                .background(
+                    action.color?.let {
+                        UiBrush.radialGradient(listOf(it.copy(alpha = 0.98f), it.copy(alpha = 0.58f)))
+                    } ?: UiBrush.linearGradient(
+                        if (action.selected) listOf(HorizonAccent, HorizonAccentDeep)
+                        else listOf(GlassStrong, Color(0x9414000E)),
+                    ),
+                )
+                .border(1.dp, if (action.selected) GlassRim else GlassStroke, shape)
+                .clickable(onClick = action.onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (action.color == null) {
+                RadialActionGlyph(
+                    glyph = radialGlyphFor(action.label),
+                    modifier = Modifier.size(25.dp),
+                )
+            }
+        }
+        androidx.compose.material3.Text(
+            text = radialDisplayLabel(action.label),
+            color = Color.White,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.45.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            style = TextStyle(shadow = Shadow(Color(0xE62A001A), Offset(0f, 1f), blurRadius = 5f)),
+        )
+    }
+}
+
+private fun radialDisplayLabel(label: String): String = when (label) {
+    "‹" -> "PREV"
+    "›" -> "NEXT"
+    "▶" -> "PLAY"
+    "Ⅱ" -> "PAUSE"
+    "+" -> "INSERT"
+    "−" -> "REMOVE"
+    else -> label.uppercase().take(9)
+}
+
+private fun radialGlyphFor(label: String): RadialGlyph = when {
+    label == "Smaller" -> RadialGlyph.SMALLER
+    label.endsWith(" px") -> RadialGlyph.SIZE
+    label == "Larger" -> RadialGlyph.LARGER
+    label == "Smooth" -> RadialGlyph.SMOOTH
+    label == "Add" -> RadialGlyph.ADD
+    label == "Next" -> RadialGlyph.NEXT
+    label == "Visible" -> RadialGlyph.VISIBLE
+    label == "Delete" -> RadialGlyph.DELETE
+    label == "Undo" -> RadialGlyph.UNDO
+    label == "Redo" -> RadialGlyph.REDO
+    label == "Fit" -> RadialGlyph.FIT
+    label == "100%" -> RadialGlyph.RESET
+    label == "‹" -> RadialGlyph.PREVIOUS
+    label == "▶" -> RadialGlyph.PLAY
+    label == "Ⅱ" -> RadialGlyph.PAUSE
+    label == "›" -> RadialGlyph.FORWARD
+    label == "+" -> RadialGlyph.INSERT
+    label == "−" -> RadialGlyph.REMOVE
+    label.startsWith("Loop") -> RadialGlyph.LOOP
+    label == "About" -> RadialGlyph.ABOUT
+    label == "Checker" -> RadialGlyph.CHECKER
+    label == "Onion" -> RadialGlyph.ONION
+    label == "Projects" -> RadialGlyph.PROJECTS
+    label == "New" -> RadialGlyph.NEW
+    label == "Open" -> RadialGlyph.OPEN
+    label == "Save" -> RadialGlyph.SAVE
+    else -> RadialGlyph.BRUSH
+}
+
+@Composable
+private fun RadialActionGlyph(glyph: RadialGlyph, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = 1.8.dp.toPx()
+        val thin = 1.35.dp.toPx()
+        val white = Color.White
+        fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float = stroke) {
+            drawLine(white, Offset(w * x1, h * y1), Offset(w * x2, h * y2), width, StrokeCap.Round)
+        }
+        when (glyph) {
+            RadialGlyph.BRUSH -> {
+                line(.24f, .76f, .68f, .32f)
+                drawCircle(white, w * .10f, Offset(w * .72f, h * .28f), style = Stroke(stroke))
+                drawCircle(white, w * .09f, Offset(w * .22f, h * .78f))
+            }
+            RadialGlyph.SMALLER -> {
+                line(.20f, .50f, .80f, .50f)
+                drawCircle(white, w * .30f, Offset(w * .50f, h * .50f), style = Stroke(thin))
+            }
+            RadialGlyph.SIZE -> {
+                drawCircle(white, w * .28f, Offset(w * .50f, h * .50f), style = Stroke(stroke))
+                drawCircle(white, w * .08f, Offset(w * .50f, h * .50f))
+            }
+            RadialGlyph.LARGER, RadialGlyph.ADD, RadialGlyph.INSERT -> {
+                line(.20f, .50f, .80f, .50f)
+                line(.50f, .20f, .50f, .80f)
+            }
+            RadialGlyph.SMOOTH -> {
+                val path = Path().apply {
+                    moveTo(w * .14f, h * .68f)
+                    cubicTo(w * .34f, h * .18f, w * .62f, h * .82f, w * .86f, h * .32f)
+                }
+                drawPath(path, white, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            RadialGlyph.NEXT, RadialGlyph.FORWARD -> {
+                line(.35f, .22f, .68f, .50f)
+                line(.68f, .50f, .35f, .78f)
+            }
+            RadialGlyph.PREVIOUS -> {
+                line(.65f, .22f, .32f, .50f)
+                line(.32f, .50f, .65f, .78f)
+            }
+            RadialGlyph.VISIBLE -> {
+                val eye = Path().apply {
+                    moveTo(w * .10f, h * .50f)
+                    quadraticBezierTo(w * .50f, h * .12f, w * .90f, h * .50f)
+                    quadraticBezierTo(w * .50f, h * .88f, w * .10f, h * .50f)
+                }
+                drawPath(eye, white, style = Stroke(thin))
+                drawCircle(white, w * .10f, Offset(w * .50f, h * .50f))
+            }
+            RadialGlyph.DELETE, RadialGlyph.REMOVE -> {
+                drawRoundRect(white, Offset(w * .30f, h * .31f), Size(w * .40f, h * .48f), androidx.compose.ui.geometry.CornerRadius(3f), style = Stroke(thin))
+                line(.25f, .27f, .75f, .27f)
+                line(.40f, .18f, .60f, .18f)
+                if (glyph == RadialGlyph.REMOVE) line(.38f, .51f, .62f, .51f)
+            }
+            RadialGlyph.UNDO, RadialGlyph.REDO -> {
+                val reverse = glyph == RadialGlyph.UNDO
+                val path = Path().apply {
+                    if (reverse) {
+                        moveTo(w * .78f, h * .68f)
+                        cubicTo(w * .64f, h * .30f, w * .31f, h * .29f, w * .20f, h * .57f)
+                    } else {
+                        moveTo(w * .22f, h * .68f)
+                        cubicTo(w * .36f, h * .30f, w * .69f, h * .29f, w * .80f, h * .57f)
+                    }
+                }
+                drawPath(path, white, style = Stroke(stroke, cap = StrokeCap.Round))
+                if (reverse) {
+                    line(.20f, .57f, .18f, .35f)
+                    line(.20f, .57f, .38f, .49f)
+                } else {
+                    line(.80f, .57f, .82f, .35f)
+                    line(.80f, .57f, .62f, .49f)
+                }
+            }
+            RadialGlyph.FIT -> {
+                line(.18f, .36f, .18f, .18f); line(.18f, .18f, .36f, .18f)
+                line(.64f, .18f, .82f, .18f); line(.82f, .18f, .82f, .36f)
+                line(.18f, .64f, .18f, .82f); line(.18f, .82f, .36f, .82f)
+                line(.64f, .82f, .82f, .82f); line(.82f, .82f, .82f, .64f)
+            }
+            RadialGlyph.RESET -> {
+                drawCircle(white, w * .30f, Offset(w * .50f, h * .50f), style = Stroke(thin))
+                line(.50f, .28f, .50f, .72f)
+                line(.28f, .50f, .72f, .50f)
+            }
+            RadialGlyph.PLAY -> {
+                val path = Path().apply {
+                    moveTo(w * .34f, h * .22f); lineTo(w * .76f, h * .50f); lineTo(w * .34f, h * .78f); close()
+                }
+                drawPath(path, white)
+            }
+            RadialGlyph.PAUSE -> {
+                drawRoundRect(white, Offset(w * .30f, h * .22f), Size(w * .13f, h * .56f), androidx.compose.ui.geometry.CornerRadius(2f))
+                drawRoundRect(white, Offset(w * .57f, h * .22f), Size(w * .13f, h * .56f), androidx.compose.ui.geometry.CornerRadius(2f))
+            }
+            RadialGlyph.LOOP -> {
+                val path = Path().apply {
+                    moveTo(w * .22f, h * .38f)
+                    cubicTo(w * .35f, h * .18f, w * .68f, h * .18f, w * .78f, h * .42f)
+                    moveTo(w * .78f, h * .62f)
+                    cubicTo(w * .65f, h * .82f, w * .32f, h * .82f, w * .22f, h * .58f)
+                }
+                drawPath(path, white, style = Stroke(thin, cap = StrokeCap.Round))
+                line(.78f, .42f, .66f, .32f, thin); line(.78f, .42f, .82f, .27f, thin)
+                line(.22f, .58f, .34f, .68f, thin); line(.22f, .58f, .18f, .73f, thin)
+            }
+            RadialGlyph.ABOUT -> {
+                drawCircle(white, w * .30f, Offset(w * .50f, h * .50f), style = Stroke(thin))
+                drawCircle(white, w * .04f, Offset(w * .50f, h * .33f))
+                line(.50f, .46f, .50f, .68f)
+            }
+            RadialGlyph.CHECKER -> {
+                repeat(2) { row -> repeat(2) { col ->
+                    if ((row + col) % 2 == 0) drawRect(white, Offset(w * (.23f + col * .27f), h * (.23f + row * .27f)), Size(w * .27f, h * .27f))
+                    else drawRect(white.copy(alpha = .28f), Offset(w * (.23f + col * .27f), h * (.23f + row * .27f)), Size(w * .27f, h * .27f))
+                } }
+            }
+            RadialGlyph.ONION -> {
+                drawCircle(white, w * .25f, Offset(w * .42f, h * .54f), style = Stroke(thin))
+                drawCircle(white.copy(alpha = .55f), w * .25f, Offset(w * .60f, h * .46f), style = Stroke(thin))
+            }
+            RadialGlyph.PROJECTS -> {
+                repeat(2) { row -> repeat(2) { col ->
+                    drawRoundRect(white, Offset(w * (.20f + col * .34f), h * (.20f + row * .34f)), Size(w * .24f, h * .24f), androidx.compose.ui.geometry.CornerRadius(2f), style = Stroke(thin))
+                } }
+            }
+            RadialGlyph.NEW -> {
+                drawRoundRect(white, Offset(w * .22f, h * .18f), Size(w * .56f, h * .64f), androidx.compose.ui.geometry.CornerRadius(3f), style = Stroke(thin))
+                line(.50f, .36f, .50f, .66f); line(.35f, .51f, .65f, .51f)
+            }
+            RadialGlyph.OPEN -> {
+                val folder = Path().apply {
+                    moveTo(w * .14f, h * .36f); lineTo(w * .42f, h * .36f); lineTo(w * .50f, h * .27f); lineTo(w * .84f, h * .27f); lineTo(w * .76f, h * .75f); lineTo(w * .18f, h * .75f); close()
+                }
+                drawPath(folder, white, style = Stroke(thin))
+            }
+            RadialGlyph.SAVE -> {
+                drawRoundRect(white, Offset(w * .20f, h * .18f), Size(w * .60f, h * .64f), androidx.compose.ui.geometry.CornerRadius(3f), style = Stroke(thin))
+                drawRect(white, Offset(w * .32f, h * .20f), Size(w * .36f, h * .20f), style = Stroke(thin))
+                drawCircle(white, w * .10f, Offset(w * .50f, h * .64f), style = Stroke(thin))
+            }
         }
     }
 }
