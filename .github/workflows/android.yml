@@ -14,6 +14,7 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   native-boundary:
@@ -84,6 +85,31 @@ jobs:
             gradle-test.log
           if-no-files-found: ignore
           retention-days: 14
+      - name: Report compiler result to migration issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo "## Mainline release compiler — ${SHORT_SHA}"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Result: **${JOB_STATUS}**"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            if [[ "$JOB_STATUS" != "success" && -s gradle-test.log ]]; then
+              echo '```text'
+              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:)' gradle-test.log | tail -n 80 || tail -n 80 gradle-test.log
+              echo '```'
+            else
+              echo 'Release Kotlin compilation and the native unit-test suite passed.'
+            fi
+          } > compiler-report.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file compiler-report.md
 
   signed-release-apk:
     name: Signed non-debuggable release APK
@@ -164,3 +190,26 @@ jobs:
             ${{ env.INKFRAME_APK }}.sha256
           if-no-files-found: error
           retention-days: 30
+      - name: Report APK result to migration issue
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo "## Signed release APK — ${SHORT_SHA}"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Result: **${JOB_STATUS}**"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo "- Artifact: \`inkframe-release-${GITHUB_SHA}\`"
+              echo "- Build type: release / non-debuggable / permanent signing lineage"
+            else
+              echo '- No APK was published from this run.'
+            fi
+          } > apk-report.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file apk-report.md
