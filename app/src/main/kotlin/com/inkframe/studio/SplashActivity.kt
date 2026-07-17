@@ -12,7 +12,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /**
- * Native Glass Horizon handoff shown before the WebView studio starts.
+ * Native Glass Horizon handoff shown before the Kotlin studio starts.
  *
  * The supplied portrait artwork is rendered with CENTER_CROP because InkFrame is
  * landscape-first. Its focal nib and orbital arc remain centered on phones and
