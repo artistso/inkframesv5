@@ -22,6 +22,10 @@ render.experimental.xml
 # --- Kotlin / JVM ---
 .kotlin/
 
+# --- Local AI review tooling ---
+.cache/inkframe-ai/
+ai-review/
+
 # --- Web build (web/) ---
 web/node_modules/
 web/dist/
