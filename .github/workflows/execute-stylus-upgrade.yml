@@ -1,4 +1,4 @@
-name: Diagnose Guarded S Pen Upgrade
+name: Execute Corrected S Pen Upgrade
 
 on:
   push:
@@ -12,84 +12,168 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
-  diagnose:
+  upgrade-test-and-commit:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Execute source transformation with captured output
-        id: patch
+      - name: Apply corrected source transformation
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           awk '
             /python3 - <<'"'"'PY'"'"'/ { capture=1; next }
             capture && /^          PY$/ { capture=0; exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/upgrade-stylus-engine-once.yml > /tmp/upgrade-stylus.py
-          python3 /tmp/upgrade-stylus.py 2>&1 | tee /tmp/stylus-patch.log
-          code=${PIPESTATUS[0]}
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
+          test -s /tmp/upgrade-stylus.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('/tmp/upgrade-stylus.py')
+          text = path.read_text()
+          pattern = re.compile(
+              r"\nscreen = Path\('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt'\).*?"
+              r"screen\.write_text\(text\.replace\(old, new, 1\)\)\n",
+              re.S,
+          )
+          text, count = pattern.subn('\n', text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one obsolete GlassHorizon insertion block, found {count}')
+          path.write_text(text)
+          PY
+
+          python3 /tmp/upgrade-stylus.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt')
+          text = path.read_text()
+          if 'view.onStrokeFinished = { summary ->' in text:
+              raise SystemExit('stroke summary callback already exists')
+
+          pattern = re.compile(
+              r'(?P<block>\s+view\.onFilled = \{\n'
+              r'\s+state\.fillActive = false\n'
+              r'\s+view\.fillActive = false\n'
+              r'\s+\})'
+          )
+          addition = '''
+                            view.onStrokeFinished = { summary ->
+                                val tiltDegrees = (summary.maxTiltRad * 180f / PI.toFloat()).roundToInt()
+                                val mode = if (summary.eraser) "ERASER" else state.brush.name.uppercase()
+                                val barrel = if (summary.barrelButtonUsed) " · BUTTON" else ""
+                                state.statusMessage =
+                                    "FRAME ${state.currentFrame + 1} · $mode · ${summary.sampleCount} SAMPLES · " +
+                                        "P ${"%.2f".format(summary.minPressure)}–${"%.2f".format(summary.maxPressure)} · " +
+                                        "TILT ${tiltDegrees}°$barrel"
+                            }'''
+          text, count = pattern.subn(lambda m: m.group('block') + addition, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one current onFilled callback, found {count}')
+          path.write_text(text)
+          PY
 
       - name: Set up JDK 17
-        if: steps.patch.outputs.code == '0'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
-        if: steps.patch.outputs.code == '0'
         uses: android-actions/setup-android@v3
 
       - name: Install Android API 36
-        if: steps.patch.outputs.code == '0'
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Set up Gradle
-        if: steps.patch.outputs.code == '0'
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile release Kotlin and run tests
-        id: gradle
-        if: steps.patch.outputs.code == '0'
-        continue-on-error: true
+      - name: Compile release Kotlin and run complete tests
         shell: bash
         run: |
           set -o pipefail
           chmod +x ./gradlew
-          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/stylus-gradle.log
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/stylus-upgrade-gradle.log
 
-      - name: Publish exact diagnostic
-        if: always()
+      - name: Commit verified upgrade and remove temporary workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm \
+            .github/workflows/upgrade-stylus-engine-once.yml \
+            .github/workflows/execute-stylus-upgrade.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            engine-gl/src/main/kotlin/com/inkframe/engine/gl/StrokeProcessor.kt \
+            engine-gl/src/main/kotlin/com/inkframe/engine/gl/BrushRenderer.kt \
+            engine-gl/src/main/assets/shaders/brush.vert \
+            engine-gl/src/main/assets/shaders/brush.frag \
+            engine-gl/src/test/kotlin/com/inkframe/engine/gl/StrokeProcessorTest.kt \
+            feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/CanvasView.kt \
+            feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt
+          git commit -m "Connect S Pen tilt and physical eraser to native strokes"
+          git push origin HEAD:main
+
+      - name: Publish verified result
+        if: success()
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          PATCH_CODE: ${{ steps.patch.outputs.code }}
-          GRADLE_OUTCOME: ${{ steps.gradle.outcome }}
         run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          cat > /tmp/stylus-success.md <<EOF
+          # S Pen engine upgrade diagnostic — completed
+
+          - Verified commit: \`${SHA}\`
+          - Release Kotlin compilation: **passed**
+          - Complete unit-test suite: **passed**
+          - Pressure, tilt and orientation reach the native stroke processor.
+          - Pencil, ink and marker tips generate rotated elliptical tilt dabs.
+          - The physical eraser tip temporarily uses the eraser engine without changing the selected brush.
+          - Completed strokes report frame, pressure range, maximum tilt, sample count, eraser state and barrel-button usage.
+          - Both temporary workflows removed themselves.
+
+          Android Mainline is producing the stable update-compatible QA APK for this exact commit.
+          EOF
+          gh issue edit 143 --repo "$GITHUB_REPOSITORY" --body-file /tmp/stylus-success.md
+          gh issue close 143 --repo "$GITHUB_REPOSITORY" --reason completed
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file /tmp/stylus-success.md
+
+      - name: Publish exact failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
           {
             echo '# S Pen engine upgrade diagnostic'
             echo
             echo "- Source commit: \`${GITHUB_SHA}\`"
             echo "- Run ID: \`${GITHUB_RUN_ID}\`"
             echo "- Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "- Patch exit code: \`${PATCH_CODE:-not-run}\`"
-            echo "- Gradle outcome: **${GRADLE_OUTCOME:-not-run}**"
+            echo '- Result: **failed before commit**'
             echo
             echo '```text'
-            if [[ -s /tmp/stylus-patch.log ]]; then
-              cat /tmp/stylus-patch.log
-            fi
-            if [[ -s /tmp/stylus-gradle.log ]]; then
-              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:|BUILD SUCCESSFUL)' /tmp/stylus-gradle.log | tail -n 160 || tail -n 160 /tmp/stylus-gradle.log
+            if [[ -s /tmp/stylus-upgrade-gradle.log ]]; then
+              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:)' /tmp/stylus-upgrade-gradle.log | tail -n 160 || tail -n 160 /tmp/stylus-upgrade-gradle.log
+            else
+              echo 'The corrected source transformation failed before Gradle started.'
             fi
             echo '```'
-          } > /tmp/stylus-diagnostic.md
-          gh issue edit 143 --repo "$GITHUB_REPOSITORY" --body-file /tmp/stylus-diagnostic.md
+          } > /tmp/stylus-failure.md
+          gh issue edit 143 --repo "$GITHUB_REPOSITORY" --body-file /tmp/stylus-failure.md
