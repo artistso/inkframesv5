@@ -15,7 +15,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.inkframe.core.model.InkFrameDefaults
 import com.inkframe.feature.canvas.CanvasView
-import com.inkframe.feature.canvas.GlassHorizonScreen
+import com.inkframe.feature.canvas.ClosedBetaGlassHorizonScreen
 import com.inkframe.feature.canvas.StudioState
 
 /**
@@ -24,8 +24,8 @@ import com.inkframe.feature.canvas.StudioState
  * Kotlin, Compose and OpenGL own the complete application surface. No WebView, JavaScript bridge,
  * browser storage, or packaged web application participates in startup.
  *
- * [GlassHorizonScreen] is the sole artist-facing workspace. Canvas contact is routed directly to
- * the native drawing surface so Compose overlays cannot swallow S Pen or finger strokes.
+ * [ClosedBetaGlassHorizonScreen] is the artist-facing workspace. Canvas contact is routed directly
+ * to the native drawing surface so Compose overlays cannot swallow S Pen or finger strokes.
  */
 class MainActivity : ComponentActivity() {
 
@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                GlassHorizonScreen(state = studioState)
+                ClosedBetaGlassHorizonScreen(state = studioState)
             }
         }
 
