@@ -1,0 +1,102 @@
+name: Repair Visible Native Ink Once
+
+on:
+  push:
+    branches: [repair/visible-native-ink-screen-recording]
+    paths:
+      - .github/workflows/repair-visible-native-ink-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: repair-visible-native-ink-once
+  cancel-in-progress: true
+
+jobs:
+  repair-test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: repair/visible-native-ink-screen-recording
+
+      - name: Apply visible native ink repair
+        run: python3 tools/repair_visible_native_ink_once.py
+
+      - name: Assert canvas composition and GL evidence boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCREEN='feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt'
+          CANVAS='feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/CanvasView.kt'
+          RENDERER='engine-gl/src/main/kotlin/com/inkframe/engine/gl/CanvasRenderer.kt'
+          ENGINE='engine-gl/src/main/kotlin/com/inkframe/engine/gl/PaintEngine.kt'
+          grep -Fq '.background(Color.Transparent)' "$SCREEN"
+          ! grep -Fq '.background(HorizonBlush)' "$SCREEN"
+          ! grep -Fq 'detectDragGestures' "$SCREEN"
+          grep -Fq 'INK VISIBLE' "$SCREEN"
+          grep -Fq 'onStrokeCommitted' "$CANVAS"
+          grep -Fq 'StrokeCommitReport' "$ENGINE"
+          grep -Fq 'endStroke()?.let(onStrokeCommitted)' "$RENDERER"
+          ! grep -Eq 'android\.webkit|WebView\(|JavascriptInterface|addJavascriptInterface' "$SCREEN" "$CANVAS" "$RENDERER" "$ENGINE"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile release Kotlin and run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/visible-native-ink.log
+
+      - name: Commit verified repair and remove temporary machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/repair-visible-native-ink-once.yml tools/repair_visible_native_ink_once.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Expose native GL ink and lock controls off canvas'
+          git push origin HEAD:repair/visible-native-ink-screen-recording
+
+      - name: Publish exact failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Visible native ink repair failed before commit'
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '```text'
+            if [[ -s /tmp/visible-native-ink.log ]]; then
+              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:|expected one match)' /tmp/visible-native-ink.log | tail -n 240 || tail -n 240 /tmp/visible-native-ink.log
+            else
+              echo 'Transformation or static assertions failed before Gradle completed.'
+            fi
+            echo '```'
+          } > /tmp/visible-native-ink-failure.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file /tmp/visible-native-ink-failure.md
