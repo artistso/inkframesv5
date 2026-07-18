@@ -2,7 +2,7 @@ name: Repair Visible Native Ink Once
 
 on:
   push:
-    branches: [repair/visible-native-ink-screen-recording]
+    branches: [main]
     paths:
       - .github/workflows/repair-visible-native-ink-once.yml
   workflow_dispatch:
@@ -23,7 +23,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: repair/visible-native-ink-screen-recording
 
       - name: Apply visible native ink repair
         run: python3 tools/repair_visible_native_ink_once.py
@@ -76,7 +75,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'Expose native GL ink and lock controls off canvas'
-          git push origin HEAD:repair/visible-native-ink-screen-recording
+          git push origin HEAD:main
 
       - name: Publish exact failure
         if: failure()
