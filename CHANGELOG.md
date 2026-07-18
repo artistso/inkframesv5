@@ -6,6 +6,11 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Native Android — bounded radial docking
+- Preserved movable Glass Horizon primary nodes while constraining each to its left, right, or lower command zone.
+- Prevented node bodies from covering the drawing stage or leaving the visible workspace.
+- Added a Studio `Reset UI` action and unit-tested docking geometry across command zones.
+
 ### Native Android — crash-safe project recovery
 - Added a debounced local `.inkframe` autosave that captures the complete structural document and cel pixels after native artwork or timeline changes.
 - Recovery writes use Android `AtomicFile`, coalesce edits while a large archive is being encoded, and flush when the studio pauses.

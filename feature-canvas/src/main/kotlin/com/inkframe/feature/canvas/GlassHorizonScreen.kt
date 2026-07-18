@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -116,6 +117,18 @@ private data class RadialAction(
     val onClick: () -> Unit,
 )
 
+private data class RadialDockSpec(
+    val region: RadialDockRegion,
+    val originX: Dp,
+    val originY: Dp,
+    val workspaceWidth: Dp,
+    val workspaceHeight: Dp,
+    val canvasLeft: Dp,
+    val canvasTop: Dp,
+    val canvasRight: Dp,
+    val canvasBottom: Dp,
+)
+
 /**
  * Native Kotlin/Compose/OpenGL translation of InkFrame's original Glass Horizon workspace.
  * The original web implementation remains a design and behaviour specification only; no web
@@ -126,6 +139,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
     var canvasView by remember { mutableStateOf<CanvasView?>(null) }
     var openNode by rememberSaveable { mutableStateOf<PrimaryNode?>(null) }
     var overlay by rememberSaveable { mutableStateOf<OverlayKind?>(null) }
+    var nodeLayoutEpoch by rememberSaveable { mutableStateOf(0) }
     var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
     val context = LocalContext.current
     val resolver = context.contentResolver
@@ -325,6 +339,18 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
         val lowerNodeY = (topNodeY + 224.dp).coerceAtMost(frameBottom - 72.dp)
         val bottomNodeY = (frameBottom + 28.dp).coerceAtMost(maxHeight - 82.dp)
 
+        fun radialDock(region: RadialDockRegion, originX: Dp, originY: Dp) = RadialDockSpec(
+            region = region,
+            originX = originX,
+            originY = originY,
+            workspaceWidth = maxWidth,
+            workspaceHeight = maxHeight,
+            canvasLeft = frameLeft,
+            canvasTop = frameTop,
+            canvasRight = frameRight,
+            canvasBottom = frameBottom,
+        )
+
         GlassStage(
             state = state,
             canvasWidth = canvasWidth,
@@ -376,6 +402,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             onToggle = { openNode = openNode.toggle(PrimaryNode.TOOLS) },
+            dock = radialDock(RadialDockRegion.LEFT, leftNodeX, topNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = leftNodeX, y = topNodeY),
         )
 
@@ -396,6 +424,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.LINE) },
+            dock = radialDock(RadialDockRegion.LEFT, leftNodeX, middleNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = leftNodeX, y = middleNodeY),
         )
 
@@ -419,6 +449,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             onToggle = { openNode = openNode.toggle(PrimaryNode.COLOR) },
+            dock = radialDock(RadialDockRegion.RIGHT, rightNodeX, topNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = rightNodeX, y = topNodeY),
         )
 
@@ -439,6 +471,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.LAYERS) },
+            dock = radialDock(RadialDockRegion.RIGHT, rightNodeX, middleNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = rightNodeX, y = middleNodeY),
         )
 
@@ -453,6 +487,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 RadialAction("100%") { canvasView?.resetZoom() },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.ACTIONS) },
+            dock = radialDock(RadialDockRegion.RIGHT, rightNodeX, lowerNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = rightNodeX, y = lowerNodeY),
         )
 
@@ -477,6 +513,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.FRAMES) },
+            dock = radialDock(RadialDockRegion.BOTTOM, (maxWidth - 58.dp) / 2, bottomNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = (maxWidth - 58.dp) / 2, y = bottomNodeY),
         )
 
@@ -494,8 +532,15 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                     state.onionSkin = state.onionSkin.copy(enabled = !state.onionSkin.enabled)
                     canvasView?.requestRender()
                 },
+                RadialAction("Reset UI") {
+                    nodeLayoutEpoch += 1
+                    openNode = null
+                    state.statusMessage = "CONTROL LAYOUT RESET"
+                },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.STUDIO) },
+            dock = radialDock(RadialDockRegion.LEFT, leftNodeX, lowerNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = leftNodeX, y = lowerNodeY),
         )
 
@@ -527,6 +572,8 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                 RadialAction("PNG") { launchExport(ExportManager.ExportFormat.PNG_SEQUENCE); openNode = null },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.GALLERY) },
+            dock = radialDock(RadialDockRegion.BOTTOM, frameLeft + 34.dp, bottomNodeY),
+            layoutEpoch = nodeLayoutEpoch,
             modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft + 34.dp, y = bottomNodeY),
         )
 
@@ -1011,10 +1058,17 @@ private fun BoxScope.PrimaryGlassNode(
     isOpen: Boolean,
     actions: List<RadialAction>,
     onToggle: () -> Unit,
+    dock: RadialDockSpec,
+    layoutEpoch: Int,
     modifier: Modifier = Modifier,
 ) {
-    var dragX by rememberSaveable("glass-device-layout-v3", node.name) { mutableStateOf(0f) }
-    var dragY by rememberSaveable("glass-device-layout-v3", node.name) { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    var dragX by rememberSaveable(
+        "glass-device-layout-v4", node.name, layoutEpoch, dock.workspaceWidth.value, dock.workspaceHeight.value,
+    ) { mutableStateOf(0f) }
+    var dragY by rememberSaveable(
+        "glass-device-layout-v4", node.name, layoutEpoch, dock.workspaceWidth.value, dock.workspaceHeight.value,
+    ) { mutableStateOf(0f) }
 
     Box(
         modifier = modifier.offset { IntOffset(dragX.roundToInt(), dragY.roundToInt()) },
@@ -1034,11 +1088,41 @@ private fun BoxScope.PrimaryGlassNode(
         Box(
             modifier = Modifier
                 .size(58.dp)
-                .pointerInput(node) {
+                .pointerInput(node, dock, layoutEpoch) {
+                    val originX = with(density) { dock.originX.toPx() }
+                    val originY = with(density) { dock.originY.toPx() }
+                    val workspaceWidth = with(density) { dock.workspaceWidth.toPx() }
+                    val workspaceHeight = with(density) { dock.workspaceHeight.toPx() }
+                    val canvas = RadialDockRect(
+                        left = with(density) { dock.canvasLeft.toPx() },
+                        top = with(density) { dock.canvasTop.toPx() },
+                        right = with(density) { dock.canvasRight.toPx() },
+                        bottom = with(density) { dock.canvasBottom.toPx() },
+                    )
+                    val nodeWidth = with(density) { 58.dp.toPx() }
+                    val nodeHeight = with(density) { 76.dp.toPx() }
+                    val edgePadding = with(density) { 12.dp.toPx() }
+                    val canvasGap = with(density) { 12.dp.toPx() }
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        dragX += dragAmount.x
-                        dragY += dragAmount.y
+                        val bounded = clampRadialDockOffset(
+                            originX = originX,
+                            originY = originY,
+                            requestedOffset = RadialDockOffset(
+                                x = dragX + dragAmount.x,
+                                y = dragY + dragAmount.y,
+                            ),
+                            nodeWidth = nodeWidth,
+                            nodeHeight = nodeHeight,
+                            workspaceWidth = workspaceWidth,
+                            workspaceHeight = workspaceHeight,
+                            canvas = canvas,
+                            region = dock.region,
+                            edgePadding = edgePadding,
+                            canvasGap = canvasGap,
+                        )
+                        dragX = bounded.x
+                        dragY = bounded.y
                     }
                 }
                 .shadow(if (isOpen) 22.dp else 14.dp, shape, clip = false)
@@ -1142,7 +1226,7 @@ private fun radialGlyphFor(label: String): RadialGlyph = when {
     label == "Undo" -> RadialGlyph.UNDO
     label == "Redo" -> RadialGlyph.REDO
     label == "Fit" -> RadialGlyph.FIT
-    label == "100%" -> RadialGlyph.RESET
+    label == "100%" || label == "Reset UI" -> RadialGlyph.RESET
     label == "‹" -> RadialGlyph.PREVIOUS
     label == "▶" -> RadialGlyph.PLAY
     label == "Ⅱ" -> RadialGlyph.PAUSE
