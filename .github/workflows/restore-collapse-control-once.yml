@@ -1,0 +1,153 @@
+name: Restore Original Collapse Control Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/restore-collapse-control-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: restore-collapse-control-once
+  cancel-in-progress: true
+
+jobs:
+  restore-test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore native collapse-all glass orb
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt')
+          text = path.read_text()
+
+          marker = '''        state.statusMessage?.let { message ->
+            GlassHint(
+'''
+          insertion = '''        if (openNode != null) {
+            CollapseAllControl(
+                onCollapse = { openNode = null },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = (-18).dp, y = (-18).dp),
+            )
+        }
+
+        state.statusMessage?.let { message ->
+            GlassHint(
+'''
+          if text.count(marker) != 1:
+              raise SystemExit(f'Expected one status marker, found {text.count(marker)}')
+          text = text.replace(marker, insertion, 1)
+
+          marker = '''@Composable
+private fun GlassHint(text: String, modifier: Modifier = Modifier) {
+'''
+          composable = '''@Composable
+private fun CollapseAllControl(
+    onCollapse: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = CircleShape
+    Box(
+        modifier = modifier
+            .size(52.dp)
+            .shadow(20.dp, shape, clip = false)
+            .clip(shape)
+            .background(
+                UiBrush.linearGradient(
+                    listOf(Color(0x42F7CAC9), Color(0x2A14000E)),
+                ),
+            )
+            .border(1.dp, GlassRim, shape)
+            .clickable(onClick = onCollapse),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(24.dp)) {
+            val stroke = 1.7.dp.toPx()
+            val white = Color.White
+            // Two inward-facing glass chevrons reproduce the original collapse-all intent.
+            drawLine(white, Offset(size.width * .18f, size.height * .32f), Offset(size.width * .50f, size.height * .52f), stroke, StrokeCap.Round)
+            drawLine(white, Offset(size.width * .50f, size.height * .52f), Offset(size.width * .82f, size.height * .32f), stroke, StrokeCap.Round)
+            drawLine(white, Offset(size.width * .18f, size.height * .68f), Offset(size.width * .50f, size.height * .48f), stroke, StrokeCap.Round)
+            drawLine(white, Offset(size.width * .50f, size.height * .48f), Offset(size.width * .82f, size.height * .68f), stroke, StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
+private fun GlassHint(text: String, modifier: Modifier = Modifier) {
+'''
+          if text.count(marker) != 1:
+              raise SystemExit(f'Expected one GlassHint marker, found {text.count(marker)}')
+          text = text.replace(marker, composable, 1)
+          path.write_text(text)
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile release Kotlin and run complete tests
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/collapse-control.log
+
+      - name: Commit verified source and remove executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/restore-collapse-control-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Restore original collapse-all glass control'
+          git push origin HEAD:main
+
+      - name: Publish exact failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Collapse-control restoration failed before commit'
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '```text'
+            if [[ -s /tmp/collapse-control.log ]]; then
+              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:|Expected one)' /tmp/collapse-control.log | tail -n 160 || tail -n 160 /tmp/collapse-control.log
+            else
+              echo 'Source transformation failed before Gradle started.'
+            fi
+            echo '```'
+          } > /tmp/collapse-control-failure.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file /tmp/collapse-control-failure.md
