@@ -1,0 +1,93 @@
+name: Complete Glass Horizon Project I/O Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/complete-glass-project-io-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: complete-glass-project-io-once
+  cancel-in-progress: true
+
+jobs:
+  implement-test-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply Glass Horizon project I/O transformation
+        run: python3 tools/complete_glass_project_io_once.py
+
+      - name: Assert placeholders are removed
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -q 'being connected natively' feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt
+          ! grep -q 'being moved into Gallery' feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt
+          grep -q 'ActivityResultContracts.CreateDocument' feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt
+          grep -q 'ExportManager.ExportFormat.MP4' feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonScreen.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile release Kotlin and run complete tests
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee /tmp/project-io-completion.log
+
+      - name: Commit verified completion block and remove temporary machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/complete-glass-project-io-once.yml tools/complete_glass_project_io_once.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Connect Glass Horizon project save open and export'
+          git push origin HEAD:main
+
+      - name: Publish exact failure
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '## Glass Horizon project-I/O completion failed before commit'
+            echo
+            echo "- Source commit: \`${GITHUB_SHA}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo '```text'
+            if [[ -s /tmp/project-io-completion.log ]]; then
+              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:|expected one match)' /tmp/project-io-completion.log | tail -n 220 || tail -n 220 /tmp/project-io-completion.log
+            else
+              echo 'Source transformation failed before Gradle started.'
+            fi
+            echo '```'
+          } > /tmp/project-io-completion-failure.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file /tmp/project-io-completion-failure.md
