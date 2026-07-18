@@ -1,0 +1,160 @@
+name: Real APK Release
+
+# Builds the canonical InkFrame Android package, not the QA package.
+# Output package: com.inkframe.studio
+# Runtime: native Kotlin + Compose + OpenGL ES. No WebView runtime and no packaged web app.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: real-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  real-package-release-apk:
+    name: Real package release APK
+    runs-on: ubuntu-latest
+    env:
+      INKFRAME_APPLICATION_ID: com.inkframe.studio
+      INKFRAME_VERSION_NAME: 0.5.0-native.${{ github.run_number }}
+      INKFRAME_KEYSTORE_PASSWORD: inkframe-local-release
+      INKFRAME_KEY_ALIAS: inkframe-local-release
+      INKFRAME_KEY_PASSWORD: inkframe-local-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deterministic signing dependency
+        run: python -m pip install --disable-pip-version-check --no-input cryptography==46.0.4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Generate local real-package release signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/inkframe-local-release.p12"
+          FINGERPRINT="$(python tools/generate_local_release_keystore.py --output "$KEYSTORE" --password "$INKFRAME_KEYSTORE_PASSWORD")"
+          test -s "$KEYSTORE"
+          test -n "$FINGERPRINT"
+          keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
+          echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "INKFRAME_VERSION_CODE=$((60000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "LOCAL_RELEASE_CERT_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Compile Kotlin, run tests, and assemble release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test :app:assembleRelease --stacktrace --console=plain
+
+      - name: Verify real native package boundary
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/release/app-release.apk'
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$RUNNER_TEMP/real-package-badging.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$BADGING"
+          grep -F "package: name='com.inkframe.studio'" "$BADGING"
+          grep -F "launchable-activity: name='com.inkframe.studio.SplashActivity'" "$BADGING"
+
+          if grep -Fq 'application-debuggable' "$BADGING"; then
+            echo 'Real package APK is unexpectedly debuggable.' >&2
+            exit 1
+          fi
+          if unzip -l "$APK" | grep -Eq 'assets/index\.html|assets/brush-engine-v2/|\.js$|\.html$'; then
+            echo 'Real package APK unexpectedly packages retired web assets.' >&2
+            exit 1
+          fi
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -Fq 'android.permission.INTERNET'; then
+            echo 'Real package APK unexpectedly requests INTERNET.' >&2
+            exit 1
+          fi
+          if strings "$APK" | grep -Eq 'android/webkit/WebView|addJavascriptInterface|GlassCanvasScreen|StudioScreen\('; then
+            echo 'Real package APK contains a rejected runtime marker.' >&2
+            exit 1
+          fi
+
+          SHORT_SHA="${GITHUB_SHA::7}"
+          OUT="InkFrame-release-${SHORT_SHA}.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "${OUT}.sha256"
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 "${OUT}.sha256")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload real package APK
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkframe-release-${{ github.sha }}
+          path: |
+            ${{ steps.verify.outputs.apk }}
+            ${{ steps.verify.outputs.apk }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish real APK artifact record
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+          APK_NAME: ${{ steps.verify.outputs.apk }}
+          APK_SHA256: ${{ steps.verify.outputs.sha256 }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo '# Real InkFrame APK artifact'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Result: **${JOB_STATUS}**"
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo "- Artifact ID: \`${ARTIFACT_ID}\`"
+              echo "- Artifact URL: ${ARTIFACT_URL}"
+              echo "- Artifact name: \`inkframe-release-${GITHUB_SHA}\`"
+              echo "- File: \`${APK_NAME}\`"
+              echo "- SHA-256: \`${APK_SHA256}\`"
+              echo '- Package: `com.inkframe.studio`'
+              echo "- Certificate SHA-256: \`${LOCAL_RELEASE_CERT_FINGERPRINT}\`"
+              echo '- Build type: release / non-debuggable / native-only / real package'
+              echo
+              echo 'This is the canonical package name and installs as InkFrame Studio. It is signed with the generated local release identity until permanent Play/upload signing secrets are configured.'
+            else
+              echo '- No real APK was published from this run.'
+            fi
+          } > real-apk-record.md
+          gh issue edit 142 --repo "$GITHUB_REPOSITORY" --body-file real-apk-record.md
+          gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file real-apk-record.md
