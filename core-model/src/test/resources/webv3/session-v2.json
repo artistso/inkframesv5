@@ -1,0 +1,55 @@
+{
+  "v": 2,
+  "savedAt": 1690000001000,
+  "pi": 1,
+  "projects": [
+    {
+      "name": "Layered",
+      "w": 4,
+      "h": 4,
+      "cur": 0,
+      "fps": 12,
+      "paper": "#fff0f3",
+      "holds": [3],
+      "frames": [
+        {
+          "active": 1,
+          "layers": [
+            {
+              "name": "Sketch",
+              "visible": false,
+              "opacity": 0.5,
+              "blend": "multiply",
+              "blob": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAHklEQVR42mP8z8DwnwEKmBia/yPBEIaGkGkAAB6mAv8JeSY6AAAAAElFTkSuQmCC"
+            },
+            {
+              "name": "Ink",
+              "blob": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIElEQVR42mP8z8DwnwEKmP5j+M8AVQwMDKg6mBgAAA10BP9oLGi0AAAAAElFTkSuQmCC"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Second",
+      "w": 2,
+      "h": 2,
+      "cur": 0,
+      "fps": 24,
+      "paper": "#000000",
+      "holds": [1],
+      "frames": [
+        {
+          "active": 0,
+          "layers": [
+            {
+              "name": "Only",
+              "blend": "screen",
+              "blob": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAH0lEQVR42mNk+M8ABUwMTAxMDKg2EwMTEzMUMzEAAGvdBf/TqAPmAAAAAElFTkSuQmCC"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

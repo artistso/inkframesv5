@@ -1,0 +1,56 @@
+{
+  "v": 3,
+  "savedAt": 1690000002000,
+  "pi": 0,
+  "projects": [
+    {
+      "name": "Modern",
+      "w": 4,
+      "h": 4,
+      "cur": 1,
+      "fps": 12,
+      "paper": "#fff0f3",
+      "canvasShape": "circle",
+      "background": {
+        "visible": false,
+        "opacity": 0.7,
+        "blend": "screen",
+        "blob": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAJUlEQVR42mP8z8Dwn4EIWESZ4v9PDEiyEVXdhCb9/8DIEJIAAE30Av9/tbvuAAAAAElFTkSuQmCC"
+      },
+      "holds": [1, 1],
+      "frames": [
+        {
+          "active": 0,
+          "layers": [
+            {
+              "name": "Layer 1",
+              "visible": true,
+              "opacity": 1,
+              "blend": "source-over",
+              "blob": null
+            }
+          ]
+        },
+        {
+          "active": 1,
+          "layers": [
+            {
+              "name": "Ink",
+              "visible": true,
+              "opacity": 1,
+              "blend": "overlay",
+              "blob": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAHklEQVR42mP8z8DwnwEKmBia/yPBEIaGkGkAAB6mAv8JeSY6AAAAAElFTkSuQmCC"
+            },
+            {
+              "name": "Tone",
+              "visible": true,
+              "opacity": 0.25,
+              "blend": "difference",
+              "blob": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIElEQVR42mP8z8DwnwEKmP5j+M8AVQwMDKg6mBgAAA10BP9oLGi0AAAAAElFTkSuQmCC"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
