@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import com.inkframe.core.common.Vec2
 import com.inkframe.core.common.ViewportTransform
 import com.inkframe.core.model.Brush
+import com.inkframe.core.model.DefaultBrushes
 import com.inkframe.core.model.ExportPlanner
 import com.inkframe.core.model.Project
 import com.inkframe.core.model.ProjectPackage
@@ -383,6 +384,7 @@ class CanvasView(
 
     private enum class Mode { IDLE, DRAW, NAVIGATE }
     private var mode = Mode.IDLE
+    private var physicalEraserStroke = false
 
     // Cached previous positions of the two navigation pointers (by pointer id).
     private var navIdA = -1
@@ -417,19 +419,32 @@ class CanvasView(
                     eyedropperActive -> {
                         // Eyedropper: sample the colour under the finger; don't draw.
                         mode = Mode.IDLE
+                        physicalEraserStroke = false
                         sampleColorAtView(event.getX(0), event.getY(0))
                     }
                     fillActive -> {
                         // Bucket: flood-fill the active cel at the tap; don't draw.
                         mode = Mode.IDLE
+                        physicalEraserStroke = false
                         floodFillAtView(event.getX(0), event.getY(0))
                     }
                     else -> {
                         mode = Mode.DRAW
+                        val toolType = event.getToolType(0)
+                        physicalEraserStroke = isPhysicalEraserTool(toolType)
+                        val contactBrush = brushForStylusTool(cfg.brush, toolType)
                         onStrokeInput?.invoke(
-                            "INK CONTACT · ${cfg.brush.name.uppercase()} · ${cfg.brush.sizePx.toInt()} PX",
+                            if (physicalEraserStroke) {
+                                "ERASER CONTACT · ${contactBrush.sizePx.toInt()} PX"
+                            } else {
+                                "INK CONTACT · ${contactBrush.name.uppercase()} · ${contactBrush.sizePx.toInt()} PX"
+                            },
                         )
-                        renderer.post(CanvasRenderer.EngineEvent.Begin(cfg.targetSurfaceId, cfg.brush, cfg.color, sample(0)))
+                        renderer.post(
+                            CanvasRenderer.EngineEvent.Begin(
+                                cfg.targetSurfaceId, contactBrush, cfg.color, sample(0),
+                            ),
+                        )
                         requestRender()
                     }
                 }
@@ -440,6 +455,7 @@ class CanvasView(
                 if (mode == Mode.DRAW) {
                     renderer.post(CanvasRenderer.EngineEvent.End)
                     onArtworkChanged?.invoke()
+                    physicalEraserStroke = false
                 }
                 if (event.pointerCount >= 2) beginNavigation(event)
             }
@@ -470,9 +486,16 @@ class CanvasView(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (mode == Mode.DRAW) {
                     renderer.post(CanvasRenderer.EngineEvent.End)
-                    onStrokeInput?.invoke("INK COMMITTED · FRAME ${cfg.targetSurfaceId}")
+                    onStrokeInput?.invoke(
+                        if (physicalEraserStroke) {
+                            "ERASER COMMITTED · CEL ${cfg.targetSurfaceId}"
+                        } else {
+                            "INK COMMITTED · CEL ${cfg.targetSurfaceId}"
+                        },
+                    )
                     onArtworkChanged?.invoke()
                 }
+                physicalEraserStroke = false
                 mode = Mode.IDLE
                 navIdA = -1; navIdB = -1
                 requestRender()

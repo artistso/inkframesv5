@@ -28,7 +28,7 @@
     {"id":"visible-drawing","status":"implemented_unverified","evidence":["CanvasView.kt:setZOrderOnTop","CpuStrokeRasterizer.kt"]},
     {"id":"pressure","status":"partial","evidence":["CanvasView.kt","StrokeProcessor.kt"]},
     {"id":"tilt","status":"missing","evidence":[]},
-    {"id":"physical-eraser","status":"missing","evidence":[]},
+    {"id":"physical-eraser","status":"implemented_unverified","evidence":["CanvasView.kt","PhysicalStylusTool.kt","PhysicalStylusToolTest.kt"]},
     {"id":"undo-redo","status":"implemented_unverified","evidence":["PaintEngine.kt","UndoStack"]},
     {"id":"frame-local-artwork","status":"implemented_unverified","evidence":["StudioState.kt:ensureActiveCel"]},
     {"id":"layers","status":"partial","evidence":["StudioState.kt","GlassHorizonScreen.kt:LAYERS"]},

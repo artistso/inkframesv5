@@ -6,6 +6,10 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Native Android — physical S Pen eraser
+- Routed Android `TOOL_TYPE_ERASER` contacts through the native eraser brush without changing the artist's selected brush.
+- Added explicit eraser contact/commit QA status and unit tests for stylus-tip, eraser, and finger tool selection.
+
 ### Native Android — bounded radial docking
 - Preserved movable Glass Horizon primary nodes while constraining each to its left, right, or lower command zone.
 - Prevented node bodies from covering the drawing stage or leaving the visible workspace.
