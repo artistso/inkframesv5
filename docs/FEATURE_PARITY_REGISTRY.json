@@ -2,6 +2,7 @@
   "schema": 1,
   "binding_reference": "web/index.html",
   "production_surface": "GlassHorizonScreen",
+  "last_implementation_commit": "d82b78fa3cac6131de3a1009e5828b669556afe5",
   "status_vocabulary": {
     "verified": "Implemented and physically validated on the target Galaxy Tab",
     "implemented_unverified": "Implemented and covered by build/tests but awaiting physical validation",
