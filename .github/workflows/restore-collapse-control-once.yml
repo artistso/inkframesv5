@@ -78,7 +78,6 @@ private fun CollapseAllControl(
         Canvas(Modifier.size(24.dp)) {
             val stroke = 1.7.dp.toPx()
             val white = Color.White
-            // Two inward-facing glass chevrons reproduce the original collapse-all intent.
             drawLine(white, Offset(size.width * .18f, size.height * .32f), Offset(size.width * .50f, size.height * .52f), stroke, StrokeCap.Round)
             drawLine(white, Offset(size.width * .50f, size.height * .52f), Offset(size.width * .82f, size.height * .32f), stroke, StrokeCap.Round)
             drawLine(white, Offset(size.width * .18f, size.height * .68f), Offset(size.width * .50f, size.height * .48f), stroke, StrokeCap.Round)
@@ -151,3 +150,5 @@ private fun GlassHint(text: String, modifier: Modifier = Modifier) {
             echo '```'
           } > /tmp/collapse-control-failure.md
           gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file /tmp/collapse-control-failure.md
+
+# Triggered after registration.
