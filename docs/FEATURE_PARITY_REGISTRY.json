@@ -36,7 +36,7 @@
     {"id":"project-new","status":"implemented_unverified","evidence":["GlassHorizonScreen.kt:GALLERY"]},
     {"id":"project-open","status":"implemented_unverified","evidence":["CanvasView.kt:loadProjectFrom","GlassHorizonScreen.kt"]},
     {"id":"project-save","status":"implemented_unverified","evidence":["CanvasView.kt:saveProjectTo","GlassHorizonScreen.kt"]},
-    {"id":"autosave-recovery","status":"missing","evidence":[]},
+    {"id":"autosave-recovery","status":"implemented_unverified","evidence":["ProjectRecoveryController.kt","CanvasView.kt:saveProjectAtomically"]},
     {"id":"gif-export","status":"implemented_unverified","evidence":["ExportManager.kt","GlassHorizonScreen.kt"]},
     {"id":"mp4-export","status":"implemented_unverified","evidence":["Mp4Encoder","GlassHorizonScreen.kt"]},
     {"id":"png-sequence-export","status":"implemented_unverified","evidence":["ExportManager.kt","GlassHorizonScreen.kt"]},

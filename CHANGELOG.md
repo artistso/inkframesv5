@@ -6,6 +6,11 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Native Android — crash-safe project recovery
+- Added a debounced local `.inkframe` autosave that captures the complete structural document and cel pixels after native artwork or timeline changes.
+- Recovery writes use Android `AtomicFile`, coalesce edits while a large archive is being encoded, and flush when the studio pauses.
+- The first native canvas restores a valid recovery archive automatically; malformed archives are quarantined instead of repeatedly breaking startup.
+
 ## [0.1.2] - 2026-07-07
 
 ### Brush engine — stabilizer overhaul
