@@ -106,7 +106,7 @@ data class ViewportTransform(
          * (no rotation), the default "frame the whole drawing" view.
          */
         fun fit(canvasW: Float, canvasH: Float, viewW: Float, viewH: Float): ViewportTransform {
-            if (canvasW <= 0f || canvasH <= 0f) return IDENTITY
+            if (canvasW <= 0f || canvasH <= 0f || viewW <= 0f || viewH <= 0f) return IDENTITY
             val scale = minOf(viewW / canvasW, viewH / canvasH)
             val bx = (viewW - canvasW * scale) * 0.5f
             val by = (viewH - canvasH * scale) * 0.5f
