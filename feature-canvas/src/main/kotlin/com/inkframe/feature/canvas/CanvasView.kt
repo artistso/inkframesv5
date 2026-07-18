@@ -52,7 +52,9 @@ class CanvasView(
     init {
         setEGLContextClientVersion(3)
         setEGLConfigChooser(8, 8, 8, 8, 0, 0)
-        setZOrderMediaOverlay(true)
+        // The native renderer must sit above the Compose window; otherwise the opaque
+        // Glass Horizon paper host hides every live and committed GL pixel on device.
+        setZOrderOnTop(true)
         holder.setFormat(PixelFormat.RGBA_8888)
         isClickable = true
         isFocusable = true
