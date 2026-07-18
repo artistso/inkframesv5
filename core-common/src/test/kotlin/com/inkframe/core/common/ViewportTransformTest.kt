@@ -44,6 +44,14 @@ class ViewportTransformTest {
     }
 
     @Test
+    fun fit_returnsIdentityForZeroSizedInputOrView() {
+        assertEquals(ViewportTransform.IDENTITY, ViewportTransform.fit(0f, 100f, 400f, 200f))
+        assertEquals(ViewportTransform.IDENTITY, ViewportTransform.fit(100f, 0f, 400f, 200f))
+        assertEquals(ViewportTransform.IDENTITY, ViewportTransform.fit(100f, 100f, 0f, 200f))
+        assertEquals(ViewportTransform.IDENTITY, ViewportTransform.fit(100f, 100f, 400f, 0f))
+    }
+
+    @Test
     fun pan_shiftsInViewSpace() {
         val t = ViewportTransform.fit(100f, 100f, 200f, 200f).pan(25f, -10f)
         val before = ViewportTransform.fit(100f, 100f, 200f, 200f).canvasToView(Vec2(10f, 10f))
