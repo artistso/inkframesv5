@@ -24,9 +24,10 @@ jobs:
     env:
       INKFRAME_APPLICATION_ID: com.inkframe.studio
       INKFRAME_VERSION_NAME: 0.5.0-native.${{ github.run_number }}
-      INKFRAME_KEYSTORE_PASSWORD: inkframe-local-release
-      INKFRAME_KEY_ALIAS: inkframe-local-release
-      INKFRAME_KEY_PASSWORD: inkframe-local-release
+      INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
+      INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
+      INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
+      INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,18 +54,39 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Generate local real-package release signing identity
+      - name: Resolve release signing identity
         shell: bash
         run: |
           set -euo pipefail
+          echo "INKFRAME_VERSION_CODE=$((60000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
+          if [[ -n "${INKFRAME_KEYSTORE_BASE64:-}" && -n "${INKFRAME_KEYSTORE_PASSWORD:-}" && -n "${INKFRAME_KEY_ALIAS:-}" && -n "${INKFRAME_KEY_PASSWORD:-}" ]]; then
+            KEYSTORE="$RUNNER_TEMP/inkframe-permanent-upload.jks"
+            printf '%s' "$INKFRAME_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            test -s "$KEYSTORE"
+            chmod 600 "$KEYSTORE"
+            keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
+            CERT_LINE="$(keytool -list -v -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" | grep 'SHA256:' | head -n 1)"
+            echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
+            echo "RELEASE_SIGNING_LINEAGE=permanent upload key" >> "$GITHUB_ENV"
+            echo "RELEASE_CERT_FINGERPRINT=${CERT_LINE#*SHA256: }" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           KEYSTORE="$RUNNER_TEMP/inkframe-local-release.p12"
+          export INKFRAME_KEYSTORE_PASSWORD='inkframe-local-release'
+          export INKFRAME_KEY_ALIAS='inkframe-local-release'
+          export INKFRAME_KEY_PASSWORD='inkframe-local-release'
           FINGERPRINT="$(python tools/generate_local_release_keystore.py --output "$KEYSTORE" --password "$INKFRAME_KEYSTORE_PASSWORD")"
           test -s "$KEYSTORE"
           test -n "$FINGERPRINT"
           keytool -list -keystore "$KEYSTORE" -storepass "$INKFRAME_KEYSTORE_PASSWORD" -alias "$INKFRAME_KEY_ALIAS" >/dev/null
           echo "INKFRAME_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
-          echo "INKFRAME_VERSION_CODE=$((60000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
-          echo "LOCAL_RELEASE_CERT_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
+          echo "INKFRAME_KEYSTORE_PASSWORD=$INKFRAME_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "INKFRAME_KEY_ALIAS=$INKFRAME_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "INKFRAME_KEY_PASSWORD=$INKFRAME_KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "RELEASE_SIGNING_LINEAGE=generated local release key" >> "$GITHUB_ENV"
+          echo "RELEASE_CERT_FINGERPRINT=$FINGERPRINT" >> "$GITHUB_ENV"
 
       - name: Compile Kotlin, run tests, and assemble release APK
         shell: bash
@@ -133,7 +155,6 @@ jobs:
           ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
           set -euo pipefail
-          SHORT_SHA="${GITHUB_SHA::7}"
           {
             echo '# Real InkFrame APK artifact'
             echo
@@ -148,10 +169,9 @@ jobs:
               echo "- File: \`${APK_NAME}\`"
               echo "- SHA-256: \`${APK_SHA256}\`"
               echo '- Package: `com.inkframe.studio`'
-              echo "- Certificate SHA-256: \`${LOCAL_RELEASE_CERT_FINGERPRINT}\`"
+              echo "- Certificate SHA-256: \`${RELEASE_CERT_FINGERPRINT}\`"
+              echo "- Signing lineage: \`${RELEASE_SIGNING_LINEAGE}\`"
               echo '- Build type: release / non-debuggable / native-only / real package'
-              echo
-              echo 'This is the canonical package name and installs as InkFrame Studio. It is signed with the generated local release identity until permanent Play/upload signing secrets are configured.'
             else
               echo '- No real APK was published from this run.'
             fi
