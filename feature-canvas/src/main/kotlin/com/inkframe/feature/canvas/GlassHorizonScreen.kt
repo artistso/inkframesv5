@@ -1,5 +1,7 @@
 package com.inkframe.feature.canvas
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -60,6 +63,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.inkframe.core.model.DefaultBrushes
+import com.inkframe.core.model.ExportPlanner
+import com.inkframe.core.model.InkFrameDefaults
+import com.inkframe.core.model.MediaTypes
 import com.inkframe.core.model.RgbaColor
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -100,7 +106,7 @@ private enum class RadialGlyph {
     UNDO, REDO, FIT, RESET,
     PREVIOUS, PLAY, PAUSE, FORWARD, INSERT, REMOVE, LOOP,
     ABOUT, CHECKER, ONION,
-    PROJECTS, NEW, OPEN, SAVE,
+    PROJECTS, NEW, OPEN, SAVE, EXPORT,
 }
 
 private data class RadialAction(
@@ -120,6 +126,152 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
     var canvasView by remember { mutableStateOf<CanvasView?>(null) }
     var openNode by rememberSaveable { mutableStateOf<PrimaryNode?>(null) }
     var overlay by rememberSaveable { mutableStateOf<OverlayKind?>(null) }
+    var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
+    val context = LocalContext.current
+    val resolver = context.contentResolver
+
+    val saveLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(MediaTypes.DocumentKind.PROJECT.mimeType),
+    ) { uri ->
+        val view = canvasView
+        when {
+            uri == null -> state.statusMessage = "SAVE CANCELLED"
+            view == null -> state.statusMessage = "CANVAS NOT READY"
+            else -> {
+                val snapshot = state.project
+                val out = runCatching { resolver.openOutputStream(uri) }.getOrNull()
+                if (out == null) {
+                    state.statusMessage = "COULD NOT OPEN SAVE DESTINATION"
+                } else {
+                    state.setBusy(true)
+                    state.statusMessage = "SAVING ${snapshot.name.uppercase()}…"
+                    view.saveProjectTo(snapshot, out) { result ->
+                        view.post {
+                            state.setBusy(false)
+                            state.statusMessage = result.fold(
+                                onSuccess = { "SAVED ${snapshot.name.uppercase()}" },
+                                onFailure = { "SAVE FAILED · ${it.message ?: "UNKNOWN ERROR"}" },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val openLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val view = canvasView
+        when {
+            uri == null -> state.statusMessage = "OPEN CANCELLED"
+            view == null -> state.statusMessage = "CANVAS NOT READY"
+            else -> {
+                val input = runCatching { resolver.openInputStream(uri) }.getOrNull()
+                if (input == null) {
+                    state.statusMessage = "COULD NOT OPEN ARCHIVE"
+                } else {
+                    state.setBusy(true)
+                    state.statusMessage = "OPENING ARCHIVE…"
+                    view.loadProjectFrom(input) { result ->
+                        view.post {
+                            state.setBusy(false)
+                            result.fold(
+                                onSuccess = { loaded ->
+                                    state.replaceProject(loaded)
+                                    view.requestRender()
+                                    state.statusMessage = "OPENED ${loaded.name.uppercase()}"
+                                },
+                                onFailure = { state.statusMessage = "OPEN FAILED · ${it.message ?: "UNKNOWN ERROR"}" },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun runExport(format: ExportManager.ExportFormat, uri: android.net.Uri) {
+        val view = canvasView ?: run {
+            state.statusMessage = "CANVAS NOT READY"
+            return
+        }
+        val plan = ExportPlanner.plan(state.scene, state.project.canvas, ExportPlanner.Range.PLAYBACK)
+        state.setBusy(true)
+        state.statusMessage = "EXPORTING 0 / ${plan.frameCount}"
+        val progress: (Int, Int) -> Unit = { done, total ->
+            view.post { state.statusMessage = "EXPORTING $done / $total" }
+        }
+        val completed: (Result<Unit>) -> Unit = { result ->
+            view.post {
+                state.setBusy(false)
+                state.statusMessage = result.fold(
+                    onSuccess = { "EXPORTED ${format.name.replace('_', ' ')}" },
+                    onFailure = { "EXPORT FAILED · ${it.message ?: "UNKNOWN ERROR"}" },
+                )
+            }
+        }
+        when (format) {
+            ExportManager.ExportFormat.MP4 -> {
+                val pfd = runCatching { resolver.openFileDescriptor(uri, "rw") }.getOrNull()
+                if (pfd == null) {
+                    state.setBusy(false)
+                    state.statusMessage = "COULD NOT OPEN VIDEO DESTINATION"
+                    return
+                }
+                view.exportAnimationTo(
+                    plan = plan,
+                    format = format,
+                    out = null,
+                    fd = pfd.fileDescriptor,
+                    drawListFor = state::buildExportDrawList,
+                    onProgress = progress,
+                ) { result ->
+                    runCatching { pfd.close() }
+                    completed(result)
+                }
+            }
+            ExportManager.ExportFormat.GIF, ExportManager.ExportFormat.PNG_SEQUENCE -> {
+                val out = runCatching { resolver.openOutputStream(uri) }.getOrNull()
+                if (out == null) {
+                    state.setBusy(false)
+                    state.statusMessage = "COULD NOT OPEN EXPORT DESTINATION"
+                    return
+                }
+                view.exportAnimationTo(
+                    plan = plan,
+                    format = format,
+                    out = out,
+                    fd = null,
+                    drawListFor = state::buildExportDrawList,
+                    onProgress = progress,
+                    onResult = completed,
+                )
+            }
+        }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { uri ->
+        val format = pendingExportFormat
+        pendingExportFormat = null
+        if (uri == null || format == null) {
+            state.statusMessage = "EXPORT CANCELLED"
+        } else {
+            runExport(format, uri)
+        }
+    }
+
+    fun launchExport(format: ExportManager.ExportFormat) {
+        pendingExportFormat = format
+        val kind = when (format) {
+            ExportManager.ExportFormat.MP4 -> MediaTypes.DocumentKind.MP4
+            ExportManager.ExportFormat.GIF -> MediaTypes.DocumentKind.GIF
+            ExportManager.ExportFormat.PNG_SEQUENCE -> MediaTypes.DocumentKind.PNG_SEQUENCE
+        }
+        exportLauncher.launch(MediaTypes.suggestedFileName(state.project.name, kind))
+    }
 
     LaunchedEffect(state.isPlaying) {
         while (state.isPlaying) {
@@ -333,9 +485,26 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
             isOpen = openNode == PrimaryNode.GALLERY,
             actions = listOf(
                 RadialAction("Projects") { overlay = OverlayKind.GALLERY; openNode = null },
-                RadialAction("New") { state.statusMessage = "New-project workflow is being connected natively" },
-                RadialAction("Open") { state.statusMessage = "Native archive picker is preserved and being moved into Gallery" },
-                RadialAction("Save") { state.statusMessage = "Native archive save is preserved and being moved into Gallery" },
+                RadialAction("New") {
+                    canvasView?.runOnEngine { it.resetForLoad() }
+                    state.replaceProject(InkFrameDefaults.newProject())
+                    canvasView?.requestRender()
+                    state.statusMessage = "NEW CLASSIC CANVAS"
+                    openNode = null
+                },
+                RadialAction("Open") {
+                    openLauncher.launch(MediaTypes.PROJECT_OPEN_MIME_TYPES)
+                    openNode = null
+                },
+                RadialAction("Save") {
+                    saveLauncher.launch(
+                        MediaTypes.suggestedFileName(state.project.name, MediaTypes.DocumentKind.PROJECT),
+                    )
+                    openNode = null
+                },
+                RadialAction("GIF") { launchExport(ExportManager.ExportFormat.GIF); openNode = null },
+                RadialAction("Video") { launchExport(ExportManager.ExportFormat.MP4); openNode = null },
+                RadialAction("PNG") { launchExport(ExportManager.ExportFormat.PNG_SEQUENCE); openNode = null },
             ),
             onToggle = { openNode = openNode.toggle(PrimaryNode.GALLERY) },
             modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft + 34.dp, y = bottomNodeY),
@@ -962,6 +1131,7 @@ private fun radialGlyphFor(label: String): RadialGlyph = when {
     label == "New" -> RadialGlyph.NEW
     label == "Open" -> RadialGlyph.OPEN
     label == "Save" -> RadialGlyph.SAVE
+    label == "GIF" || label == "Video" || label == "PNG" -> RadialGlyph.EXPORT
     else -> RadialGlyph.BRUSH
 }
 
@@ -1110,6 +1280,12 @@ private fun RadialActionGlyph(glyph: RadialGlyph, modifier: Modifier = Modifier)
                 drawRoundRect(white, Offset(w * .20f, h * .18f), Size(w * .60f, h * .64f), androidx.compose.ui.geometry.CornerRadius(3f), style = Stroke(thin))
                 drawRect(white, Offset(w * .32f, h * .20f), Size(w * .36f, h * .20f), style = Stroke(thin))
                 drawCircle(white, w * .10f, Offset(w * .50f, h * .64f), style = Stroke(thin))
+            }
+            RadialGlyph.EXPORT -> {
+                drawRoundRect(white, Offset(w * .18f, h * .36f), Size(w * .64f, h * .46f), androidx.compose.ui.geometry.CornerRadius(3f), style = Stroke(thin))
+                line(.50f, .68f, .50f, .18f)
+                line(.50f, .18f, .34f, .34f)
+                line(.50f, .18f, .66f, .34f)
             }
         }
     }
