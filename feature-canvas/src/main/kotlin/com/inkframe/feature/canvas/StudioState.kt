@@ -92,6 +92,21 @@ class StudioState : ViewModel() {
 
     fun setZoom(scale: Float) { zoomPercent = (scale * 100f).toInt().coerceAtLeast(1) }
 
+    private var recoveryRestoreClaimed = false
+
+    /** Allows exactly one recovery attempt for this ViewModel, including configuration changes. */
+    fun claimRecoveryRestore(): Boolean {
+        if (recoveryRestoreClaimed) return false
+        recoveryRestoreClaimed = true
+        return true
+    }
+
+    /** Records pixel-only edits so autosave observes strokes, fills, undo and redo. */
+    fun markArtworkModified() {
+        val now = System.currentTimeMillis()
+        project = project.copy(modifiedAtEpochMs = maxOf(now, project.modifiedAtEpochMs + 1L))
+    }
+
     val scene: Scene get() = project.activeScene!!
     val activeLayer: Layer get() = scene.layerById(activeLayerId) ?: scene.layers.first()
 

@@ -129,6 +129,22 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
     var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
     val context = LocalContext.current
     val resolver = context.contentResolver
+    val recoveryController = remember(context, state) {
+        ProjectRecoveryController(
+            context = context,
+            projectProvider = { state.project },
+            shouldRestore = state::claimRecoveryRestore,
+            onRestored = { loaded ->
+                state.replaceProject(loaded)
+                canvasView?.requestRender()
+            },
+            onStatus = { message -> state.statusMessage = message },
+        )
+    }
+
+    LaunchedEffect(state.project.modifiedAtEpochMs) {
+        recoveryController.schedule()
+    }
 
     val saveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(MediaTypes.DocumentKind.PROJECT.mimeType),
@@ -315,7 +331,11 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
             canvasHeight = canvasHeight,
             frameWidth = frameWidth,
             frameHeight = frameHeight,
-            onCanvasReady = { canvasView = it },
+            onCanvasReady = { view ->
+                canvasView = view
+                recoveryController.attach(view)
+            },
+            onArtworkChanged = state::markArtworkModified,
             modifier = Modifier
                 .align(Alignment.Center)
                 .offset(y = (-8).dp),
@@ -535,7 +555,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
                     "Current project: ${state.project.name}",
                     "Canvas: ${state.project.canvas.widthPx} × ${state.project.canvas.heightPx}",
                     "Frames: ${state.scene.frameCount} · Layers: ${state.scene.layers.size}",
-                    "Native project browsing, import, export and recovery remain required parity work.",
+                    "Crash-safe local autosave and startup recovery are active for the native project.",
                 ),
                 onClose = { overlay = null },
             )
@@ -547,7 +567,10 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> canvasView?.onPause()
+                Lifecycle.Event.ON_PAUSE -> {
+                    recoveryController.saveNow()
+                    canvasView?.onPause()
+                }
                 Lifecycle.Event.ON_RESUME -> canvasView?.onResume()
                 else -> Unit
             }
@@ -555,6 +578,7 @@ fun GlassHorizonScreen(state: StudioState = viewModel()) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            recoveryController.close()
             state.stop()
         }
     }
@@ -657,6 +681,7 @@ private fun GlassStage(
     frameWidth: Dp,
     frameHeight: Dp,
     onCanvasReady: (CanvasView) -> Unit,
+    onArtworkChanged: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -734,6 +759,7 @@ private fun GlassStage(
                                 view.fillActive = false
                             }
                             view.onStrokeInput = { status -> state.statusMessage = status }
+                            view.onArtworkChanged = onArtworkChanged
                         }
                     },
                 )

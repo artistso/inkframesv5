@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.opengl.GLSurfaceView
+import android.util.AtomicFile
 import android.view.MotionEvent
 import com.inkframe.core.common.Vec2
 import com.inkframe.core.common.ViewportTransform
@@ -88,6 +89,9 @@ class CanvasView(
     /** Visible QA signal proving that Android contact reached the native canvas. */
     var onStrokeInput: ((String) -> Unit)? = null
 
+    /** Invoked on the main thread after pixels have changed and recovery should be refreshed. */
+    var onArtworkChanged: (() -> Unit)? = null
+
     /** Flood-fills the active cel at a view-space point with the current stroke colour. */
     private fun floodFillAtView(vx: Float, vy: Float) {
         val cfg = strokeConfig()
@@ -97,7 +101,10 @@ class CanvasView(
         renderer.post(
             CanvasRenderer.EngineEvent.Run { engine ->
                 val changed = engine.floodFill(cfg.targetSurfaceId, px, py, cfg.color)
-                post { onFilled?.invoke(changed) }
+                post {
+                    onFilled?.invoke(changed)
+                    if (changed) onArtworkChanged?.invoke()
+                }
             },
         )
         requestRender()
@@ -151,12 +158,14 @@ class CanvasView(
     /** Requests an undo on the GL thread. */
     fun undo() {
         renderer.post(CanvasRenderer.EngineEvent.Undo)
+        onArtworkChanged?.invoke()
         requestRender()
     }
 
     /** Requests a redo on the GL thread. */
     fun redo() {
         renderer.post(CanvasRenderer.EngineEvent.Redo)
+        onArtworkChanged?.invoke()
         requestRender()
     }
 
@@ -171,6 +180,32 @@ class CanvasView(
                 file.parentFile?.mkdirs()
                 BufferedOutputStream(FileOutputStream(file)).use { out ->
                     ProjectPackage.write(project, engine.celImageIO(), out)
+                }
+            }
+            onResult(result)
+        }
+    }
+
+    /**
+     * Writes a complete recovery package with Android's two-phase [AtomicFile] protocol.
+     * A killed process therefore leaves either the previous valid archive or the new one,
+     * never a partially written ZIP. The callback runs on the GL thread.
+     */
+    fun saveProjectAtomically(project: Project, file: File, onResult: (Result<Unit>) -> Unit) {
+        runOnEngine { engine ->
+            val result = runCatching {
+                file.parentFile?.mkdirs()
+                val atomicFile = AtomicFile(file)
+                var stream: FileOutputStream? = null
+                try {
+                    stream = atomicFile.startWrite()
+                    val buffered = BufferedOutputStream(stream)
+                    ProjectPackage.write(project, engine.celImageIO(), buffered)
+                    buffered.flush()
+                    atomicFile.finishWrite(checkNotNull(stream))
+                } catch (error: Throwable) {
+                    stream?.let { output -> runCatching { atomicFile.failWrite(output) } }
+                    throw error
                 }
             }
             onResult(result)
@@ -402,6 +437,7 @@ class CanvasView(
                 // A second finger arrived: abandon any wet stroke and start navigating.
                 if (mode == Mode.DRAW) {
                     renderer.post(CanvasRenderer.EngineEvent.End)
+                    onArtworkChanged?.invoke()
                 }
                 if (event.pointerCount >= 2) beginNavigation(event)
             }
@@ -433,6 +469,7 @@ class CanvasView(
                 if (mode == Mode.DRAW) {
                     renderer.post(CanvasRenderer.EngineEvent.End)
                     onStrokeInput?.invoke("INK COMMITTED · FRAME ${cfg.targetSurfaceId}")
+                    onArtworkChanged?.invoke()
                 }
                 mode = Mode.IDLE
                 navIdA = -1; navIdB = -1
