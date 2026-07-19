@@ -20,6 +20,7 @@ class ProjectCodecTest {
             ),
         )
         val layer2 = Layer(id = "layer-2", name = "Ink", cels = emptyMap())
+        val holds = List(36) { index -> if (index == 5) 3 else 1 }
         val scene = Scene(
             id = "scene-1",
             name = "Shot 01",
@@ -27,6 +28,7 @@ class ProjectCodecTest {
             layers = listOf(layer1, layer2),
             playbackRange = 2..30,
             loop = false,
+            holds = holds,
         )
         return Project(
             id = "proj-1",
@@ -42,8 +44,7 @@ class ProjectCodecTest {
     @Test
     fun roundTrip_preservesEverything() {
         val original = sampleProject()
-        val json = ProjectCodec.toJsonString(original)
-        val restored = ProjectCodec.fromJsonString(json)
+        val restored = ProjectCodec.fromJsonString(ProjectCodec.toJsonString(original))
 
         assertEquals(original.id, restored.id)
         assertEquals(original.name, restored.name)
@@ -52,20 +53,20 @@ class ProjectCodecTest {
         assertEquals(original.createdAtEpochMs, restored.createdAtEpochMs)
         assertEquals(original.modifiedAtEpochMs, restored.modifiedAtEpochMs)
         assertEquals(original.scenes, restored.scenes)
-        // Deep equality of the whole document (data classes).
         assertEquals(original.copy(colorPalette = restored.colorPalette), restored)
     }
 
     @Test
-    fun roundTrip_preservesCelTransformsAndFrameHolds() {
+    fun roundTrip_preservesCelTransformsSparseCelsAndExplicitHolds() {
         val restored = ProjectCodec.fromJsonString(ProjectCodec.toJsonString(sampleProject()))
-        val layer = restored.scenes[0].layers[0]
+        val scene = restored.scenes[0]
+        val layer = scene.layers[0]
         assertEquals(2, layer.cels.size)
         assertEquals(100L, layer.cels[0]!!.surfaceId)
         assertEquals(101L, layer.cels[5]!!.surfaceId)
         assertEquals(45f, layer.cels[5]!!.transform.rotationDeg, 1e-4f)
-        // Frame-hold still resolves after a round trip.
         assertEquals(100L, layer.celAt(3)?.surfaceId)
+        assertEquals(3, scene.holdAt(5))
     }
 
     @Test
@@ -77,8 +78,7 @@ class ProjectCodecTest {
     }
 
     @Test
-    fun decode_toleratesMissingOptionalFields() {
-        // A minimal document missing palette, transforms, optional layer flags.
+    fun decode_v1WithoutHoldsMigratesToUnitExposure() {
         val minimal = """
             {
               "version": 1,
@@ -86,7 +86,7 @@ class ProjectCodecTest {
               "name": "Min",
               "canvas": {"width": 64, "height": 64, "fps": 12},
               "scenes": [
-                {"id":"s","name":"S","frameCount":1,
+                {"id":"s","name":"S","frameCount":3,
                  "layers":[{"id":"l","name":"L","blendMode":"NORMAL",
                    "cels":[{"frame":0,"id":"c","surfaceId":7}]}]}
               ]
@@ -95,10 +95,26 @@ class ProjectCodecTest {
         val p = ProjectCodec.fromJsonString(minimal)
         assertEquals("Min", p.name)
         assertEquals(64, p.canvas.widthPx)
+        assertEquals(listOf(1, 1, 1), p.scenes[0].holds)
         val cel = p.scenes[0].layers[0].cels[0]!!
         assertEquals(7L, cel.surfaceId)
         assertEquals(CelTransform(), cel.transform)
         assertEquals(1f, p.scenes[0].layers[0].opacity, 0f)
+    }
+
+    @Test
+    fun decode_normalizesMalformedHoldValuesAndLength() {
+        val doc = """
+            {
+              "version": 2,
+              "id":"p","name":"x",
+              "canvas":{"width":1,"height":1,"fps":1},
+              "scenes":[{"id":"s","name":"S","frameCount":4,
+                "holds":[0,2,99],"layers":[]}]
+            }
+        """.trimIndent()
+        val p = ProjectCodec.fromJsonString(doc)
+        assertEquals(listOf(1, 2, 8, 1), p.scenes[0].holds)
     }
 
     @Test(expected = IllegalArgumentException::class)
