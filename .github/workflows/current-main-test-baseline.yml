@@ -1,0 +1,52 @@
+name: Current Main Test Baseline
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/current-main-test-baseline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  full-test-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android API 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Compile release Kotlin and run unchanged main tests
+        shell: bash
+        run: |
+          set +e
+          chmod +x ./gradlew
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain > main-baseline.log 2>&1
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            echo '--- current main failure summary ---'
+            grep -E '(^e: |FAILURE:|Execution failed|There were failing tests|FAILED|AssertionError|JsonParseException)' main-baseline.log | tail -n 200 || true
+            tail -n 100 main-baseline.log
+          else
+            echo 'Current main release compilation and complete test suite passed.'
+          fi
+          exit $status
+      - name: Upload baseline diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-main-test-baseline-${{ github.sha }}
+          path: |
+            main-baseline.log
+            **/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
