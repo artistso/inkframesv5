@@ -6,12 +6,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,62 +29,118 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.inkframe.core.model.BrushLabPresets
 
 /**
- * Adds the explicit frame-exposure control to the native Glass Horizon workspace.
+ * Adds the bounded parity controls currently layered over the native Glass Horizon shell.
  *
- * The compact vertical control sits in the right command field rather than above the
- * drawing stage. This keeps it outside CanvasView's direct MotionEvent routing on compact
- * landscape layouts while the full radial timing hierarchy is ported in later slices.
+ * Hold timing and Brush Lab launchers sit in the right command field, outside CanvasView's
+ * direct MotionEvent routing. Brush Lab itself opens in a Compose dialog window, so S Pen
+ * interaction with its controls cannot leak through and paint on the artwork beneath it.
  */
 @Composable
 fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
+    val brushSession = remember { BrushLabSession() }
+    var showBrushLab by rememberSaveable { mutableStateOf(false) }
+    val observedBrush = state.brush
+
+    // ClosedBetaGlassHorizonScreen still selects factory brushes directly. Reconcile that
+    // brush-id transition with the session cache so each brush regains its own live edits.
+    LaunchedEffect(observedBrush) {
+        val restored = brushSession.observe(observedBrush)
+        if (restored != observedBrush) state.updateBrush { restored }
+    }
+
     Box(Modifier.fillMaxSize()) {
         ClosedBetaGlassHorizonScreen(state = state)
 
         Column(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 8.dp)
-                .clip(HoldPillShape)
-                .background(Color(0xB31A001A))
-                .border(1.dp, Color(0x99F7CAC9), HoldPillShape)
-                .padding(horizontal = 5.dp, vertical = 7.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+                .padding(end = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            HoldGlassButton(
-                label = "+",
-                actionLabel = "Increase frame hold",
-                enabled = state.currentHold < 8,
-            ) {
-                state.adjustCurrentHold(1)
-            }
-            BasicText(
-                text = "HOLD\n${state.currentHold}",
-                modifier = Modifier.padding(vertical = 2.dp),
-                style = TextStyle(
-                    color = Color(0xFFFFF0F3),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    lineHeight = 13.sp,
-                    letterSpacing = 0.5.sp,
-                    textAlign = TextAlign.Center,
-                ),
+            HoldControl(
+                hold = state.currentHold,
+                onIncrease = { state.adjustCurrentHold(1) },
+                onDecrease = { state.adjustCurrentHold(-1) },
             )
-            HoldGlassButton(
-                label = "−",
-                actionLabel = "Decrease frame hold",
-                enabled = state.currentHold > 1,
-            ) {
-                state.adjustCurrentHold(-1)
-            }
+            GlassCommandButton(
+                label = "LAB",
+                actionLabel = "Open Brush Lab",
+                selected = showBrushLab,
+                onClick = { showBrushLab = true },
+            )
         }
+    }
+
+    if (showBrushLab) {
+        GlassBrushLabDialog(
+            brush = state.brush,
+            onChange = { transform ->
+                state.updateBrush { current -> brushSession.record(transform(current)) }
+            },
+            onPreset = { preset ->
+                state.updateBrush { current ->
+                    brushSession.record(BrushLabPresets.apply(current, preset))
+                }
+                state.statusMessage = "BRUSH LAB · ${preset.displayName.uppercase()}"
+            },
+            onReset = {
+                state.updateBrush { current -> brushSession.reset(current) }
+                state.statusMessage = "BRUSH LAB · RESET ${state.brush.name.uppercase()}"
+            },
+            onDismiss = { showBrushLab = false },
+        )
     }
 }
 
-private val HoldPillShape = RoundedCornerShape(percent = 50)
+@Composable
+private fun HoldControl(
+    hold: Int,
+    onIncrease: () -> Unit,
+    onDecrease: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .clip(CommandPillShape)
+            .background(Color(0xB31A001A))
+            .border(1.dp, Color(0x99F7CAC9), CommandPillShape)
+            .padding(horizontal = 5.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        HoldGlassButton(
+            label = "+",
+            actionLabel = "Increase frame hold",
+            enabled = hold < 8,
+            onClick = onIncrease,
+        )
+        BasicText(
+            text = "HOLD\n$hold",
+            modifier = Modifier.padding(vertical = 2.dp),
+            style = TextStyle(
+                color = Color(0xFFFFF0F3),
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
+                letterSpacing = 0.5.sp,
+                textAlign = TextAlign.Center,
+            ),
+        )
+        HoldGlassButton(
+            label = "−",
+            actionLabel = "Decrease frame hold",
+            enabled = hold > 1,
+            onClick = onDecrease,
+        )
+    }
+}
+
+private val CommandPillShape = RoundedCornerShape(percent = 50)
+private val CommandButtonShape = RoundedCornerShape(18.dp)
 
 @Composable
 private fun HoldGlassButton(
@@ -95,9 +156,9 @@ private fun HoldGlassButton(
     Box(
         modifier = Modifier
             .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            .clip(HoldPillShape)
+            .clip(CommandPillShape)
             .background(fill)
-            .border(1.dp, stroke, HoldPillShape)
+            .border(1.dp, stroke, CommandPillShape)
             .clickable(
                 enabled = enabled,
                 onClickLabel = actionLabel,
@@ -113,6 +174,45 @@ private fun HoldGlassButton(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun GlassCommandButton(
+    label: String,
+    actionLabel: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .sizeIn(minWidth = 56.dp, minHeight = 48.dp)
+            .clip(CommandButtonShape)
+            .background(if (selected) Color(0xCCBB0037) else Color(0xB31A001A))
+            .border(
+                width = 1.dp,
+                color = if (selected) Color(0xCCFFD0DC) else Color(0x99F7CAC9),
+                shape = CommandButtonShape,
+            )
+            .clickable(
+                role = Role.Button,
+                onClickLabel = actionLabel,
+                onClick = onClick,
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(
+            text = label,
+            style = TextStyle(
+                color = Color(0xFFFFF0F3),
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 0.8.sp,
+                textAlign = TextAlign.Center,
             ),
         )
     }
