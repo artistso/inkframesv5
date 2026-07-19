@@ -60,8 +60,13 @@ internal object GlassHorizonTitleSpec {
         titleBottomDp(fontScale) + MIN_COMMAND_CLEARANCE_DP,
     )
 
-    fun commandBottomDp(fontScale: Float): Float =
-        commandTopDp(fontScale) + COMMAND_CLUSTER_HEIGHT_DP
+    fun commandBottomDp(
+        fontScale: Float,
+        commandClusterHeightDp: Float = COMMAND_CLUSTER_HEIGHT_DP,
+    ): Float {
+        require(commandClusterHeightDp > 0f)
+        return commandTopDp(fontScale) + commandClusterHeightDp
+    }
 }
 
 /** Fixed top-center product identity from the binding Glass Horizon contract. */
