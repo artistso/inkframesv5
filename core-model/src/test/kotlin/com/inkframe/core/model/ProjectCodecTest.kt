@@ -104,17 +104,23 @@ class ProjectCodecTest {
 
     @Test
     fun decode_normalizesMalformedHoldValuesAndLength() {
-        val doc = """
-            {
-              "version": 2,
-              "id":"p","name":"x",
-              "canvas":{"width":1,"height":1,"fps":1},
-              "scenes":[{"id":"s","name":"S","frameCount":4,
-                "holds":[0,2,99],"layers":[]}]
-            }
-        """.trimIndent()
+        val doc = projectWithHolds("[0,2,99]")
         val p = ProjectCodec.fromJsonString(doc)
         assertEquals(listOf(1, 2, 8, 1), p.scenes[0].holds)
+    }
+
+    @Test
+    fun decode_nullOrNonArrayHoldsFallBackToUnitExposure() {
+        for (holds in listOf("null", "\"not-an-array\"", "{}")) {
+            val p = ProjectCodec.fromJsonString(projectWithHolds(holds))
+            assertEquals(listOf(1, 1, 1, 1), p.scenes[0].holds)
+        }
+    }
+
+    @Test
+    fun decode_nonNumericHoldEntriesFallBackIndividually() {
+        val p = ProjectCodec.fromJsonString(projectWithHolds("[2,\"bad\",null,true]"))
+        assertEquals(listOf(2, 1, 1, 1), p.scenes[0].holds)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -131,4 +137,14 @@ class ProjectCodecTest {
         val p = ProjectCodec.fromJsonString(doc)
         assertNull(p.activeScene)
     }
+
+    private fun projectWithHolds(holds: String): String = """
+        {
+          "version": 2,
+          "id":"p","name":"x",
+          "canvas":{"width":1,"height":1,"fps":1},
+          "scenes":[{"id":"s","name":"S","frameCount":4,
+            "holds":$holds,"layers":[]}]
+        }
+    """.trimIndent()
 }
