@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'core-common/**'
       - 'core-model/**'
       - 'engine-gl/**'
       - 'feature-canvas/**'
