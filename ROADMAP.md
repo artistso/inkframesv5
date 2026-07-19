@@ -1,127 +1,118 @@
 # InkFrame Studio Roadmap
 
-Status date: 2026-07-15
-Current public release: `0.4.0`
-Current integrated development baseline: `8bba8e0c3b773a48c791c172ae10889a1a7649b0`
+Status date: 2026-07-18  
+Current native development line: `0.5.0-native-mainline1`  
+Current public historical baseline: `0.4.0`
 
-This document is the canonical development roadmap. Historical design plans and stacked pull requests remain implementation and acceptance records, but they do not override the state of `main`.
+This document is the canonical development roadmap. Runtime status is defined by [`docs/NATIVE_STATUS.md`](docs/NATIVE_STATUS.md). The binding visual target for the Kotlin port is [`docs/GLASS_HORIZON_VISUAL_CONTRACT.md`](docs/GLASS_HORIZON_VISUAL_CONTRACT.md).
 
-## Public release baseline
+## Current product direction
 
-InkFrame 0.4.0 established the production foundation:
+InkFrame for Android is now a **native Kotlin / Jetpack Compose / OpenGL ES** application.
 
-- Brush Engine V2 with profile recovery, identity tools, matching, signatures, previews, and coaching
-- Square and circular project canvases
-- Organic radial frame navigation and S Pen scrubbing
-- Direct timing plus rhythms, recipes, variations, morphs, phrases, libraries, and scores
-- Exact 25-step timing Undo/Redo with a tablet history inspector
-- Offline project recovery, portable archives, Android export bridging, and signed release verification
-- Glass Horizon launcher, splash, and radial studio presentation
+The historical web implementation remains in the repository only as a Glass Horizon visual and interaction reference. It is not the Android runtime and must not be packaged into Android APKs.
 
-The detailed shipped record is maintained in `CHANGELOG.md` and `ARCHITECTURE.md`.
+## Historical public baseline
 
-## Integrated development baseline on `main`
+InkFrame 0.4.0 established the pre-native production foundation:
 
-The following work is integrated after 0.4.0 but is not automatically considered a public release or physical-device acceptance:
+- Brush Engine V2 with profile recovery, identity tools, matching, signatures, previews, and coaching;
+- square and circular project canvases;
+- organic radial frame navigation and S Pen scrubbing;
+- direct timing plus rhythms, recipes, variations, morphs, phrases, libraries, and scores;
+- exact 25-step timing Undo/Redo with a tablet history inspector;
+- offline project recovery, portable archives, Android export bridging, and signed release verification;
+- Glass Horizon launcher, splash, and radial studio presentation.
 
-### Animator and tablet workspaces
+That baseline remains useful historical evidence, but it does not override the native mainline.
 
-- Onion Skin Studio with deterministic presets, independent past/future opacity, tint controls, color swapping, and active-layer-only mode
-- Offline Feedback Report with privacy-bounded technical state, explicit copy/save actions, and no artwork or project-name access
-- Tablet Command Deck with Draw, Frames, Layers, Actions, Brush Lab, transport, live editor state, and tablet-first control sizing
-- Contextual Timeline Workspace for frame selection, holds, duplication, deletion, reverse, and ping-pong operations
-- Contextual Layer Workspace for layer selection, opacity, visibility, blend, ordering, duplication, deletion, and merge-down
+## Native mainline baseline
 
-### Project-wide Static Background
+The active mainline target is:
 
-- One editable shared background canvas per project, rendered below onion skins and frame layers
-- Original and Brush Engine V2 editing through the established drawing paths
-- Visibility, opacity, blend, clear, fill, selection, Layer FX, and exact Undo/Redo support
-- Autosave payload v3 with v1/v2 migration
-- `.inkframe` archive v4 with earlier-archive migration
-- Correct live, playback, thumbnail, PNG, GIF, video, eyedropper, and A/B rendering
-- Contextual `Static BG` controls with per-frame structural-operation isolation
-
-Tracking:
-
-- Implementation: PR #100 and issue #98
-- Integrated physical acceptance: issue #104
-
-### Build and repository infrastructure
-
-- Active GitHub Actions use `actions/checkout@v7`, `actions/setup-node@v7`, and explicit Node 24
-- Automatic setup-node package-manager caching is disabled unless deliberately enabled
-- A repository contract prevents regression to older action runtimes or inconsistent Node selection
-- Debug APK and disposable-key production APK/AAB paths remain mandatory CI gates
-
-Tracking: PR #101 and issue #83.
+- Kotlin and Jetpack Compose application shell;
+- OpenGL ES artwork canvas and compositor;
+- no WebView, no JavaScript bridge, no packaged web runtime, and no `INTERNET` permission;
+- `SplashActivity -> MainActivity -> ClosedBetaGlassHorizonScreen` launch path;
+- stable non-debuggable QA APK lane for `com.inkframe.studio.qa`;
+- conditional permanent-key production APK lane for `com.inkframe.studio`.
 
 ## Active release line
 
-### 1. Integrated Galaxy Tab acceptance
+### 1. Native Glass Horizon acceptance
 
-Complete issue #104 against the exact recorded APK and SHA-256.
+Complete issue #136 against the exact recorded APK and SHA-256 for the current native mainline.
 
 Required coverage includes:
 
-- Upgrade and cold-start behavior
-- Existing autosave and archive migration
-- Original and Brush Engine V2 S Pen editing
-- Static Background selection, properties, isolation, and Undo/Redo
-- Onion, playback, thumbnail, and export compositor order
-- Portrait/landscape, Android WebView, MediaStore, and active-stroke behavior
+- clean Galaxy Tab S10+ landscape launch;
+- no fallback to the rejected conventional Material screen;
+- no WebView/WebKit/runtime browser markers;
+- Glass Horizon atmosphere, title, framed paper, perimeter frame board, scrub rail, radial nodes, and stylus lens;
+- S Pen draw, hover, pressure, eraser, pan, zoom, orientation, background/resume, and process restart;
+- save/open `.inkframe` archive path;
+- GIF, MP4, and PNG-sequence export paths;
+- project recovery path;
+- QA artifact recorded with exact commit, APK name, package, certificate, and SHA-256.
 
-A new implementation commit invalidates the recorded acceptance artifact and requires replacement hashes.
+A new implementation commit invalidates the previous acceptance artifact and requires a replacement artifact record.
 
 ### 2. Preserve component-level evidence
 
-Issues #74, #77, #89, #94, and #97 retain exact historical component artifacts for Onion Skin Studio, Feedback Report, Tablet Command Deck, Timeline Workspace, and Layer Workspace.
+Historical issues and stacked PRs remain implementation evidence. They should not be merged, rewritten, or treated as competing active branches merely to make their state resemble current `main`.
 
-The associated stacked draft PRs are historical implementation records. Their feature code is already represented in the integrated `main` baseline through later integration work. Do not merge or rewrite those branches merely to make their PR state resemble current `main`; preserve their exact heads when component-level acceptance evidence is still needed.
+Useful code may be copied deliberately into `main` in small reviewed commits, but archived launchers, rejected UI approximations, and WebView runtime paths must not be restored.
 
 ### 3. Prepare the next public release
 
-After integrated acceptance succeeds:
+After native acceptance succeeds:
 
-1. Update `CHANGELOG.md` `[Unreleased]` with the accepted user-facing behavior.
+1. Update `CHANGELOG.md` `[Unreleased]` with accepted user-facing behavior.
 2. Regenerate and verify `RELEASE_NOTES.md`.
-3. Select and apply the release version with `./inkframe-cli bump`.
+3. Select and apply the release version with `./inkframe-cli bump` or `./inkframe-cli gh-release`.
 4. Run `./inkframe-cli release-check` from a clean, synchronized `main`.
 5. Complete a protected signed-release dry run.
 6. Tag only the exact accepted and verified commit.
-7. Publish the GitHub Release and manually submit the signed AAB to the intended Google Play track.
+7. Publish the GitHub Release.
+8. Manually submit the signed AAB to the intended Google Play track if Play release is approved.
 
 ## Candidate engineering after acceptance
 
 These are investigation areas, not committed release promises:
 
-- Performance budgets and memory diagnostics for long 120-frame projects
-- Accessible high-contrast and reduced-motion Glass Horizon variants
-- Per-brush velocity curves for width and opacity
-- Wet-edge and pigment transport for watercolor and frost media
-- Post-stroke vector-backed ink or editable line layers
-- Expanded QuickShape geometry and editable shape constraints
+- split `ClosedBetaGlassHorizonScreen` into smaller Compose surfaces and effect controllers;
+- add node docking/drag persistence tests against the Glass Horizon contract;
+- add screenshot-driven visual acceptance fixtures for clean, Tools-open, Frames-open, and frosted-overlay states;
+- performance budgets and memory diagnostics for long 120-frame projects;
+- accessible high-contrast and reduced-motion Glass Horizon variants;
+- per-brush velocity curves for width and opacity;
+- wet-edge and pigment transport for watercolor and frost media;
+- post-stroke vector-backed ink or editable line layers;
+- expanded QuickShape geometry and editable shape constraints.
 
-Each candidate should begin with a narrow issue, explicit read/write boundaries, deterministic tests, and a separate acceptance artifact when Android WebView, S Pen, storage, or picker behavior is involved.
+Each candidate should begin with a narrow issue, explicit read/write boundaries, deterministic tests, and a separate acceptance artifact when Android, S Pen, storage, export, or lifecycle behavior is involved.
 
 ## Engineering constraints
 
 Every new feature must preserve:
 
-- Offline-first operation
-- No account requirement, advertising, analytics, or automatic uploads
-- Artwork isolation unless the feature explicitly edits artwork
-- Project and archive backward compatibility
-- Original-engine and Brush Engine V2 interoperability
-- Generated Android asset determinism
-- Explicit Gradle inputs for every imported index postprocessor
-- Debug APK and signed production APK/AAB verification in CI
-- Physical tablet acceptance for stylus, keyboard, picker, storage, or WebView-sensitive behavior
-- Exact artifact and commit recording for acceptance builds
+- native Android runtime ownership;
+- no WebView, JavaScript bridge, packaged web runtime, or `INTERNET` permission;
+- offline-first operation;
+- no account requirement, advertising, analytics, or automatic uploads;
+- artwork isolation unless the feature explicitly edits artwork;
+- project and archive backward compatibility;
+- original-engine and Brush Engine V2 interoperability where still applicable;
+- generated Android asset determinism;
+- explicit Gradle inputs for every generated or imported asset postprocessor;
+- debug/developer, QA, and production signing boundary separation;
+- physical tablet acceptance for stylus, keyboard, picker, storage, export, lifecycle, or WebView-sensitive behavior;
+- exact artifact and commit recording for acceptance builds.
 
 ## Historical documents
 
-- `CIRCULAR_CANVAS_PLAN.md` — original circular-canvas design record; shipped in 0.4.0
-- `docs/BRUSH_ENGINE_ROADMAP.md` — original stabilizer research and shipped 0.1.2 implementation record
+- `CIRCULAR_CANVAS_PLAN.md` — original circular-canvas design record; shipped in 0.4.0.
+- `docs/BRUSH_ENGINE_ROADMAP.md` — original stabilizer research and shipped 0.1.2 implementation record.
+- `web/` — historical Glass Horizon reference only, not Android runtime.
 
-Historical plans should state their shipped status and point back to this roadmap rather than presenting completed work as future work.
+Historical plans should state their shipped or archived status and point back to this roadmap and `docs/NATIVE_STATUS.md` rather than presenting completed or rejected work as the current product path.

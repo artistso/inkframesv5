@@ -1,18 +1,32 @@
 # InkFrame Studio — Agent Mode Guide
 
-InkFrame is ready for external coding agents. No AI or network service is embedded in the application; agents operate on the repository, while the shipped app remains offline-first.
+Status: **native Android agent guide**  
+See also: [`docs/NATIVE_STATUS.md`](docs/NATIVE_STATUS.md)
+
+InkFrame is ready for external coding agents, but the product boundary is strict:
+
+> InkFrame for Android is a native Kotlin / Jetpack Compose / OpenGL ES application. The historical web app is retained only as a Glass Horizon reference and is not packaged or executed by Android.
+
+No AI or network service is embedded in the application. Agents operate on the repository; the shipped app remains offline-first.
 
 ## Current architecture
 
-The shipping browser and Android application use the same web runtime:
+Current Android runtime:
 
-- `web/index.html` — primary drawing and animation application
-- `web/*.js` and `web/brush-engine-v2/` — supporting runtime modules
-- `tools/inject-brush-v2-index.mjs` — generates variant-specific Android index files
-- `app/` — Kotlin WebView shell and Android packaging
-- `core-*`, `engine-gl`, and `feature-*` — earlier native implementation; still compiled and tested
+- `app/` — Kotlin Android application shell, signing, packaging, launcher path;
+- `feature-canvas/` — native Glass Horizon Compose workspace, Android file/export/recovery bridges, native canvas host;
+- `engine-gl/` — OpenGL ES paint and compositor engine;
+- `core-model/` — document model, defaults, archive/package codec, export planning;
+- `core-common/` — pure math, utility, undo, JSON, and testable platform-free logic;
+- `feature-layers/` — layer feature support.
 
-Do not delete the native modules merely because they are not the current shipping UI.
+Historical reference only:
+
+- `web/index.html`;
+- `web/*.js`;
+- `web/brush-engine-v2/`.
+
+The web directory may be used as a visual and interaction reference for Glass Horizon parity. It must not be restored as the Android runtime.
 
 ## Fast start
 
@@ -20,55 +34,48 @@ Do not delete the native modules merely because they are not the current shippin
 gh repo clone artistso/inkframesv5
 cd inkframesv5
 
-# Browser development
-./inkframe-cli dev
-
-# Web production build
-./inkframe-cli build-web
-
-# JVM tests
+# Native tests
 ./inkframe-cli test
 
-# Debug APK
+# Local developer APK, requires Android SDK
 ./inkframe-cli build-apk
+
+# Release Kotlin compile without publishing
+./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain
 ```
 
-The debug APK is written to:
+The local developer APK is written to:
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Remote CI
-
-```bash
-./inkframe-cli gh-ci apk
-gh run watch
-./inkframe-cli gh-ci-get <run-id>
-```
-
-Available agent workflow tasks are `apk`, `web`, `test`, and `all`.
+The authoritative device-test artifact is the stable native QA release APK published by GitHub Actions and recorded in issue #142.
 
 ## Repository rules
 
-1. Keep the artwork path offline. Do not add analytics, advertising, cloud inference, account requirements, or remote artwork processing.
-2. Treat `web/metadata.json` as the source of truth for version, package, and Android SDK metadata. `web/package.json` must carry the same version.
-3. Keep debug and release Android assets isolated. Release builds must not package native input diagnostics or raw trace tooling.
-4. Never commit a keystore, service-account JSON, passwords, base64 signing material, or generated private credentials.
-5. Release packaging is fail-closed. A production APK or AAB must never fall back to the Android debug certificate.
-6. When an injector imports another postprocessor, declare that imported file as a Gradle task input so incremental builds cannot reuse a stale generated index.
-7. Add or update tests for behavioral changes. Preserve artwork Undo, timing Undo, project schema, preference, randomness, and network write-boundary contracts.
-8. Update `CHANGELOG.md` for meaningful user-facing changes.
+1. Keep Android native. Do not add `WebView`, `android.webkit`, `JavascriptInterface`, packaged web assets, browser storage, or JavaScript bridge code to the Android runtime.
+2. Keep the artwork path offline. Do not add analytics, advertising, cloud inference, account requirements, or remote artwork processing.
+3. Treat `gradle/inkframe-app.properties` as the native Android metadata source.
+4. Treat `docs/NATIVE_STATUS.md` as the runtime-status source of truth.
+5. Treat `docs/GLASS_HORIZON_VISUAL_CONTRACT.md` as the binding visual and interaction target.
+6. Preserve `web/` only as historical reference until the native port no longer needs it.
+7. Never commit keystores, service-account JSON, passwords, base64 signing material, or generated private credentials.
+8. Release packaging is fail-closed. A production APK or AAB must never fall back to the Android debug certificate.
+9. Add or update tests for behavioral changes. Preserve artwork Undo, timing Undo, project schema, archive compatibility, preference, randomness, and network write-boundary contracts.
+10. Update `CHANGELOG.md` for meaningful user-facing changes.
 
-## Workflows
+## CI and workflow surface
 
-- `.github/workflows/android.yml` — web and brush tests, JVM tests, debug APK, and disposable-key production-path verification
-- `.github/workflows/release-policy-diagnostics.yml` — release-policy diagnostics and generated-asset contracts
-- `.github/workflows/agent-build.yml` — manually dispatched agent build entry point
-- `.github/workflows/agent-cli.yml` — path-filtered shell and release-helper safety checks
-- `.github/workflows/release.yml` — permanent-key signed APK/AAB workflow and GitHub Release publication
+Primary workflows:
 
-Artifacts from the disposable CI signing job prove the production build path only. They must not be uploaded to Google Play.
+- `.github/workflows/android.yml` — native boundary checks, release Kotlin compile/tests, stable QA APK, conditional signed production APK;
+- `.github/workflows/release.yml` — controlled signed release publication path;
+- `.github/workflows/agent-build.yml` — manually dispatched agent build entry point;
+- `.github/workflows/agent-cli.yml` — path-filtered CLI and release-helper safety checks;
+- `.github/workflows/release-policy-diagnostics.yml` — release-policy diagnostics and generated-asset contracts.
+
+Stable QA artifacts prove device-test readiness only. They are not public-release approval.
 
 ## Safe release procedure
 
@@ -81,11 +88,9 @@ A release is deliberately not a one-command unattended push.
 # or: minor, major, or an explicit semantic version
 ```
 
-This updates version metadata and generated release notes, then stops. It does not commit, tag, or push.
+This updates release metadata and stops. It does not commit, tag, or push.
 
 ### 2. Review and commit
-
-Inspect the diff, confirm `CHANGELOG.md` and release notes, then commit only the intended release files and push `main`.
 
 ```bash
 git status --short
@@ -97,7 +102,7 @@ git push origin main
 
 ### 3. Wait for green CI and perform tablet acceptance
 
-Install the validated debug release-candidate APK on the target Samsung tablet and complete `RELEASE_CHECKLIST.md`.
+Install the validated QA or release-candidate APK on the target Samsung Galaxy Tab S10+ and complete the relevant acceptance checklist.
 
 ### 4. Run the release preflight
 
@@ -117,16 +122,14 @@ InkFrame-v<version>-signed.aab
 SHA256SUMS.txt
 ```
 
-See `RELEASING.md` for signing setup, private dry runs, Google Play handling, and publication policy.
-
 ## CLI surface
 
 ```text
 Local:
   dev
-  build-web
-  serve
-  build-apk
+  build-web        historical/reference web build only
+  serve            historical/reference web server only
+  build-apk        local developer APK
   test
   bump <patch|minor|major|version>
   release-check
@@ -137,31 +140,33 @@ GitHub / Agent:
   gh-ci-get <run-id>
   gh-release <patch|minor|major|version>   # prepare only; never auto-pushes
   agent build
-  agent web
+  agent web        historical/reference web build only
   agent release <patch|minor|major|version>
 ```
 
-Unknown local commands and unknown `agent` subtasks must fail with a nonzero exit status. Do not document or restore a command until its implementation and behavior are covered by CI.
+Unknown local commands and unknown `agent` subtasks must fail with a nonzero exit status.
 
 ## Media export contract
 
-PNG, animated GIF, and MP4/WebM export are supported inside the shipping application through the **Actions** orb. The in-app path uses the current frame compositor, paper color, frame holds, FPS, and browser/Android runtime.
+PNG sequence, animated GIF, and MP4 export are supported through the native Android app's file/export pathways.
 
 Headless `.inkframe` archive conversion is not currently supported. Do not claim that an external exporter is bit-identical to the application unless a current archive fixture and output comparison prove that contract.
 
 ## Repository map
 
 ```text
-web/                    shipping web runtime and tests
-app/                    Android WebView shell and signed packaging
-core-common/            pure utilities
-core-model/             document model and package codec
-engine-gl/              earlier OpenGL paint engine
-feature-canvas/         native canvas feature module
-feature-layers/         native layer feature module
-tools/                  injectors, release tools, CLI helpers
-.github/workflows/       CI, diagnostics, agent, and release workflows
+app/                    Native Android application shell and signed packaging
+core-common/            Pure utilities
+core-model/             Document model and package codec
+engine-gl/              OpenGL ES paint/compositor engine
+feature-canvas/         Native canvas, Glass Horizon surface, export/recovery bridge
+feature-layers/         Layer feature support
+web/                    Historical Glass Horizon reference only
+.github/workflows/      CI, diagnostics, agent, and release workflows
 
+docs/NATIVE_STATUS.md
+docs/MAINLINE_KOTLIN_MIGRATION.md
+docs/GLASS_HORIZON_VISUAL_CONTRACT.md
 ARCHITECTURE.md
 BUILD.md
 PRIVACY.md
@@ -173,9 +178,12 @@ CHANGELOG.md
 
 ## Required reading before high-risk changes
 
+- Runtime status: `docs/NATIVE_STATUS.md`
+- Visual contract: `docs/GLASS_HORIZON_VISUAL_CONTRACT.md`
+- Native migration policy: `docs/MAINLINE_KOTLIN_MIGRATION.md`
 - Paint engine or document model: `ARCHITECTURE.md`
 - Android assets, signing, or variants: `BUILD.md` and `RELEASING.md`
 - Release metadata or publication: `RELEASING.md` and `RELEASE_CHECKLIST.md`
 - Privacy or network behavior: `PRIVACY.md`
 
-Keep feature work in a dedicated branch and pull request. Do not merge stacked draft PRs out of dependency order, and do not alter the AAB currently under Play review from an unrelated development branch.
+Keep feature work bounded and reviewable. Do not merge archived stacked PRs wholesale, and do not alter an artifact under device or Play review from an unrelated development path.

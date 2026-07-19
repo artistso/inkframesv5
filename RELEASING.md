@@ -1,24 +1,27 @@
 # Releasing InkFrame Studio
 
-InkFrame Studio ships through a **fail-closed signed Android release pipeline**.
-A matching release tag produces both a sideloadable APK and a Google Play-ready
-Android App Bundle from the same release variant.
+InkFrame Studio ships through a **fail-closed signed native Android release pipeline**.
+
+The Android product is native Kotlin / Jetpack Compose / OpenGL ES. It is not a WebView wrapper and must not package or execute the historical web application.
+
+See also:
+
+- [`docs/NATIVE_STATUS.md`](docs/NATIVE_STATUS.md)
+- [`BUILD.md`](BUILD.md)
+- [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)
 
 | | |
 |---|---|
-| Application ID | `com.inkframe.studio` |
-| Min / Target SDK | 26 (Android 8.0) / 35 |
+| Production application ID | `com.inkframe.studio` |
+| Stable QA application ID | `com.inkframe.studio.qa` |
+| Min / Target SDK | 26 / 36 |
 | Release formats | signed `.apk` and signed `.aab` |
-| Marketing version | `versionName` from `web/metadata.json` |
-| Build number | `versionCode`, supplied by CI from the workflow run number |
+| Native metadata source | `gradle/inkframe-app.properties` |
 | Signing policy | release packaging fails when the real key is unavailable |
 
-## One-time signing setup
+## One-time production signing setup
 
-Create one long-lived **upload keystore** and protect it permanently. The upload
-key signs the APK/AAB produced by this repository. For a new Google Play app,
-Play App Signing then manages the separate app-signing key used on APKs delivered
-to users.
+Create one long-lived **upload keystore** and protect it permanently. The upload key signs the APK/AAB produced by this repository. For a new Google Play app, Play App Signing then manages the separate app-signing key used on APKs delivered to users.
 
 ```bash
 keytool -genkeypair -v \
@@ -35,13 +38,13 @@ Create a base64 representation without committing the keystore:
 base64 -w 0 inkframe-release.jks > inkframe-release.jks.base64
 ```
 
-On macOS, use:
+On macOS:
 
 ```bash
 base64 < inkframe-release.jks | tr -d '\n' > inkframe-release.jks.base64
 ```
 
-Add these repository secrets under **Settings → Secrets and variables → Actions**:
+Add these repository secrets under **Settings -> Secrets and variables -> Actions**:
 
 | Secret | Value |
 |---|---|
@@ -50,13 +53,11 @@ Add these repository secrets under **Settings → Secrets and variables → Acti
 | `INKFRAME_KEY_ALIAS` | normally `inkframe` |
 | `INKFRAME_KEY_PASSWORD` | key-entry password |
 
-Store the original `.jks`, alias, and passwords in at least two secure offline
-locations. Do not commit the keystore, its base64 form, or passwords.
+Store the original `.jks`, alias, and passwords in at least two secure offline locations. Do not commit the keystore, its base64 form, or passwords.
 
 ## Local signed build
 
-Copy `keystore.properties.example` to the ignored `keystore.properties` file and
-enter real values:
+Copy `keystore.properties.example` to the ignored `keystore.properties` file and enter real local values:
 
 ```properties
 storeFile=/absolute/path/to/inkframe-release.jks
@@ -75,89 +76,60 @@ jarsigner -verify -certs \
   app/build/outputs/bundle/release/app-release.aab
 ```
 
-Gradle intentionally refuses to package a release when any signing value is
-missing or when the keystore path does not resolve to a file. It never falls
-back to Android's debug certificate.
+Gradle intentionally refuses to package a release when any signing value is missing or when the keystore path does not resolve to a file. It never falls back to Android's debug certificate.
 
 ## Release preparation
 
-1. Add accepted user-facing changes under `CHANGELOG.md` `[Unreleased]`, or create
-   a non-empty `release-notes/<next-version>.md` for a large release.
-2. Replace the placeholders and run:
+1. Add accepted user-facing changes under `CHANGELOG.md` `[Unreleased]`, or create a non-empty `release-notes/<next-version>.md` for a large release.
+2. Run the safe release preparation command:
 
 ```bash
-./inkframe-cli bump <next-version> --date YYYY-MM-DD
+./inkframe-cli gh-release <patch|minor|major|version>
 ```
 
-The bump command checks the release-note source before modifying
-`web/metadata.json` or `web/package.json`.
-
-3. Verify generated notes and Play listing metadata:
+3. Review the complete diff:
 
 ```bash
-node tools/update-release-notes.mjs --check
-node web/tests/version-smoke.mjs
-node tools/validate-play-release.mjs
+git status --short
+git diff
 ```
 
-4. Run the full PR CI. The required Android jobs include browser/Brush Engine,
-   JVM, debug APK, and signed production-path APK/AAB verification.
-5. Install the debug RC APK on the target Samsung tablet.
-6. Complete `RELEASE_CHECKLIST.md`, including the Brush Engine V2 bridge tests.
-7. Merge the release candidate only after explicit approval.
+4. Verify generated notes and release metadata.
+5. Commit only reviewed release files.
+6. Push `main` and wait for native CI.
+7. Complete `RELEASE_CHECKLIST.md` on the target Samsung Galaxy Tab S10+.
+8. Merge or tag only after explicit approval.
+
+## Native CI gates
+
+Required native gates include:
+
+- native Glass Horizon boundary check;
+- release Kotlin compilation and native unit tests;
+- no Android WebView, no JavaScript bridge, no packaged web runtime, and no `INTERNET` permission;
+- stable QA APK artifact for `com.inkframe.studio.qa` when testing is needed;
+- production signing readiness for `com.inkframe.studio` before public release.
 
 ## Private signed dry run
 
-After the permanent upload-key secrets are configured, use a manual run to prove
-the real signing path before merging or tagging:
+After permanent upload-key secrets are configured, use a manual signed-release dry run to prove the real signing path before public tagging or Play submission.
 
-1. Open **Actions → Signed Android Release → Run workflow**.
-2. Select the release-candidate branch.
-3. Read the exact committed version from `web/metadata.json` and enter that value
-   in `expected_version`.
-4. Start the workflow.
+The dry run must:
 
-The workflow rejects a version mismatch, runs the complete regression suite,
-builds the production variant, verifies both signatures, and confirms the
-production package and asset policy.
+1. compile native Kotlin;
+2. run unit tests;
+3. build release APK/AAB artifacts;
+4. verify signatures;
+5. inspect package boundaries;
+6. record checksums.
 
-Manual artifacts are named from the committed metadata version:
-
-```text
-InkFrame-v<version>-dry-run-signed.apk
-InkFrame-v<version>-dry-run-signed.aab
-SHA256SUMS.txt
-```
-
-A manual run never publishes a GitHub Release and its artifacts are retained for
-14 days. They are validly signed with the permanent upload key and may be used
-for private installation or an approved Play Internal testing upload, but they
-must not be represented as the public tagged release.
+A dry-run artifact is validly signed but must not be represented as the public tagged release.
 
 ## Publish a signed GitHub release
 
-From an approved, green commit on `main`, derive the tag from committed metadata:
+From an approved, green commit on `main`, derive the tag from committed release metadata and run the tag commands printed by `./inkframe-cli release-check`.
 
-```bash
-VERSION="$(node -p "require('./web/metadata.json').version")"
-git tag -a "v${VERSION}" -m "InkFrame Studio ${VERSION}"
-git push origin main "v${VERSION}"
-```
-
-The tag must exactly match `web/metadata.json` (`<version>` → `v<version>`). The
-**Signed Android Release** workflow then:
-
-1. validates the tag and metadata version;
-2. decodes the upload keystore from Actions secrets;
-3. runs metadata, JVM, and Brush Engine V2 regression tests;
-4. builds the release-specific production web assets;
-5. assembles the signed APK and AAB;
-6. verifies the APK with `apksigner` and AAB with `jarsigner`;
-7. generates `SHA256SUMS.txt`;
-8. uploads the workflow artifact;
-9. creates the GitHub Release and attaches all three files.
-
-Expected files:
+Expected public files:
 
 ```text
 InkFrame-v<version>-signed.apk
@@ -165,41 +137,31 @@ InkFrame-v<version>-signed.aab
 SHA256SUMS.txt
 ```
 
-Only a matching `v*` tag can publish. A manual workflow run cannot reach the
-GitHub Release publication step.
+Only a matching `v*` tag can publish. A manual workflow run must not create the public GitHub Release.
 
-## Production versus debug brush runtime
+## Production versus QA runtime
 
-The two Android variants use separate generated asset directories:
+QA and production artifacts use separate package/signing identities:
 
-- **Debug:** V2 default, Original fallback, tuning, replay/import/export, native
-  MotionEvent telemetry, sanitized WebView samples, and full trace diagnostics.
-- **Release:** V2 default, Original fallback, bounded controls, no native
-  telemetry, no raw event retention, and no trace import/replay/export controls.
+- **QA:** `com.inkframe.studio.qa`, stable public QA signing identity, device-test artifacts only.
+- **Production:** `com.inkframe.studio`, permanent private upload signing lineage, public release artifacts only after approval.
 
-This separation is enforced by generated-index tests and by the Gradle variant
-asset pipeline.
+Both paths must remain native-only and offline-first.
 
 ## First Google Play release
 
-The first bundle for `com.inkframe.studio` must be uploaded manually because the
-Google Play Publishing API cannot create a new app/package registration.
+The first bundle for `com.inkframe.studio` must be uploaded manually because the Google Play Publishing API cannot create a new app/package registration.
 
 1. Create **InkFrame Studio** in Play Console.
 2. Select English (United States) as the default language.
-3. Complete the app-access, ads, content-rating, target-audience, Data safety,
-   privacy-policy, and store-listing forms.
+3. Complete app-access, ads, content-rating, target-audience, Data safety, privacy-policy, and store-listing forms.
 4. Create an **Internal testing** release.
 5. Enroll the app in **Play App Signing**.
-6. Upload the approved AAB whose version matches `web/metadata.json` and whose
-   signature comes from the permanent upload key.
-7. Confirm Play Console shows the expected package, version name, version code,
-   target SDK, and upload certificate.
+6. Upload the approved AAB whose version matches the release metadata and whose signature comes from the permanent upload key.
+7. Confirm Play Console shows the expected package, version name, version code, target SDK, and upload certificate.
 8. Resolve all blocking errors before adding testers.
 
-Do not upload an artifact from the CI disposable-key verification job. Those
-artifacts prove the release path but are intentionally not retained for
-production use.
+Do not upload a QA artifact or disposable-key artifact to Google Play production.
 
 Version-controlled Play listing text is stored under:
 
@@ -207,9 +169,7 @@ Version-controlled Play listing text is stored under:
 app/src/main/play/
 ```
 
-The public privacy statement is currently maintained in `PRIVACY.md`. Publish
-that content at a stable HTTPS URL and enter the URL in Play Console before
-submission.
+The public privacy statement is maintained in `PRIVACY.md`. Publish that content at a stable HTTPS URL and enter the URL in Play Console before submission.
 
 ## Later internal-track automation
 
@@ -223,13 +183,11 @@ After the first manual AAB has registered the package:
 6. point `PLAY_SERVICE_ACCOUNT_JSON_FILE` to the protected JSON file;
 7. publish subsequent AABs through Gradle Play Publisher.
 
-The existing Gradle configuration defaults to the `internal` track. A typical
-subsequent upload is:
+The existing Gradle configuration defaults to the `internal` track. A typical later upload is:
 
 ```bash
 PLAY_SERVICE_ACCOUNT_JSON_FILE=/secure/path/play-service-account.json \
 ./gradlew :app:publishReleaseBundle --track internal --release-status draft
 ```
 
-Promote only after Internal testing passes. Keep production rollout a separate,
-explicit decision.
+Promote only after Internal testing passes. Keep production rollout a separate, explicit decision.
