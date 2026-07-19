@@ -3,10 +3,9 @@ package com.inkframe.core.model
 /**
  * Pure planning for exporting a scene to a frame sequence (PNG sequence, GIF, or video).
  *
- * The plan resolves *which* timeline frames to render and *how long* each is shown,
- * independent of any GPU/Android work. Keeping this pure means the timing math — frame
- * range selection, per-frame durations, GIF centisecond rounding, total length — is
- * unit-tested without an emulator.
+ * The plan resolves *which* authored frames to render and *how long* each is shown,
+ * independent of any GPU/Android work. Scene-level hold counts are folded into duration
+ * so GIF/video exports match playback timing exactly.
  */
 object ExportPlanner {
 
@@ -35,9 +34,8 @@ object ExportPlanner {
     /**
      * Builds an [ExportPlan] for [scene] rendered at the project's [canvas] settings.
      *
-     * @param range PLAYBACK uses the scene's playback in/out; ALL uses every frame.
-     * @param fpsOverride optional fps to retime the export (defaults to the canvas fps).
-     * @param frameStep render every Nth frame (1 = all; 2 = on twos, etc.).
+     * [frameStep] selects every Nth authored frame. The selected entry absorbs the hold
+     * ticks of every skipped source frame in its step window, preserving total timing.
      */
     fun plan(
         scene: Scene,
@@ -59,26 +57,23 @@ object ExportPlanner {
             }
         }
 
-        // Each held step covers `frameStep` source frames of screen time.
-        val perFrameMs = (1000.0 / fps) * frameStep
-
+        val tickMs = 1000.0 / fps
         val frames = ArrayList<PlannedFrame>()
         var idx = first
-        // Accumulate fractional ms so total duration tracks the true frame rate without
-        // drift (important for long exports — rounding each frame would accumulate error).
         var accumulatedMs = 0.0
         var emittedMs = 0
+
         while (idx <= last) {
-            accumulatedMs += perFrameMs
+            val windowEnd = minOf(last + 1, idx + frameStep)
+            val holdTicks = (idx until windowEnd).sumOf { scene.holdAt(it) }
+            accumulatedMs += tickMs * holdTicks
             val targetTotal = accumulatedMs.toInt()
             val durationMs = (targetTotal - emittedMs).coerceAtLeast(1)
             emittedMs += durationMs
-            frames.add(
-                PlannedFrame(
-                    frameIndex = idx,
-                    durationMs = durationMs,
-                    gifDelayCs = msToCentisecondsRounded(durationMs),
-                ),
+            frames += PlannedFrame(
+                frameIndex = idx,
+                durationMs = durationMs,
+                gifDelayCs = msToCentisecondsRounded(durationMs),
             )
             idx += frameStep
         }
