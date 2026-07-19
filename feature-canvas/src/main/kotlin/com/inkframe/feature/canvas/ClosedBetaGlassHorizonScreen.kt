@@ -46,9 +46,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -1000,9 +1003,25 @@ private fun ClosedBetaNode(
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
         if (open) {
+            val density = LocalDensity.current
             actions.forEachIndexed { index, action ->
                 val offset = betaFanOffset(index, fan)
-                ClosedBetaKid(action, palette, Modifier.offset(x = offset.first, y = offset.second))
+                val popupOffset = with(density) {
+                    IntOffset(
+                        x = (offset.first + 5.dp).roundToPx(),
+                        y = (offset.second + 5.dp).roundToPx(),
+                    )
+                }
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = popupOffset,
+                    properties = PopupProperties(
+                        focusable = false,
+                        clippingEnabled = false,
+                    ),
+                ) {
+                    ClosedBetaKid(action, palette)
+                }
             }
         }
         val shape = CircleShape
