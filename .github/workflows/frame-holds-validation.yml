@@ -32,6 +32,28 @@ jobs:
       - name: Verify native boundary
         run: python3 tools/check_native_boundary.py
       - name: Compile release Kotlin and run tests
+        shell: bash
         run: |
+          set +e
           chmod +x ./gradlew
-          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain
+          ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain > gradle-test.log 2>&1
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            echo '--- concise Gradle diagnostics ---'
+            grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|Compilation error|There were failing tests|AssertionError|expected:|but was:)' gradle-test.log | tail -n 160 || true
+            echo '--- Gradle log tail ---'
+            tail -n 100 gradle-test.log
+          else
+            echo 'Release Kotlin compilation and all JVM tests passed.'
+          fi
+          exit $status
+      - name: Upload validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frame-holds-validation-${{ github.sha }}
+          path: |
+            gradle-test.log
+            **/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
