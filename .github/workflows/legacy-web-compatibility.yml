@@ -1,6 +1,12 @@
 name: Legacy Web Compatibility Diagnostics
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'core-common/**'
+      - 'core-model/**'
+      - '.github/workflows/legacy-web-compatibility.yml'
   push:
     branches: [main]
     paths:
@@ -14,7 +20,7 @@ permissions:
   issues: write
 
 jobs:
-  legacy-web-fixtures:
+  native-model-and-legacy-fixtures:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,26 +31,33 @@ jobs:
           java-version: '17'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Run blocking native model tests
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :core-model:test --stacktrace --console=plain 2>&1 | tee native-model-test.log
       - name: Run archived browser compatibility fixtures
         id: legacy
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          chmod +x ./gradlew
           ./gradlew :core-model:legacyWebTest --stacktrace --console=plain 2>&1 | tee legacy-web-test.log
       - name: Upload compatibility diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-web-compatibility-${{ github.sha }}
+          name: model-test-split-${{ github.sha }}
           path: |
+            native-model-test.log
             legacy-web-test.log
+            core-model/build/reports/tests/test/
             core-model/build/reports/tests/legacyWebTest/
           if-no-files-found: ignore
           retention-days: 14
       - name: Report compatibility status to issue 167
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
