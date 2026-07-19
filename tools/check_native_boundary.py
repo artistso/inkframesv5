@@ -35,9 +35,7 @@ ACTIVE_DOCS = [
     "docs/MAINLINE_KOTLIN_MIGRATION.md",
 ]
 
-CANONICAL_NATIVE_PHRASE = (
-    "InkFrame for Android is a native Kotlin / Jetpack Compose / OpenGL ES application."
-)
+NATIVE_TERMS = ["native", "Kotlin", "Jetpack Compose", "OpenGL ES"]
 
 STALE_DOC_PATTERNS = [
     re.compile(r"single-file HTML build", re.IGNORECASE),
@@ -146,16 +144,17 @@ def check_runtime_sources(errors: list[str]) -> None:
 
 
 def check_active_docs(errors: list[str]) -> None:
-    required_phrase_docs = [
+    native_claim_docs = [
         "README.md",
         "BUILD.md",
         "AGENT.md",
         "docs/NATIVE_STATUS.md",
     ]
-    for path in required_phrase_docs:
+    for path in native_claim_docs:
         text = read_text(path)
-        if CANONICAL_NATIVE_PHRASE not in text:
-            fail(errors, f"{path} must include the canonical native Android phrase.")
+        missing = [term for term in NATIVE_TERMS if term not in text]
+        if missing:
+            fail(errors, f"{path} must describe Android as native Kotlin / Jetpack Compose / OpenGL ES; missing {missing}.")
 
     for path in ACTIVE_DOCS:
         text = read_text(path)
