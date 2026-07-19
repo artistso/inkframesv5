@@ -50,6 +50,23 @@ class BrushLabSessionTest {
     }
 
     @Test
+    fun observeRepairsInvalidMinimumSizeFromExternalShortcut() {
+        val session = BrushLabSession()
+        val malformed = DefaultBrushes.pencil.copy(sizePx = 1f, minSizePx = 2f)
+        val repaired = session.observe(malformed)
+        assertEquals(1f, repaired.sizePx, 0f)
+        assertEquals(1f, repaired.minSizePx, 0f)
+    }
+
+    @Test
+    fun registryReturnsSameCacheForConfigurationSurvivingViewModel() {
+        val state = StudioState()
+        val first = BrushLabSessionRegistry.forState(state)
+        val second = BrushLabSessionRegistry.forState(state)
+        assertSame(first, second)
+    }
+
+    @Test
     fun unknownBrushIsAcceptedWithoutFactoryLookup() {
         val session = BrushLabSession(emptyList())
         val custom = Brush("custom", "Custom", BrushKind.ROUND, sizePx = 18f)
