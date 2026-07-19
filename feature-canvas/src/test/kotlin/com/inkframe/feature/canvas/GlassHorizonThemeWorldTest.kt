@@ -1,11 +1,13 @@
 package com.inkframe.feature.canvas
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.hypot
 
 class GlassHorizonThemeWorldTest {
 
@@ -62,6 +64,33 @@ class GlassHorizonThemeWorldTest {
         assertTrue(directions.all { it.y > 0f })
         assertTrue(directions.any { it.x < 0f })
         assertTrue(directions.any { it.x > 0f })
+    }
+
+    @Test
+    fun drawTimeFeatheringPreservesOpacityBudgetWithoutRenderEffect() {
+        val feathers = GlassHorizonThemeWorld.rayFeathers
+
+        assertEquals(1f, feathers.sumOf { it.alphaShare.toDouble() }.toFloat(), 0.0001f)
+        assertEquals(1f, feathers.last().spreadScale, 0f)
+        assertTrue(feathers.zipWithNext().all { (outer, inner) -> outer.spreadScale > inner.spreadScale })
+        assertTrue(feathers.all { it.alphaShare > 0f })
+    }
+
+    @Test
+    fun landscapeRadiusSamplesTheDeepestStopAtTheFarthestCorner() {
+        val width = 2800f
+        val height = 1752f
+        val center = Offset(width * 0.5f, -height * 0.12f)
+        val radius = GlassHorizonThemeWorld.farthestCornerRadius(width, height, center)
+        val expected = maxOf(
+            hypot(center.x, center.y),
+            hypot(width - center.x, center.y),
+            hypot(center.x, height - center.y),
+            hypot(width - center.x, height - center.y),
+        )
+
+        assertEquals(expected, radius, 0.001f)
+        assertTrue(radius < width * 1.20f)
     }
 
     @Test
