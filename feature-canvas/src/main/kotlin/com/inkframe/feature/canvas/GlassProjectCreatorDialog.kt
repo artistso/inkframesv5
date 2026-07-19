@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -55,8 +56,6 @@ private val CreatorPanelShape = RoundedCornerShape(28.dp)
 private val CreatorCardShape = RoundedCornerShape(18.dp)
 private val CreatorRose = Color(0xFFF7CAC9)
 private val CreatorBlush = Color(0xFFFFF0F3)
-private val CreatorPlum = Color(0xFF1A001A)
-private val CreatorAccent = Color(0xFFBB0037)
 
 /** Native, tablet-first project creation workflow for Glass Horizon. */
 @Composable
@@ -120,30 +119,28 @@ internal fun GlassProjectCreatorDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 CreatorHeader(onDismiss)
-                CreatorModeTabs(
-                    mode = mode,
-                    onMode = { modeName = it.name },
-                )
+                CreatorModeTabs(mode = mode, onMode = { modeName = it.name })
 
                 when (mode) {
                     CreatorMode.TEMPLATES -> TemplateWorkspace(
                         selectedId = selectedTemplateId,
                         onSelected = { selectedTemplateId = it },
                     )
+
                     CreatorMode.CUSTOM -> CustomWorkspace(
                         name = customName,
-                        onName = { customName = it },
+                        onName = { customName = it.take(80) },
                         widthText = widthText,
-                        onWidth = { widthText = numericInput(it) },
+                        onWidth = { widthText = it.take(8) },
                         widthValid = widthValid,
                         heightText = heightText,
-                        onHeight = { heightText = numericInput(it) },
+                        onHeight = { heightText = it.take(8) },
                         heightValid = heightValid,
                         fpsText = fpsText,
-                        onFps = { fpsText = numericInput(it) },
+                        onFps = { fpsText = it.take(8) },
                         fpsValid = fpsValid,
                         frameText = frameText,
-                        onFrames = { frameText = numericInput(it) },
+                        onFrames = { frameText = it.take(8) },
                         framesValid = framesValid,
                         paper = paper,
                         onPaper = { paperName = it.name },
@@ -152,16 +149,17 @@ internal fun GlassProjectCreatorDialog(
 
                 val previewWidth = if (mode == CreatorMode.TEMPLATES) selectedTemplate.widthPx else width ?: 1
                 val previewHeight = if (mode == CreatorMode.TEMPLATES) selectedTemplate.heightPx else height ?: 1
-                val previewPaper = if (mode == CreatorMode.TEMPLATES) selectedTemplate.paper else paper
                 CreatorPreview(
-                    name = if (mode == CreatorMode.TEMPLATES) selectedTemplate.name else customName.trim().ifEmpty {
-                        NativeProjectTemplates.DEFAULT_CUSTOM_NAME
+                    name = if (mode == CreatorMode.TEMPLATES) {
+                        selectedTemplate.name
+                    } else {
+                        customName.trim().ifEmpty { NativeProjectTemplates.DEFAULT_CUSTOM_NAME }
                     },
                     widthPx = previewWidth,
                     heightPx = previewHeight,
                     fps = if (mode == CreatorMode.TEMPLATES) selectedTemplate.fps else fps ?: 0,
                     frames = if (mode == CreatorMode.TEMPLATES) selectedTemplate.frameCount else frames ?: 0,
-                    paper = previewPaper,
+                    paper = if (mode == CreatorMode.TEMPLATES) selectedTemplate.paper else paper,
                 )
 
                 Row(
@@ -310,9 +308,9 @@ private fun TemplateCard(
                 color = if (selected) Color(0xCCFFD0DC) else Color(0x44F7CAC9),
                 shape = CreatorCardShape,
             )
-            .clickable(
+            .selectable(
+                selected = selected,
                 role = Role.RadioButton,
-                onClickLabel = "Select ${template.name}",
                 onClick = onClick,
             )
             .padding(14.dp),
@@ -381,7 +379,7 @@ private fun CustomWorkspace(
                 onValue = onWidth,
                 label = "Width (px)",
                 valid = widthValid,
-                supporting = "256–4096",
+                supporting = "Whole number · 256–4096",
                 modifier = Modifier.weight(1f),
             )
             CreatorTextField(
@@ -389,7 +387,7 @@ private fun CustomWorkspace(
                 onValue = onHeight,
                 label = "Height (px)",
                 valid = heightValid,
-                supporting = "256–4096",
+                supporting = "Whole number · 256–4096",
                 modifier = Modifier.weight(1f),
             )
         }
@@ -402,7 +400,7 @@ private fun CustomWorkspace(
                 onValue = onFps,
                 label = "Frame rate",
                 valid = fpsValid,
-                supporting = "1–24 fps",
+                supporting = "Whole number · 1–24 fps",
                 modifier = Modifier.weight(1f),
             )
             CreatorTextField(
@@ -410,7 +408,7 @@ private fun CustomWorkspace(
                 onValue = onFrames,
                 label = "Starter frames",
                 valid = framesValid,
-                supporting = "1–120",
+                supporting = "Whole number · 1–120",
                 modifier = Modifier.weight(1f),
             )
         }
@@ -472,9 +470,9 @@ private fun PaperChoice(
                 if (selected) Color(0xCCFFD0DC) else Color(0x44F7CAC9),
                 CreatorCardShape,
             )
-            .clickable(
+            .selectable(
+                selected = selected,
                 role = Role.RadioButton,
-                onClickLabel = "Use ${paper.displayName} paper",
                 onClick = onClick,
             )
             .padding(8.dp),
@@ -588,5 +586,3 @@ private fun CreatorAction(
         )
     }
 }
-
-private fun numericInput(value: String): String = value.filter(Char::isDigit).take(5)
