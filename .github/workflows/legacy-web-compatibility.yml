@@ -1,0 +1,69 @@
+name: Legacy Web Compatibility Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'core-common/**'
+      - 'core-model/**'
+      - '.github/workflows/legacy-web-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  legacy-web-fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run archived browser compatibility fixtures
+        id: legacy
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :core-model:legacyWebTest --stacktrace --console=plain 2>&1 | tee legacy-web-test.log
+      - name: Upload compatibility diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-web-compatibility-${{ github.sha }}
+          path: |
+            legacy-web-test.log
+            core-model/build/reports/tests/legacyWebTest/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Report compatibility status to issue 167
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEGACY_OUTCOME: ${{ steps.legacy.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Legacy web compatibility — ${GITHUB_SHA::7}"
+            echo
+            echo "- Outcome: **${LEGACY_OUTCOME}**"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo '- Release authority: **none** — Android remains native Kotlin / Compose / OpenGL ES.'
+            echo
+            if [[ "$LEGACY_OUTCOME" != "success" && -s legacy-web-test.log ]]; then
+              echo '```text'
+              grep -E '(Test > .* FAILED|JsonParseException|AssertionError|There were failing tests)' legacy-web-test.log | tail -n 100 || true
+              echo '```'
+            else
+              echo 'The archived compatibility fixture suite passed.'
+            fi
+          } > legacy-report.md
+          gh issue comment 167 --repo "$GITHUB_REPOSITORY" --body-file legacy-report.md
