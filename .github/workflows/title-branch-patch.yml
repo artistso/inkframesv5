@@ -1,0 +1,79 @@
+name: Title Branch Patch
+
+on:
+  push:
+    branches: [parity/glass-horizon-title]
+    paths:
+      - '.github/workflows/title-branch-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: parity/glass-horizon-title
+      - name: Insert binding product title
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt')
+          text = path.read_text()
+
+          old = '''        ClosedBetaTopCluster(
+                      palette = palette,
+                      state = state,
+                      onFit = { canvasView?.fitToScreen() },
+                      onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
+                      modifier = Modifier.align(Alignment.TopCenter).offset(y = 12.dp),
+                  )
+          '''
+          new = '''        GlassHorizonTitle(
+                      accent = palette.accent,
+                      rose = palette.rose,
+                      dim = palette.dim,
+                      modifier = Modifier
+                          .align(Alignment.TopCenter)
+                          .offset(y = GlassHorizonTitleSpec.TOP_OFFSET_DP.dp),
+                  )
+
+                  ClosedBetaTopCluster(
+                      palette = palette,
+                      state = state,
+                      onFit = { canvasView?.fitToScreen() },
+                      onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
+                      modifier = Modifier.align(Alignment.TopCenter).offset(y = 62.dp),
+                  )
+          '''
+
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'GlassHorizonTitle(' not in text:
+              raise SystemExit('top cluster anchor missing')
+
+          if text.count('GlassHorizonTitle(') != 1:
+              raise SystemExit('expected exactly one product title call')
+
+          path.write_text(text)
+          PY
+
+          git diff --check
+          git diff -- feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
+      - name: Commit bounded title integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Product title is already integrated.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
+          git commit -m 'Place binding title above Glass Horizon controls'
+          git push origin HEAD:parity/glass-horizon-title
