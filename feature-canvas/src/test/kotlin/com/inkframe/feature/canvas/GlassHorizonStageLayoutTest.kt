@@ -63,14 +63,23 @@ class GlassHorizonStageLayoutTest {
     }
 
     @Test
-    fun bottomControlsReceiveDedicatedReserve() {
-        val placement = GlassHorizonStageLayout.place(1280f, 720f, 16f / 9f, fontScale = 1f)
+    fun frameBadgeClearsScrubRailWithDedicatedGap() {
+        val viewportHeight = 720f
+        val placement = GlassHorizonStageLayout.place(1280f, viewportHeight, 16f / 9f, fontScale = 1f)
+        val frameBottom = placement.frameTopDp + placement.frameHeightDp
+        val badgeBottom = frameBottom + GlassHorizonStageLayout.FRAME_BADGE_OVERFLOW_DP
+        val scrubRailTop = viewportHeight - GlassHorizonStageLayout.SCRUB_RAIL_TOP_INSET_DP
+
+        assertEquals(84f, GlassHorizonStageLayout.BOTTOM_CONTROL_RESERVE_DP, 0f)
         assertEquals(
-            720f - GlassHorizonStageLayout.BOTTOM_CONTROL_RESERVE_DP,
+            viewportHeight - GlassHorizonStageLayout.BOTTOM_CONTROL_RESERVE_DP,
             placement.stageAreaBottomDp,
             0f,
         )
-        assertTrue(placement.frameTopDp + placement.frameHeightDp <= placement.stageAreaBottomDp + 0.001f)
+        assertTrue(frameBottom <= placement.stageAreaBottomDp + 0.001f)
+        assertTrue(
+            badgeBottom + GlassHorizonStageLayout.FRAME_BADGE_TO_SCRUB_GAP_DP <= scrubRailTop + 0.001f,
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)
