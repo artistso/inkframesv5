@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.inkframe.core.model.BrushAdjustments
 import com.inkframe.core.model.BrushLabPresets
-import com.inkframe.core.model.Project
 
 /**
  * Adds the bounded parity controls currently layered over the native Glass Horizon shell.
@@ -52,7 +51,7 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
     var showProjectCreator by rememberSaveable { mutableStateOf(false) }
     var blankCanvasGeneration by rememberSaveable { mutableLongStateOf(0L) }
     var canvasSignature by rememberSaveable {
-        mutableStateOf(state.project.canvasSignature())
+        mutableStateOf(ProjectCanvasRecreation.signature(state.project))
     }
     val observedBrush = state.brush
     val observedProject = state.project
@@ -69,11 +68,9 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
     // Project model, so those paths must not recreate CanvasView. A blank project whose size
     // changed outside this wrapper (the legacy Gallery NEW action) is safe to recreate.
     LaunchedEffect(observedProject.id) {
-        val nextSignature = observedProject.canvasSignature()
-        if (nextSignature != canvasSignature) {
-            canvasSignature = nextSignature
-            if (observedProject.isStructurallyBlank()) blankCanvasGeneration += 1L
-        }
+        val decision = ProjectCanvasRecreation.observe(canvasSignature, observedProject)
+        canvasSignature = decision.nextSignature
+        if (decision.recreate) blankCanvasGeneration += 1L
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -154,7 +151,7 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
         GlassProjectCreatorDialog(
             onCreate = { project ->
                 showProjectCreator = false
-                canvasSignature = project.canvasSignature()
+                canvasSignature = ProjectCanvasRecreation.signature(project)
                 blankCanvasGeneration += 1L
                 state.replaceProject(project)
                 state.statusMessage = buildString {
@@ -170,12 +167,6 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
         )
     }
 }
-
-private fun Project.canvasSignature(): String =
-    "${canvas.widthPx}x${canvas.heightPx}@${canvas.pixelAspect}"
-
-private fun Project.isStructurallyBlank(): Boolean =
-    scenes.all { scene -> scene.layers.all { layer -> layer.cels.isEmpty() } }
 
 @Composable
 private fun HoldControl(
