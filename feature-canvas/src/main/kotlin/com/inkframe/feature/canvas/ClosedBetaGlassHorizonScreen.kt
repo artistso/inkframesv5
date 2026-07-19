@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Brush as UiBrush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -290,15 +291,19 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         )
 
         val documentAspect = state.project.canvas.aspectRatio
-        val canvasWidthLimit = maxWidth * 0.64f
-        val canvasHeightLimit = maxHeight * 0.74f
-        val canvasWidth = minOf(canvasWidthLimit, canvasHeightLimit * documentAspect)
-        val canvasHeight = canvasWidth / documentAspect
-        val frameWidth = canvasWidth + 28.dp
-        val frameHeight = canvasHeight + 28.dp
-        val stageTop = (maxHeight - frameHeight) / 2 + 6.dp
-        val frameLeft = (maxWidth - frameWidth) / 2
-        val frameTop = stageTop
+        val fontScale = LocalDensity.current.fontScale
+        val stagePlacement = GlassHorizonStageLayout.place(
+            viewportWidthDp = maxWidth.value,
+            viewportHeightDp = maxHeight.value,
+            documentAspect = documentAspect,
+            fontScale = fontScale,
+        )
+        val canvasWidth = stagePlacement.canvasWidthDp.dp
+        val canvasHeight = stagePlacement.canvasHeightDp.dp
+        val frameWidth = stagePlacement.frameWidthDp.dp
+        val frameHeight = stagePlacement.frameHeightDp.dp
+        val frameLeft = stagePlacement.frameLeftDp.dp
+        val frameTop = stagePlacement.frameTopDp.dp
 
         GlassHorizonTitle(
             accent = palette.accent,
@@ -314,7 +319,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             state = state,
             onFit = { canvasView?.fitToScreen() },
             onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP.dp),
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = stagePlacement.commandTopDp.dp),
         )
 
         ClosedBetaStage(
