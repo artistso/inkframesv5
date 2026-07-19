@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GlassHorizonThemeWorldTest {
@@ -52,6 +53,15 @@ class GlassHorizonThemeWorldTest {
         assertEquals(0xFF071032.toInt(), blue.horizonStops.last().second.toArgb())
         assertNotEquals(plum.horizonStops, blue.horizonStops)
         assertNotEquals(plum.vignetteColor.toArgb(), blue.vignetteColor.toArgb())
+    }
+
+    @Test
+    fun rayFanProjectsDownwardAcrossBothSides() {
+        val directions = GlassHorizonThemeWorld.raySpecs.map(GlassHorizonThemeWorld::rayDirection)
+
+        assertTrue(directions.all { it.y > 0f })
+        assertTrue(directions.any { it.x < 0f })
+        assertTrue(directions.any { it.x > 0f })
     }
 
     @Test
