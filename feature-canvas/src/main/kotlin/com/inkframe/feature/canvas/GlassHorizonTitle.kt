@@ -1,17 +1,21 @@
 package com.inkframe.feature.canvas
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -31,15 +35,22 @@ internal object GlassHorizonTitleSpec {
     const val SUBTITLE_TRACKING_SP: Float = 2.8f
     const val TOP_OFFSET_DP: Float = 14f
     const val SUBTITLE_TOP_GAP_DP: Float = 3f
-    const val COMMAND_TOP_OFFSET_DP: Float = 62f
+    const val SUBTITLE_VERTICAL_PADDING_DP: Float = 1f
+    const val SUBTITLE_HORIZONTAL_PADDING_DP: Float = 8f
+    const val COMMAND_TOP_OFFSET_DP: Float = 66f
+    const val COMMAND_CLUSTER_HEIGHT_DP: Float = 81f
+    const val SUBTITLE_PLATE_ALPHA: Float = 0.82f
 
     val displayedTitle: String get() = TITLE.uppercase(Locale.ROOT)
     val displayedSubtitle: String get() = SUBTITLE.uppercase(Locale.ROOT)
     val accessibilityLabel: String get() = "$TITLE. $SUBTITLE"
     val measuredTextBlockHeightDp: Float
-        get() = TITLE_LINE_HEIGHT_SP + SUBTITLE_TOP_GAP_DP + SUBTITLE_LINE_HEIGHT_SP
+        get() = TITLE_LINE_HEIGHT_SP + SUBTITLE_TOP_GAP_DP +
+            SUBTITLE_LINE_HEIGHT_SP + 2f * SUBTITLE_VERTICAL_PADDING_DP
     val commandClearanceDp: Float
         get() = COMMAND_TOP_OFFSET_DP - TOP_OFFSET_DP - measuredTextBlockHeightDp
+    val commandBottomDp: Float
+        get() = COMMAND_TOP_OFFSET_DP + COMMAND_CLUSTER_HEIGHT_DP
 }
 
 /** Fixed top-center product identity from the binding Glass Horizon contract. */
@@ -51,7 +62,7 @@ internal fun GlassHorizonTitle(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.semantics(mergeDescendants = true) {
+        modifier = modifier.clearAndSetSemantics {
             heading()
             contentDescription = GlassHorizonTitleSpec.accessibilityLabel
         },
@@ -80,23 +91,34 @@ internal fun GlassHorizonTitle(
                 ),
             ),
         )
-        Text(
-            text = GlassHorizonTitleSpec.displayedSubtitle,
-            modifier = Modifier.padding(top = GlassHorizonTitleSpec.SUBTITLE_TOP_GAP_DP.dp),
-            color = dim.copy(alpha = 0.86f),
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            style = TextStyle(
-                fontFamily = FontFamily.Default,
-                fontWeight = FontWeight.Bold,
-                fontSize = GlassHorizonTitleSpec.SUBTITLE_SIZE_SP.sp,
-                lineHeight = GlassHorizonTitleSpec.SUBTITLE_LINE_HEIGHT_SP.sp,
-                letterSpacing = GlassHorizonTitleSpec.SUBTITLE_TRACKING_SP.sp,
-                shadow = Shadow(
-                    color = Color.Black.copy(alpha = 0.72f),
-                    blurRadius = 10f,
+        Box(
+            modifier = Modifier
+                .padding(top = GlassHorizonTitleSpec.SUBTITLE_TOP_GAP_DP.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0xFF14000E).copy(alpha = GlassHorizonTitleSpec.SUBTITLE_PLATE_ALPHA))
+                .padding(
+                    horizontal = GlassHorizonTitleSpec.SUBTITLE_HORIZONTAL_PADDING_DP.dp,
+                    vertical = GlassHorizonTitleSpec.SUBTITLE_VERTICAL_PADDING_DP.dp,
                 ),
-            ),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = GlassHorizonTitleSpec.displayedSubtitle,
+                color = dim,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                style = TextStyle(
+                    fontFamily = FontFamily.Default,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = GlassHorizonTitleSpec.SUBTITLE_SIZE_SP.sp,
+                    lineHeight = GlassHorizonTitleSpec.SUBTITLE_LINE_HEIGHT_SP.sp,
+                    letterSpacing = GlassHorizonTitleSpec.SUBTITLE_TRACKING_SP.sp,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.92f),
+                        blurRadius = 4f,
+                    ),
+                ),
+            )
+        }
     }
 }
