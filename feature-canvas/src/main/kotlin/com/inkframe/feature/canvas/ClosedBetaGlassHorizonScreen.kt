@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -291,13 +292,16 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         )
 
         val documentAspect = state.project.canvas.aspectRatio
-        val fontScale = LocalDensity.current.fontScale
+        val localDensity = LocalDensity.current
         val stagePlacement = GlassHorizonStageLayout.place(
             viewportWidthDp = maxWidth.value,
             viewportHeightDp = maxHeight.value,
             documentAspect = documentAspect,
-            fontScale = fontScale,
+            fontScale = localDensity.fontScale,
+            density = localDensity.density,
         )
+        val hostWidth = stagePlacement.hostWidthDp.dp
+        val hostHeight = stagePlacement.hostHeightDp.dp
         val canvasWidth = stagePlacement.canvasWidthDp.dp
         val canvasHeight = stagePlacement.canvasHeightDp.dp
         val frameWidth = stagePlacement.frameWidthDp.dp
@@ -322,27 +326,28 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             modifier = Modifier.align(Alignment.TopCenter).offset(y = stagePlacement.commandTopDp.dp),
         )
 
-        if (stagePlacement.stageVisible) {
-            ClosedBetaStage(
-                state = state,
-                palette = palette,
-                canvasWidth = canvasWidth,
-                canvasHeight = canvasHeight,
-                frameWidth = frameWidth,
-                frameHeight = frameHeight,
-                onFrame = ::requestFrame,
-                onAddFrame = {
-                    state.insertFrame()
-                    canvasView?.requestRender()
-                },
-                onCanvasReady = { view ->
-                    canvasView = view
-                    recoveryController.attach(view)
-                },
-                onArtworkChanged = state::markArtworkModified,
-                modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft, y = frameTop),
-            )
-        }
+        ClosedBetaStage(
+            state = state,
+            palette = palette,
+            stageVisible = stagePlacement.stageVisible,
+            hostWidth = hostWidth,
+            hostHeight = hostHeight,
+            canvasWidth = canvasWidth,
+            canvasHeight = canvasHeight,
+            frameWidth = frameWidth,
+            frameHeight = frameHeight,
+            onFrame = ::requestFrame,
+            onAddFrame = {
+                state.insertFrame()
+                canvasView?.requestRender()
+            },
+            onCanvasReady = { view ->
+                canvasView = view
+                recoveryController.attach(view)
+            },
+            onArtworkChanged = state::markArtworkModified,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft, y = frameTop),
+        )
 
         ClosedBetaScrubRail(
             state = state,
@@ -689,6 +694,9 @@ private fun ClosedBetaPill(text: String, palette: BetaPalette, selected: Boolean
 private fun ClosedBetaStage(
     state: StudioState,
     palette: BetaPalette,
+    stageVisible: Boolean,
+    hostWidth: Dp,
+    hostHeight: Dp,
     canvasWidth: Dp,
     canvasHeight: Dp,
     frameWidth: Dp,
@@ -699,80 +707,107 @@ private fun ClosedBetaStage(
     onArtworkChanged: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.size(frameWidth, frameHeight), contentAlignment = Alignment.Center) {
-        ClosedBetaFrameBoard(
-            state = state,
-            palette = palette,
-            width = frameWidth,
-            height = frameHeight,
-            onFrame = onFrame,
-            onAddFrame = onAddFrame,
-            modifier = Modifier.align(Alignment.Center),
-        )
-        val frameShape = RoundedCornerShape(30.dp)
-        Box(
-            modifier = Modifier
-                .size(frameWidth, frameHeight)
-                .shadow(30.dp, frameShape, clip = false)
-                .clip(frameShape)
-                .background(UiBrush.linearGradient(listOf(palette.glassStrong, palette.glassFill, Color(0x5514000E))))
-                .border(1.dp, palette.stroke, frameShape)
-                .padding(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(canvasWidth, canvasHeight)
+    val containerWidth = if (stageVisible) frameWidth else hostWidth
+    val containerHeight = if (stageVisible) frameHeight else hostHeight
+    val frameShape = RoundedCornerShape(30.dp)
+    val canvasShape = RoundedCornerShape(16.dp)
+
+    Box(modifier.size(containerWidth, containerHeight), contentAlignment = Alignment.Center) {
+        if (stageVisible) {
+            ClosedBetaFrameBoard(
+                state = state,
+                palette = palette,
+                width = frameWidth,
+                height = frameHeight,
+                onFrame = onFrame,
+                onAddFrame = onAddFrame,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
+        key("persistent-gl-host") {
+            val frameModifier = Modifier
+                .size(containerWidth, containerHeight)
+                .let { base ->
+                    if (stageVisible) {
+                        base
+                            .shadow(30.dp, frameShape, clip = false)
+                            .clip(frameShape)
+                            .background(
+                                UiBrush.linearGradient(
+                                    listOf(palette.glassStrong, palette.glassFill, Color(0x5514000E)),
+                                ),
+                            )
+                            .border(1.dp, palette.stroke, frameShape)
+                            .padding(14.dp)
+                    } else {
+                        base
+                    }
+                }
+
+            Box(frameModifier) {
+                val hostModifier = Modifier
+                    .size(hostWidth, hostHeight)
                     .align(Alignment.Center)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(palette.blush)
-                    .border(1.dp, Color(0x6614000E), RoundedCornerShape(16.dp)),
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        CanvasView(
-                            context = context,
-                            canvasWidth = state.project.canvas.widthPx,
-                            canvasHeight = state.project.canvas.heightPx,
-                            sceneProvider = { state.buildDrawList() },
-                            backgroundColorProvider = { state.project.canvas.backgroundColor },
-                            strokeConfig = {
-                                CanvasView.StrokeConfig(
-                                    targetSurfaceId = state.ensureActiveCel(),
-                                    brush = state.brush,
-                                    color = state.color,
-                                )
-                            },
-                            onEngineReady = state::bindEngine,
-                        ).also { view ->
-                            onCanvasReady(view)
-                            view.setShowChecker(state.showChecker)
-                            state.onUiInvalidate = { view.post { view.requestRender() } }
-                            state.postEngineWork = { block -> view.runOnEngine(block) }
-                            view.onViewportChanged = { scale -> view.post { state.setZoom(scale) } }
-                            view.onContextRestored = {
-                                view.requestRender()
-                                state.statusMessage = "ARTWORK RESTORED"
-                            }
-                            view.onStrokeInput = { status -> state.statusMessage = status }
-                            view.onArtworkChanged = onArtworkChanged
-                            view.onColorSampled = { sampled ->
-                                state.eyedropperActive = false
-                                view.eyedropperActive = false
-                                sampled?.let { state.commitColor(it.withAlpha(1f)) }
-                            }
-                            view.onFilled = {
-                                state.fillActive = false
-                                view.fillActive = false
-                            }
+                    .let { base ->
+                        if (stageVisible) {
+                            base
+                                .clip(canvasShape)
+                                .background(palette.blush)
+                                .border(1.dp, Color(0x6614000E), canvasShape)
+                        } else {
+                            base
                         }
-                    },
-                    update = { view ->
-                        view.eyedropperActive = state.eyedropperActive
-                        view.fillActive = state.fillActive
-                        view.setShowChecker(state.showChecker)
-                    },
-                )
+                    }
+
+                Box(hostModifier) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { context ->
+                            CanvasView(
+                                context = context,
+                                canvasWidth = state.project.canvas.widthPx,
+                                canvasHeight = state.project.canvas.heightPx,
+                                sceneProvider = { state.buildDrawList() },
+                                backgroundColorProvider = { state.project.canvas.backgroundColor },
+                                strokeConfig = {
+                                    CanvasView.StrokeConfig(
+                                        targetSurfaceId = state.ensureActiveCel(),
+                                        brush = state.brush,
+                                        color = state.color,
+                                    )
+                                },
+                                onEngineReady = state::bindEngine,
+                            ).also { view ->
+                                onCanvasReady(view)
+                                view.setShowChecker(state.showChecker)
+                                state.onUiInvalidate = { view.post { view.requestRender() } }
+                                state.postEngineWork = { block -> view.runOnEngine(block) }
+                                view.onViewportChanged = { scale -> view.post { state.setZoom(scale) } }
+                                view.onContextRestored = {
+                                    view.requestRender()
+                                    state.statusMessage = "ARTWORK RESTORED"
+                                }
+                                view.onStrokeInput = { status -> state.statusMessage = status }
+                                view.onArtworkChanged = onArtworkChanged
+                                view.onColorSampled = { sampled ->
+                                    state.eyedropperActive = false
+                                    view.eyedropperActive = false
+                                    sampled?.let { state.commitColor(it.withAlpha(1f)) }
+                                }
+                                view.onFilled = {
+                                    state.fillActive = false
+                                    view.fillActive = false
+                                }
+                            }
+                        },
+                        update = { view ->
+                            view.eyedropperActive = state.eyedropperActive
+                            view.fillActive = state.fillActive
+                            view.setShowChecker(state.showChecker)
+                        },
+                    )
+                }
             }
         }
     }
