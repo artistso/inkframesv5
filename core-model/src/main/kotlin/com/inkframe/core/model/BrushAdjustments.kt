@@ -33,7 +33,7 @@ object BrushAdjustments {
      */
     fun normalized(brush: Brush): Brush {
         val size = brush.sizePx.clampTo(SIZE_RANGE)
-        return brush.copy(
+        val normalized = brush.copy(
             sizePx = size,
             minSizePx = brush.minSizePx.clampTo(MIN_SIZE_RANGE).coerceAtMost(size),
             opacity = brush.opacity.clampTo(OPACITY_RANGE),
@@ -42,6 +42,7 @@ object BrushAdjustments {
             spacing = brush.spacing.clampTo(SPACING_RANGE),
             smoothing = brush.smoothing.clampTo(SMOOTHING_RANGE),
         )
+        return if (normalized == brush) brush else normalized
     }
 
     /** Sets base diameter; nudges [Brush.minSizePx] down if it would exceed the new size. */
