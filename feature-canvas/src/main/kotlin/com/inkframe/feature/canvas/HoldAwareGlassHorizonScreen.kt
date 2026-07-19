@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.inkframe.core.model.BrushAdjustments
 import com.inkframe.core.model.BrushLabPresets
+import com.inkframe.core.model.Project
 
 /**
  * Adds the bounded parity controls currently layered over the native Glass Horizon shell.
@@ -48,7 +50,12 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
     val brushSession = remember(state) { BrushLabSessionRegistry.forState(state) }
     var showBrushLab by rememberSaveable { mutableStateOf(false) }
     var showProjectCreator by rememberSaveable { mutableStateOf(false) }
+    var blankCanvasGeneration by rememberSaveable { mutableLongStateOf(0L) }
+    var canvasSignature by rememberSaveable {
+        mutableStateOf(state.project.canvasSignature())
+    }
     val observedBrush = state.brush
+    val observedProject = state.project
 
     // ClosedBetaGlassHorizonScreen still selects factory brushes directly. Reconcile that
     // brush-id transition with the ViewModel-associated session cache so each brush regains
@@ -58,10 +65,21 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
         if (restored != observedBrush) state.updateBrush { restored }
     }
 
+    // Archive open/recovery restores pixels into the existing engine before replacing the
+    // Project model, so those paths must not recreate CanvasView. A blank project whose size
+    // changed outside this wrapper (the legacy Gallery NEW action) is safe to recreate.
+    LaunchedEffect(observedProject.id) {
+        val nextSignature = observedProject.canvasSignature()
+        if (nextSignature != canvasSignature) {
+            canvasSignature = nextSignature
+            if (observedProject.isStructurallyBlank()) blankCanvasGeneration += 1L
+        }
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        // CanvasView is constructed with immutable pixel dimensions. A fresh Project UUID is
-        // therefore the correct recreation boundary for template/custom canvas size changes.
-        key(state.project.id) {
+        // CanvasView is constructed with immutable pixel dimensions. This generation advances
+        // only for blank template/custom creation, never for archive open or recovery with art.
+        key(blankCanvasGeneration) {
             ClosedBetaGlassHorizonScreen(state = state)
         }
         val compactHeight = maxHeight < 420.dp
@@ -136,6 +154,8 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
         GlassProjectCreatorDialog(
             onCreate = { project ->
                 showProjectCreator = false
+                canvasSignature = project.canvasSignature()
+                blankCanvasGeneration += 1L
                 state.replaceProject(project)
                 state.statusMessage = buildString {
                     append("NEW · ")
@@ -150,6 +170,12 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
         )
     }
 }
+
+private fun Project.canvasSignature(): String =
+    "${canvas.widthPx}x${canvas.heightPx}@${canvas.pixelAspect}"
+
+private fun Project.isStructurallyBlank(): Boolean =
+    scenes.all { scene -> scene.layers.all { layer -> layer.cels.isEmpty() } }
 
 @Composable
 private fun HoldControl(
