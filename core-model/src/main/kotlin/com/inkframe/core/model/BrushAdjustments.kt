@@ -24,6 +24,26 @@ object BrushAdjustments {
     private fun Float.clampTo(r: ClosedFloatingPointRange<Float>): Float =
         coerceIn(r.start, r.endInclusive)
 
+    /**
+     * Repairs a complete brush profile that may have been changed outside these helpers.
+     *
+     * Radial shortcuts and imported profiles can arrive with individually plausible values
+     * that violate a dependent invariant such as `minSizePx <= sizePx`. Normalize at UI and
+     * engine boundaries so displayed values and pressure behavior always describe one state.
+     */
+    fun normalized(brush: Brush): Brush {
+        val size = brush.sizePx.clampTo(SIZE_RANGE)
+        return brush.copy(
+            sizePx = size,
+            minSizePx = brush.minSizePx.clampTo(MIN_SIZE_RANGE).coerceAtMost(size),
+            opacity = brush.opacity.clampTo(OPACITY_RANGE),
+            flow = brush.flow.clampTo(FLOW_RANGE),
+            hardness = brush.hardness.clampTo(HARDNESS_RANGE),
+            spacing = brush.spacing.clampTo(SPACING_RANGE),
+            smoothing = brush.smoothing.clampTo(SMOOTHING_RANGE),
+        )
+    }
+
     /** Sets base diameter; nudges [Brush.minSizePx] down if it would exceed the new size. */
     fun withSize(brush: Brush, sizePx: Float): Brush {
         val s = sizePx.clampTo(SIZE_RANGE)
