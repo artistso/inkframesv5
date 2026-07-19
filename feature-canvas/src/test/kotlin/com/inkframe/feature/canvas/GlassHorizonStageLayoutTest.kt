@@ -20,6 +20,7 @@ class GlassHorizonStageLayoutTest {
         )
 
         assertTrue(placement.stageVisible)
+        assertFalse(placement.compactCommands)
         assertEquals(placement.canvasWidthDp, placement.hostWidthDp, 0f)
         assertEquals(placement.canvasHeightDp, placement.hostHeightDp, 0f)
         assertEquals(GlassHorizonTitleSpec.titleBottomDp(1f), placement.titleBottomDp, 0f)
@@ -32,7 +33,41 @@ class GlassHorizonStageLayoutTest {
         )
         assertTrue(placement.frameTopDp >= placement.stageAreaTopDp)
         assertTrue(placement.frameTopDp + placement.frameHeightDp <= placement.stageAreaBottomDp + 0.001f)
-        assertTrue(placement.frameLeftDp >= 0f)
+        assertTrue(placement.frameLeftDp >= GlassHorizonStageLayout.LEFT_STAGE_GUTTER_DP)
+        assertTrue(
+            placement.frameLeftDp + placement.frameWidthDp <=
+                1480f - GlassHorizonStageLayout.RIGHT_STAGE_GUTTER_DP + 0.001f,
+        )
+    }
+
+    @Test
+    fun compactWidthUsesShortCommandRowAndSafeSideGutters() {
+        val viewportWidth = 400f
+        val placement = GlassHorizonStageLayout.place(
+            viewportWidthDp = viewportWidth,
+            viewportHeightDp = 480f,
+            documentAspect = 4f / 3f,
+            fontScale = 1f,
+            density = 2f,
+        )
+
+        assertTrue(placement.compactCommands)
+        assertTrue(placement.stageVisible)
+        assertEquals(
+            GlassHorizonTitleSpec.commandBottomDp(
+                1f,
+                GlassHorizonStageLayout.COMPACT_COMMAND_CLUSTER_HEIGHT_DP,
+            ),
+            placement.commandBottomDp,
+            0f,
+        )
+        assertTrue(placement.frameLeftDp >= GlassHorizonStageLayout.LEFT_STAGE_GUTTER_DP)
+        assertTrue(
+            placement.frameLeftDp + placement.frameWidthDp <=
+                viewportWidth - GlassHorizonStageLayout.RIGHT_STAGE_GUTTER_DP + 0.001f,
+        )
+        assertTrue(placement.hostWidthDp * 2f >= GlassHorizonStageLayout.MIN_VISIBLE_EXTENT_PX)
+        assertTrue(placement.hostHeightDp * 2f >= GlassHorizonStageLayout.MIN_VISIBLE_EXTENT_PX)
     }
 
     @Test
@@ -46,6 +81,7 @@ class GlassHorizonStageLayoutTest {
         )
 
         assertTrue(placement.stageVisible)
+        assertFalse(placement.compactCommands)
         assertTrue(placement.frameTopDp >= placement.commandBottomDp)
         assertTrue(placement.frameTopDp + placement.frameHeightDp <= placement.stageAreaBottomDp + 0.001f)
         assertTrue(placement.canvasHeightDp > 0f)
@@ -103,7 +139,7 @@ class GlassHorizonStageLayoutTest {
             fontScale = 1f,
             density = density,
         )
-        val expectedHostDp = GlassHorizonStageLayout.MIN_RENDERABLE_EXTENT_PX / density
+        val expectedHostDp = GlassHorizonStageLayout.MIN_HOST_EXTENT_PX / density
 
         assertFalse(placement.stageVisible)
         assertEquals(expectedHostDp, placement.hostWidthDp, 0f)
@@ -129,7 +165,8 @@ class GlassHorizonStageLayoutTest {
         )
         val availableFrameHeight = placement.stageAreaBottomDp - placement.stageAreaTopDp
         val availableCanvasHeight = availableFrameHeight - GlassHorizonStageLayout.FRAME_OPTICAL_PADDING_DP
-        val minimumHostDp = GlassHorizonStageLayout.MIN_RENDERABLE_EXTENT_PX / density
+        val minimumVisibleDp = GlassHorizonStageLayout.MIN_VISIBLE_EXTENT_PX / density
+        val minimumHostDp = GlassHorizonStageLayout.MIN_HOST_EXTENT_PX / density
 
         assertFalse(placement.stageVisible)
         assertEquals(
@@ -144,7 +181,7 @@ class GlassHorizonStageLayoutTest {
         assertEquals(0f, placement.frameWidthDp, 0f)
         assertEquals(0f, placement.frameHeightDp, 0f)
         assertTrue(availableFrameHeight > 0f)
-        assertTrue(availableCanvasHeight < minimumHostDp)
+        assertTrue(availableCanvasHeight < minimumVisibleDp)
         assertTrue(placement.frameLeftDp + placement.hostWidthDp < 0f)
         assertTrue(placement.frameTopDp + placement.hostHeightDp < 0f)
     }
