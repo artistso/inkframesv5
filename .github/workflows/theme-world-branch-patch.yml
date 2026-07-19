@@ -1,0 +1,159 @@
+name: Theme World Branch Patch
+
+on:
+  push:
+    branches: [parity/theme-world-atmosphere]
+    paths:
+      - '.github/workflows/theme-world-branch-patch.yml'
+      - 'feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/GlassHorizonThemeWorld.kt'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: parity/theme-world-atmosphere
+      - name: Apply bounded theme-world integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt')
+          text = path.read_text()
+
+          import_anchor = 'import androidx.activity.result.contract.ActivityResultContracts\n'
+          import_block = (
+              'import androidx.activity.result.contract.ActivityResultContracts\n'
+              'import androidx.compose.animation.core.animateFloatAsState\n'
+              'import androidx.compose.animation.core.tween\n'
+          )
+          if 'import androidx.compose.animation.core.animateFloatAsState' not in text:
+              if import_anchor not in text:
+                  raise SystemExit('animation import anchor missing')
+              text = text.replace(import_anchor, import_block, 1)
+
+          old_header = '''fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
+              var canvasView by remember { mutableStateOf<CanvasView?>(null) }
+              var openNode by rememberSaveable { mutableStateOf<BetaNode?>(BetaNode.TOOLS) }
+              var theme by rememberSaveable { mutableStateOf(BetaTheme.PLUM) }
+              var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
+
+              val palette = betaPalette(theme)
+              val context = LocalContext.current
+              val resolver = context.contentResolver
+          '''
+          new_header = '''fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
+              val context = LocalContext.current
+              val themePreferences = remember(context) {
+                  context.getSharedPreferences("glass-horizon-world", android.content.Context.MODE_PRIVATE)
+              }
+              val storedTheme = remember(themePreferences) {
+                  themePreferences.getString("theme", BetaTheme.PLUM.name)
+              }
+              var canvasView by remember { mutableStateOf<CanvasView?>(null) }
+              var openNode by rememberSaveable { mutableStateOf<BetaNode?>(BetaNode.TOOLS) }
+              var theme by rememberSaveable {
+                  mutableStateOf(BetaTheme.entries.firstOrNull { it.name == storedTheme } ?: BetaTheme.PLUM)
+              }
+              var glintPulse by remember { mutableStateOf(false) }
+              var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
+
+              val glintAlpha by animateFloatAsState(
+                  targetValue = if (glintPulse) 0.72f else 0f,
+                  animationSpec = tween(durationMillis = if (glintPulse) 120 else 360),
+                  label = "Glass Horizon interaction glint",
+              )
+              val palette = betaPalette(theme)
+              val resolver = context.contentResolver
+
+              fun selectTheme(next: BetaTheme) {
+                  if (theme == next) return
+                  theme = next
+                  themePreferences.edit().putString("theme", next.name).apply()
+                  glintPulse = true
+                  state.statusMessage = "THEME · ${next.name}"
+              }
+          '''
+          if old_header in text:
+              text = text.replace(old_header, new_header, 1)
+          elif 'val themePreferences = remember(context)' not in text:
+              raise SystemExit('screen header anchor missing')
+
+          playback_anchor = '''    LaunchedEffect(state.isPlaying) {
+                  while (state.isPlaying) {
+                      delay(state.frameDurationMs)
+                      state.advancePlayback()
+                      canvasView?.requestRender()
+                  }
+              }
+          '''
+          playback_replacement = playback_anchor + '''
+              LaunchedEffect(glintPulse) {
+                  if (glintPulse) {
+                      delay(180)
+                      glintPulse = false
+                  }
+              }
+          '''
+          if 'LaunchedEffect(glintPulse)' not in text:
+              if playback_anchor not in text:
+                  raise SystemExit('playback effect anchor missing')
+              text = text.replace(playback_anchor, playback_replacement, 1)
+
+          old_atmosphere = '        ClosedBetaAtmosphere(palette, Modifier.fillMaxSize())\n'
+          new_atmosphere = '''        GlassHorizonAtmosphere(
+                      isBlue = theme == BetaTheme.BLUE,
+                      glintAlpha = glintAlpha,
+                      modifier = Modifier.fillMaxSize(),
+                  )
+          '''
+          if old_atmosphere in text:
+              text = text.replace(old_atmosphere, new_atmosphere, 1)
+          elif 'GlassHorizonAtmosphere(' not in text:
+              raise SystemExit('atmosphere call anchor missing')
+
+          old_top_toggle = '            onTheme = { theme = if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM },\n'
+          new_top_toggle = '            onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },\n'
+          if old_top_toggle in text:
+              text = text.replace(old_top_toggle, new_top_toggle, 1)
+          elif new_top_toggle not in text:
+              raise SystemExit('top theme toggle anchor missing')
+
+          old_plum = '                BetaAction("PLUM", color = betaPalette(BetaTheme.PLUM).accent, selected = theme == BetaTheme.PLUM) { theme = BetaTheme.PLUM },\n'
+          new_plum = '                BetaAction("PLUM", color = betaPalette(BetaTheme.PLUM).accent, selected = theme == BetaTheme.PLUM) { selectTheme(BetaTheme.PLUM) },\n'
+          if old_plum in text:
+              text = text.replace(old_plum, new_plum, 1)
+          elif new_plum not in text:
+              raise SystemExit('plum action anchor missing')
+
+          old_blue = '                BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) { theme = BetaTheme.BLUE },\n'
+          new_blue = '                BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) { selectTheme(BetaTheme.BLUE) },\n'
+          if old_blue in text:
+              text = text.replace(old_blue, new_blue, 1)
+          elif new_blue not in text:
+              raise SystemExit('blue action anchor missing')
+
+          text = text.replace('ClosedBetaPill("TIMING", palette) { onTheme() }', 'ClosedBetaPill("THEME", palette) { onTheme() }', 1)
+          path.write_text(text)
+          PY
+
+          git diff --check
+          git diff -- feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
+      - name: Commit bounded integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Theme-world integration is already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
+          git commit -m 'Connect layered theme world to Glass Horizon shell'
+          git push origin HEAD:parity/theme-world-atmosphere
