@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,6 +30,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush as UiBrush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,7 +49,6 @@ private val LabPanelShape = RoundedCornerShape(28.dp)
 private val LabControlShape = RoundedCornerShape(16.dp)
 private val LabRose = Color(0xFFF7CAC9)
 private val LabBlush = Color(0xFFFFF0F3)
-private val LabPlum = Color(0xFF1A001A)
 private val LabAccent = Color(0xFFBB0037)
 
 /**
@@ -64,6 +67,10 @@ internal fun GlassBrushLabDialog(
     onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // Defensive normalization keeps label, slider thumb, and actual pressure response aligned
+    // even when a brush was previously changed by a shortcut outside BrushAdjustments.
+    val displayBrush = BrushAdjustments.normalized(brush)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -96,14 +103,14 @@ internal fun GlassBrushLabDialog(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                LabHeader(brush = brush, onDismiss = onDismiss)
-                LabBrushIdentity(brush)
+                LabHeader(brush = displayBrush, onDismiss = onDismiss)
+                LabBrushIdentity(displayBrush)
 
                 LabSectionTitle(
                     title = "STABILIZER",
                     subtitle = "Primary stroke-feel presets from the working Brush Lab",
                 )
-                val selectedPreset = BrushLabPresets.closestExact(brush)
+                val selectedPreset = BrushLabPresets.closestExact(displayBrush)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -124,44 +131,44 @@ internal fun GlassBrushLabDialog(
                 )
                 LabSliderRow(
                     label = "Size",
-                    value = brush.sizePx,
+                    value = displayBrush.sizePx,
                     range = BrushAdjustments.SIZE_RANGE,
-                    valueText = "${brush.sizePx.roundToInt()} px",
+                    valueText = "${displayBrush.sizePx.roundToInt()} px",
                     onValue = { value -> onChange { BrushAdjustments.withSize(it, value) } },
                 )
                 LabSliderRow(
                     label = "Min size",
-                    value = brush.minSizePx,
-                    range = 1f..brush.sizePx.coerceAtLeast(1f),
-                    valueText = "${brush.minSizePx.roundToInt()} px",
+                    value = displayBrush.minSizePx,
+                    range = 1f..displayBrush.sizePx,
+                    valueText = "${displayBrush.minSizePx.roundToInt()} px",
                     onValue = { value -> onChange { BrushAdjustments.withMinSize(it, value) } },
                 )
                 LabSliderRow(
                     label = "Opacity",
-                    value = brush.opacity,
+                    value = displayBrush.opacity,
                     range = BrushAdjustments.OPACITY_RANGE,
-                    valueText = percent(brush.opacity),
+                    valueText = percent(displayBrush.opacity),
                     onValue = { value -> onChange { BrushAdjustments.withOpacity(it, value) } },
                 )
                 LabSliderRow(
                     label = "Hard / soft",
-                    value = brush.hardness,
+                    value = displayBrush.hardness,
                     range = BrushAdjustments.HARDNESS_RANGE,
-                    valueText = percent(brush.hardness),
+                    valueText = percent(displayBrush.hardness),
                     onValue = { value -> onChange { BrushAdjustments.withHardness(it, value) } },
                 )
                 LabSliderRow(
                     label = "Dab spacing",
-                    value = brush.spacing,
+                    value = displayBrush.spacing,
                     range = BrushAdjustments.SPACING_RANGE,
-                    valueText = percent(brush.spacing),
+                    valueText = percent(displayBrush.spacing),
                     onValue = { value -> onChange { BrushAdjustments.withSpacing(it, value) } },
                 )
                 LabSliderRow(
                     label = "Smoothing",
-                    value = brush.smoothing,
+                    value = displayBrush.smoothing,
                     range = BrushAdjustments.SMOOTHING_RANGE,
-                    valueText = percent(brush.smoothing),
+                    valueText = percent(displayBrush.smoothing),
                     onValue = { value -> onChange { BrushAdjustments.withSmoothing(it, value) } },
                 )
 
@@ -171,17 +178,17 @@ internal fun GlassBrushLabDialog(
                 )
                 LabToggleRow(
                     label = "Pressure → size",
-                    checked = brush.pressureToSize,
+                    checked = displayBrush.pressureToSize,
                     onChecked = { enabled -> onChange { BrushAdjustments.withPressureToSize(it, enabled) } },
                 )
                 LabToggleRow(
                     label = "Pressure → opacity",
-                    checked = brush.pressureToOpacity,
+                    checked = displayBrush.pressureToOpacity,
                     onChecked = { enabled -> onChange { BrushAdjustments.withPressureToOpacity(it, enabled) } },
                 )
                 LabToggleRow(
                     label = "Build-up",
-                    checked = brush.buildUp,
+                    checked = displayBrush.buildUp,
                     onChecked = { enabled -> onChange { BrushAdjustments.withBuildUp(it, enabled) } },
                 )
 
@@ -337,17 +344,22 @@ private fun LabToggleRow(label: String, checked: Boolean, onChecked: (Boolean) -
             .fillMaxWidth()
             .clip(LabControlShape)
             .background(Color(0x0FFFF0F3))
-            .clickable(
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .toggleable(
+                value = checked,
                 role = Role.Switch,
-                onClickLabel = label,
-                onClick = { onChecked(!checked) },
+                onValueChange = onChecked,
             )
             .padding(horizontal = 14.dp, vertical = 7.dp)
             .sizeIn(minHeight = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = LabBlush, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChecked)
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            modifier = Modifier.clearAndSetSemantics { },
+        )
     }
 }
 
