@@ -39,6 +39,46 @@ class BrushAdjustmentsTest {
     }
 
     @Test
+    fun normalized_repairsDependentAndScalarRanges() {
+        val malformed = base.copy(
+            sizePx = -4f,
+            minSizePx = 99f,
+            opacity = 7f,
+            flow = -2f,
+            hardness = 3f,
+            spacing = 0f,
+            smoothing = 8f,
+        )
+        val repaired = BrushAdjustments.normalized(malformed)
+        assertEquals(1f, repaired.sizePx, 0f)
+        assertEquals(1f, repaired.minSizePx, 0f)
+        assertEquals(1f, repaired.opacity, 0f)
+        assertEquals(0f, repaired.flow, 0f)
+        assertEquals(1f, repaired.hardness, 0f)
+        assertEquals(0.01f, repaired.spacing, 0f)
+        assertEquals(0.95f, repaired.smoothing, 0f)
+    }
+
+    @Test
+    fun normalized_preservesIdentityAndFlags() {
+        val source = base.copy(
+            sizePx = 1f,
+            minSizePx = 2f,
+            pressureToSize = false,
+            pressureToOpacity = true,
+            buildUp = true,
+        )
+        val repaired = BrushAdjustments.normalized(source)
+        assertEquals(source.id, repaired.id)
+        assertEquals(source.name, repaired.name)
+        assertEquals(source.kind, repaired.kind)
+        assertFalse(repaired.pressureToSize)
+        assertTrue(repaired.pressureToOpacity)
+        assertTrue(repaired.buildUp)
+        assertEquals(1f, repaired.minSizePx, 0f)
+    }
+
+    @Test
     fun opacityFlowHardness_clampZeroToOne() {
         assertEquals(1f, BrushAdjustments.withOpacity(base, 5f).opacity, 0f)
         assertEquals(0f, BrushAdjustments.withOpacity(base, -1f).opacity, 0f)
