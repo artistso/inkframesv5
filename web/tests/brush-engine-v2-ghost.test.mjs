@@ -108,4 +108,75 @@ const source=file=>readFileSync(resolve(root,file),'utf8');
   assert.equal(adapter.__ghostTrailInstalled,true);
 }
 
+// An implicit end during a replacement begin must finish the old trail without
+// consuming the new pending trail that receives the replacement engine's dabs.
+{
+  let adapterActive=false;
+  let engineNumber=0;
+  const sessions=[];
+  const sandbox={console,Math,Date,JSON,Object,Array,Number,String,Boolean,Map,Set,WeakMap,Error,module:{exports:{}},exports:{}};
+  sandbox.globalThis=sandbox;
+  sandbox.InkFrameBrushV2={
+    tuningGhostOptions:()=>({mode:'comet'}),
+    createGhostTrailSession(){
+      const record={id:sessions.length+1,pushed:[],ended:0,cleared:0};
+      sessions.push(record);
+      return {
+        push(dabs){record.pushed.push(...dabs);return dabs.length;},
+        end(){record.ended++;},
+        clear(){record.cleared++;},
+      };
+    },
+    createBrushEngine(options){
+      const number=++engineNumber;
+      const base=number*100;
+      return {
+        begin(){options.onDab({x:base+1,y:1,radius:2,strokeId:number,strokeStart:true});return[];},
+        move(){options.onDab({x:base+2,y:2,radius:2,strokeId:number,strokeStart:false});return[];},
+        end(){options.onDab({x:base+3,y:3,radius:2,strokeId:number,strokeStart:false});return[];},
+      };
+    },
+  };
+  const adapter={
+    currentTuning:()=>({ghostMode:'comet'}),
+    isActive:()=>adapterActive,
+    begin(){
+      if(adapterActive)this.end({type:'implicit-pointerdown'});
+      adapterActive=true;
+      this.engine=sandbox.InkFrameBrushV2.createBrushEngine({});
+      this.engine.begin();
+      return true;
+    },
+    move(){this.engine.move();return true;},
+    end(){
+      if(!adapterActive)return false;
+      this.engine.end();
+      adapterActive=false;
+      return true;
+    },
+  };
+  sandbox.InkFrameBrushV2Adapter=adapter;
+  vm.createContext(sandbox);
+  vm.runInContext(source('brush-engine-v2/ghost-runtime.js'),sandbox,{filename:'ghost-runtime.js'});
+
+  adapter.begin({pointerId:1},{canvas:{},color:'#111',brushId:'ink'});
+  adapter.move({pointerId:1});
+  adapter.begin({pointerId:1},{canvas:{},color:'#222',brushId:'ink'});
+  adapter.move({pointerId:1});
+  adapter.end({pointerId:1});
+
+  assert.equal(sessions.length,2);
+  assert.deepEqual(sessions[0].pushed.map(dab=>dab.x),[101,102,103]);
+  assert.deepEqual(sessions[1].pushed.map(dab=>dab.x),[201,202,203]);
+  assert.equal(sessions[0].ended,1);
+  assert.equal(sessions[1].ended,1);
+  assert.equal(sessions[0].cleared,0);
+  assert.equal(sessions[1].cleared,0);
+  const stats=adapter.ghostTrailStats();
+  assert.equal(stats.sessionsStarted,2);
+  assert.equal(stats.sessionsFinished,2);
+  assert.equal(stats.sessionsAborted,0);
+  assert.equal(stats.active,false);
+}
+
 console.log('✅ Brush Engine V2 Ghost Trail tests passed');
