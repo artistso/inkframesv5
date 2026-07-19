@@ -1,6 +1,7 @@
 package com.inkframe.feature.canvas
 
 internal data class GlassHorizonStagePlacement(
+    val stageVisible: Boolean,
     val titleBottomDp: Float,
     val commandTopDp: Float,
     val commandBottomDp: Float,
@@ -28,7 +29,7 @@ internal object GlassHorizonStageLayout {
     const val FRAME_BADGE_TO_SCRUB_GAP_DP: Float = 8f
     const val BOTTOM_CONTROL_RESERVE_DP: Float =
         FRAME_BADGE_OVERFLOW_DP + SCRUB_RAIL_TOP_INSET_DP + FRAME_BADGE_TO_SCRUB_GAP_DP
-    const val MIN_CANVAS_EXTENT_DP: Float = 1f
+    const val MIN_RENDERABLE_EXTENT_DP: Float = 0.01f
 
     fun place(
         viewportWidthDp: Float,
@@ -45,24 +46,50 @@ internal object GlassHorizonStageLayout {
         val commandTop = GlassHorizonTitleSpec.commandTopDp(fontScale)
         val commandBottom = GlassHorizonTitleSpec.commandBottomDp(fontScale)
         val stageAreaTop = commandBottom + HEADER_TO_STAGE_GAP_DP
-        val minimumFrameHeight = FRAME_OPTICAL_PADDING_DP + MIN_CANVAS_EXTENT_DP
-        val naturalStageBottom = viewportHeightDp - BOTTOM_CONTROL_RESERVE_DP
-        val stageAreaBottom = naturalStageBottom.coerceAtLeast(stageAreaTop + minimumFrameHeight)
-        val availableFrameHeight = (stageAreaBottom - stageAreaTop).coerceAtLeast(minimumFrameHeight)
-        val availableCanvasHeight = (availableFrameHeight - FRAME_OPTICAL_PADDING_DP)
-            .coerceAtLeast(MIN_CANVAS_EXTENT_DP)
-        val availableCanvasWidth = (viewportWidthDp * CANVAS_WIDTH_FRACTION)
-            .coerceAtLeast(MIN_CANVAS_EXTENT_DP)
+        val stageAreaBottom = (viewportHeightDp - BOTTOM_CONTROL_RESERVE_DP).coerceAtLeast(0f)
+        val availableFrameHeight = stageAreaBottom - stageAreaTop
+        val availableCanvasHeight = availableFrameHeight - FRAME_OPTICAL_PADDING_DP
+        val availableCanvasWidth = viewportWidthDp * CANVAS_WIDTH_FRACTION
 
+        if (
+            availableCanvasHeight < MIN_RENDERABLE_EXTENT_DP ||
+            availableCanvasWidth < MIN_RENDERABLE_EXTENT_DP
+        ) {
+            return hiddenPlacement(
+                titleBottom = titleBottom,
+                commandTop = commandTop,
+                commandBottom = commandBottom,
+                stageAreaTop = stageAreaTop,
+                stageAreaBottom = stageAreaBottom,
+                viewportWidthDp = viewportWidthDp,
+            )
+        }
+
+        // Fit from both axes without coercing either dimension upward. This preserves the aspect
+        // ratio and height cap for valid extreme documents such as 1×16384 pixel archives.
         val canvasWidth = minOf(availableCanvasWidth, availableCanvasHeight * documentAspect)
-            .coerceAtLeast(MIN_CANVAS_EXTENT_DP)
-        val canvasHeight = (canvasWidth / documentAspect).coerceAtLeast(MIN_CANVAS_EXTENT_DP)
+        val canvasHeight = canvasWidth / documentAspect
+        if (
+            canvasWidth < MIN_RENDERABLE_EXTENT_DP ||
+            canvasHeight < MIN_RENDERABLE_EXTENT_DP
+        ) {
+            return hiddenPlacement(
+                titleBottom = titleBottom,
+                commandTop = commandTop,
+                commandBottom = commandBottom,
+                stageAreaTop = stageAreaTop,
+                stageAreaBottom = stageAreaBottom,
+                viewportWidthDp = viewportWidthDp,
+            )
+        }
+
         val frameWidth = canvasWidth + FRAME_OPTICAL_PADDING_DP
         val frameHeight = canvasHeight + FRAME_OPTICAL_PADDING_DP
         val frameLeft = ((viewportWidthDp - frameWidth) / 2f).coerceAtLeast(0f)
         val frameTop = stageAreaTop + ((availableFrameHeight - frameHeight) / 2f).coerceAtLeast(0f)
 
         return GlassHorizonStagePlacement(
+            stageVisible = true,
             titleBottomDp = titleBottom,
             commandTopDp = commandTop,
             commandBottomDp = commandBottom,
@@ -76,4 +103,26 @@ internal object GlassHorizonStageLayout {
             stageAreaBottomDp = stageAreaBottom,
         )
     }
+
+    private fun hiddenPlacement(
+        titleBottom: Float,
+        commandTop: Float,
+        commandBottom: Float,
+        stageAreaTop: Float,
+        stageAreaBottom: Float,
+        viewportWidthDp: Float,
+    ): GlassHorizonStagePlacement = GlassHorizonStagePlacement(
+        stageVisible = false,
+        titleBottomDp = titleBottom,
+        commandTopDp = commandTop,
+        commandBottomDp = commandBottom,
+        canvasWidthDp = 0f,
+        canvasHeightDp = 0f,
+        frameWidthDp = 0f,
+        frameHeightDp = 0f,
+        frameLeftDp = viewportWidthDp / 2f,
+        frameTopDp = stageAreaTop,
+        stageAreaTopDp = stageAreaTop,
+        stageAreaBottomDp = stageAreaBottom,
+    )
 }
