@@ -55,6 +55,20 @@ class StrokeProcessorTest {
     }
 
     @Test
+    fun finish_flushesTailWhenPenUpRepeatsPreviousPosition() {
+        val sp = StrokeProcessor(brush())
+        val all = ArrayList<Dab>()
+        all += sp.add(sample(0f, 0f, 0L))
+        all += sp.add(sample(20f, 0f, 8L))
+        all += sp.add(sample(20f, 0f, 16L))
+        all += sp.finish()
+
+        val last = all.last().center
+        assertEquals(20f, last.x, 0.5f)
+        assertEquals(0f, last.y, 0.5f)
+    }
+
+    @Test
     fun horizontalStroke_dabsCarryForwardRotation() {
         val sp = StrokeProcessor(brush())
         val all = ArrayList<Dab>()
