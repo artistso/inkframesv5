@@ -1,6 +1,9 @@
 package com.inkframe.feature.canvas
 
 internal data class GlassHorizonStagePlacement(
+    val titleBottomDp: Float,
+    val commandTopDp: Float,
+    val commandBottomDp: Float,
     val canvasWidthDp: Float,
     val canvasHeightDp: Float,
     val frameWidthDp: Float,
@@ -14,7 +17,7 @@ internal data class GlassHorizonStagePlacement(
 /**
  * Pure layout policy that reserves the product title and command cluster before fitting artwork.
  * This prevents later-composed AndroidView content from painting over or receiving input through
- * the fixed Glass Horizon header at any supported landscape window height.
+ * the fixed Glass Horizon header at any supported landscape window height or accessibility scale.
  */
 internal object GlassHorizonStageLayout {
     const val CANVAS_WIDTH_FRACTION: Float = 0.64f
@@ -27,16 +30,21 @@ internal object GlassHorizonStageLayout {
         viewportWidthDp: Float,
         viewportHeightDp: Float,
         documentAspect: Float,
+        fontScale: Float,
     ): GlassHorizonStagePlacement {
         require(viewportWidthDp > 0f)
         require(viewportHeightDp > 0f)
         require(documentAspect > 0f)
+        require(fontScale > 0f)
 
-        val stageAreaTop = GlassHorizonTitleSpec.commandBottomDp + HEADER_TO_STAGE_GAP_DP
-        val stageAreaBottom = (viewportHeightDp - BOTTOM_CONTROL_RESERVE_DP)
-            .coerceAtLeast(stageAreaTop + FRAME_OPTICAL_PADDING_DP + MIN_CANVAS_EXTENT_DP)
-        val availableFrameHeight = (stageAreaBottom - stageAreaTop)
-            .coerceAtLeast(FRAME_OPTICAL_PADDING_DP + MIN_CANVAS_EXTENT_DP)
+        val titleBottom = GlassHorizonTitleSpec.titleBottomDp(fontScale)
+        val commandTop = GlassHorizonTitleSpec.commandTopDp(fontScale)
+        val commandBottom = GlassHorizonTitleSpec.commandBottomDp(fontScale)
+        val stageAreaTop = commandBottom + HEADER_TO_STAGE_GAP_DP
+        val minimumFrameHeight = FRAME_OPTICAL_PADDING_DP + MIN_CANVAS_EXTENT_DP
+        val naturalStageBottom = viewportHeightDp - BOTTOM_CONTROL_RESERVE_DP
+        val stageAreaBottom = naturalStageBottom.coerceAtLeast(stageAreaTop + minimumFrameHeight)
+        val availableFrameHeight = (stageAreaBottom - stageAreaTop).coerceAtLeast(minimumFrameHeight)
         val availableCanvasHeight = (availableFrameHeight - FRAME_OPTICAL_PADDING_DP)
             .coerceAtLeast(MIN_CANVAS_EXTENT_DP)
         val availableCanvasWidth = (viewportWidthDp * CANVAS_WIDTH_FRACTION)
@@ -51,6 +59,9 @@ internal object GlassHorizonStageLayout {
         val frameTop = stageAreaTop + ((availableFrameHeight - frameHeight) / 2f).coerceAtLeast(0f)
 
         return GlassHorizonStagePlacement(
+            titleBottomDp = titleBottom,
+            commandTopDp = commandTop,
+            commandBottomDp = commandBottom,
             canvasWidthDp = canvasWidth,
             canvasHeightDp = canvasHeight,
             frameWidthDp = frameWidth,
