@@ -5,7 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
@@ -30,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.inkframe.core.model.BrushAdjustments
 import com.inkframe.core.model.BrushLabPresets
 
 /**
@@ -41,19 +44,21 @@ import com.inkframe.core.model.BrushLabPresets
  */
 @Composable
 fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
-    val brushSession = remember { BrushLabSession() }
+    val brushSession = remember(state) { BrushLabSessionRegistry.forState(state) }
     var showBrushLab by rememberSaveable { mutableStateOf(false) }
     val observedBrush = state.brush
 
     // ClosedBetaGlassHorizonScreen still selects factory brushes directly. Reconcile that
-    // brush-id transition with the session cache so each brush regains its own live edits.
+    // brush-id transition with the ViewModel-associated session cache so each brush regains
+    // its own live edits after tool switches and Activity configuration changes.
     LaunchedEffect(observedBrush) {
         val restored = brushSession.observe(observedBrush)
         if (restored != observedBrush) state.updateBrush { restored }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         ClosedBetaGlassHorizonScreen(state = state)
+        val compactHeight = maxHeight < 420.dp
 
         Column(
             modifier = Modifier
@@ -62,16 +67,29 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            HoldControl(
-                hold = state.currentHold,
-                onIncrease = { state.adjustCurrentHold(1) },
-                onDecrease = { state.adjustCurrentHold(-1) },
-            )
+            if (compactHeight) {
+                CompactHoldControl(
+                    hold = state.currentHold,
+                    onIncrease = { state.adjustCurrentHold(1) },
+                    onDecrease = { state.adjustCurrentHold(-1) },
+                )
+            } else {
+                HoldControl(
+                    hold = state.currentHold,
+                    onIncrease = { state.adjustCurrentHold(1) },
+                    onDecrease = { state.adjustCurrentHold(-1) },
+                )
+            }
             GlassCommandButton(
                 label = "LAB",
                 actionLabel = "Open Brush Lab",
                 selected = showBrushLab,
-                onClick = { showBrushLab = true },
+                onClick = {
+                    state.updateBrush { current ->
+                        brushSession.record(BrushAdjustments.normalized(current))
+                    }
+                    showBrushLab = true
+                },
             )
         }
     }
@@ -118,19 +136,7 @@ private fun HoldControl(
             enabled = hold < 8,
             onClick = onIncrease,
         )
-        BasicText(
-            text = "HOLD\n$hold",
-            modifier = Modifier.padding(vertical = 2.dp),
-            style = TextStyle(
-                color = Color(0xFFFFF0F3),
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                lineHeight = 13.sp,
-                letterSpacing = 0.5.sp,
-                textAlign = TextAlign.Center,
-            ),
-        )
+        HoldLabel(hold = hold, stacked = true)
         HoldGlassButton(
             label = "−",
             actionLabel = "Decrease frame hold",
@@ -138,6 +144,55 @@ private fun HoldControl(
             onClick = onDecrease,
         )
     }
+}
+
+/** Compact-height reflow that stays clear of the lower-right Glass Horizon command node. */
+@Composable
+private fun CompactHoldControl(
+    hold: Int,
+    onIncrease: () -> Unit,
+    onDecrease: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(CommandButtonShape)
+            .background(Color(0xB31A001A))
+            .border(1.dp, Color(0x99F7CAC9), CommandButtonShape)
+            .padding(horizontal = 5.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HoldGlassButton(
+            label = "−",
+            actionLabel = "Decrease frame hold",
+            enabled = hold > 1,
+            onClick = onDecrease,
+        )
+        HoldLabel(hold = hold, stacked = false)
+        HoldGlassButton(
+            label = "+",
+            actionLabel = "Increase frame hold",
+            enabled = hold < 8,
+            onClick = onIncrease,
+        )
+    }
+}
+
+@Composable
+private fun HoldLabel(hold: Int, stacked: Boolean) {
+    BasicText(
+        text = if (stacked) "HOLD\n$hold" else "H$hold",
+        modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+        style = TextStyle(
+            color = Color(0xFFFFF0F3),
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            lineHeight = 13.sp,
+            letterSpacing = 0.5.sp,
+            textAlign = TextAlign.Center,
+        ),
+    )
 }
 
 private val CommandPillShape = RoundedCornerShape(percent = 50)
