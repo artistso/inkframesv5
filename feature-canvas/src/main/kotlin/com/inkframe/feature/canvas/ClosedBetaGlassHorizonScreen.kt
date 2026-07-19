@@ -1008,8 +1008,8 @@ private fun ClosedBetaNode(
                 val offset = betaFanOffset(index, fan)
                 val popupOffset = with(density) {
                     IntOffset(
-                        x = (offset.first + 5.dp).roundToPx(),
-                        y = (offset.second + 5.dp).roundToPx(),
+                        x = RadialPopupLayout.compensatedX(offset.first.value).dp.roundToPx(),
+                        y = RadialPopupLayout.compensatedY(offset.second.value).dp.roundToPx(),
                     )
                 }
                 Popup(
@@ -1020,7 +1020,16 @@ private fun ClosedBetaNode(
                         clippingEnabled = false,
                     ),
                 ) {
-                    ClosedBetaKid(action, palette)
+                    Box(
+                        modifier = Modifier.padding(
+                            start = RadialPopupLayout.START_PADDING_DP.dp,
+                            top = RadialPopupLayout.TOP_PADDING_DP.dp,
+                            end = RadialPopupLayout.END_PADDING_DP.dp,
+                            bottom = RadialPopupLayout.BOTTOM_PADDING_DP.dp,
+                        ),
+                    ) {
+                        ClosedBetaKid(action, palette)
+                    }
                 }
             }
         }
