@@ -4,15 +4,17 @@ package com.inkframe.core.model
  * Pure planning for exporting a scene to a frame sequence (PNG sequence, GIF, or video).
  *
  * The plan resolves *which* authored frames to render and *how long* each is shown,
- * independent of any GPU/Android work. Scene-level hold counts are folded into duration
- * so GIF/video exports match playback timing exactly.
+ * independent of any GPU/Android work. Scene-level hold counts are represented both as
+ * real-time durations for GIF/video and as discrete exposure ticks for PNG sequences.
  */
 object ExportPlanner {
 
-    /** One entry to render: a timeline frame index and how long it is displayed. */
+    /** One authored frame entry and its exported timing. */
     data class PlannedFrame(
         val frameIndex: Int,
         val durationMs: Int,
+        /** Number of project timing ticks represented by this entry. */
+        val exposureTicks: Int,
         /** Centiseconds (1/100 s) for GIF Graphic Control Extension delay. */
         val gifDelayCs: Int,
     )
@@ -26,6 +28,12 @@ object ExportPlanner {
     ) {
         val frameCount: Int get() = frames.size
         val totalDurationMs: Int get() = frames.sumOf { it.durationMs }
+        val pngSequenceFrameCount: Int get() = frames.sumOf { it.exposureTicks }
+
+        /** Timeline frame indices expanded once per exposure tick for PNG-sequence output. */
+        fun expandedPngFrameIndices(): List<Int> = buildList(pngSequenceFrameCount) {
+            for (frame in frames) repeat(frame.exposureTicks) { add(frame.frameIndex) }
+        }
     }
 
     /** Which frames of a scene to export. */
@@ -73,6 +81,7 @@ object ExportPlanner {
             frames += PlannedFrame(
                 frameIndex = idx,
                 durationMs = durationMs,
+                exposureTicks = holdTicks,
                 gifDelayCs = msToCentisecondsRounded(durationMs),
             )
             idx += frameStep
