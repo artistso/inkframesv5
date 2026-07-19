@@ -321,6 +321,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         ClosedBetaTopCluster(
             palette = palette,
             state = state,
+            compact = stagePlacement.compactCommands,
             onFit = { canvasView?.fitToScreen() },
             onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
             modifier = Modifier.align(Alignment.TopCenter).offset(y = stagePlacement.commandTopDp.dp),
@@ -367,6 +368,14 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         val rightX = maxWidth - 56.dp
         val bottomY = maxHeight - 54.dp
         val centerX = maxWidth / 2
+        val topNodeY = if (stagePlacement.compactCommands) {
+            (stagePlacement.commandBottomDp + GlassHorizonStageLayout.COMPACT_NODE_GAP_DP).dp
+        } else {
+            92.dp
+        }
+        val lineNodeY = if (stagePlacement.compactCommands) topNodeY + 128.dp else 220.dp
+        val fxNodeY = if (stagePlacement.compactCommands) topNodeY + 104.dp else 196.dp
+        val themesNodeY = if (stagePlacement.compactCommands) topNodeY + 196.dp else maxHeight * 0.50f
 
         ClosedBetaNode(
             node = BetaNode.TOOLS,
@@ -380,7 +389,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             fan = Fan.RIGHT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = 92.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = topNodeY),
         )
         ClosedBetaNode(
             node = BetaNode.LINE,
@@ -404,7 +413,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("REDO", selected = state.canRedo) { canvasView?.redo() },
             ),
             fan = Fan.RIGHT_DOWN,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = 220.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = lineNodeY),
         )
 
         ClosedBetaNode(
@@ -419,7 +428,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             fan = Fan.LEFT_DOWN,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = 92.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = topNodeY),
         )
         ClosedBetaNode(
             node = BetaNode.FX,
@@ -436,7 +445,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("REPORT") { state.statusMessage = "REPORT READY" },
             ),
             fan = Fan.LEFT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = 196.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = fxNodeY),
         )
         ClosedBetaNode(
             node = BetaNode.THEMES,
@@ -448,7 +457,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) { selectTheme(BetaTheme.BLUE) },
             ),
             fan = Fan.LEFT_UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = maxHeight * 0.50f),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = themesNodeY),
         )
 
         ClosedBetaNode(
@@ -651,42 +660,79 @@ private fun BetaNode?.toggle(node: BetaNode): BetaNode? = if (this == node) null
 private fun ClosedBetaTopCluster(
     palette: BetaPalette,
     state: StudioState,
+    compact: Boolean,
     onFit: () -> Unit,
     onTheme: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClosedBetaPill("Engine · V2", palette, selected = true) { state.statusMessage = "ENGINE · V2" }
-            ClosedBetaPill("Brush Lab", palette, selected = true) { state.showBrushSettings = true }
+    if (compact) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ClosedBetaPill(if (state.isPlaying) "PAUSE" else "PLAY", palette, compact = true) {
+                state.togglePlay()
+            }
+            ClosedBetaPill("CENTER", palette, compact = true) { onFit() }
+            ClosedBetaPill("THEME", palette, compact = true) { onTheme() }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClosedBetaPill(if (state.isPlaying) "PAUSE" else "PLAY", palette) { state.togglePlay() }
-            ClosedBetaPill("CENTER", palette) { onFit() }
-            ClosedBetaPill("ALL RINGS", palette) { state.statusMessage = "ALL RINGS" }
-            ClosedBetaPill("SCRUB", palette) { state.statusMessage = "SCRUB" }
-            ClosedBetaPill("THEME", palette) { onTheme() }
+    } else {
+        Column(
+            modifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ClosedBetaPill("Engine · V2", palette, selected = true) {
+                    state.statusMessage = "ENGINE · V2"
+                }
+                ClosedBetaPill("Brush Lab", palette, selected = true) {
+                    state.showBrushSettings = true
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                ClosedBetaPill(if (state.isPlaying) "PAUSE" else "PLAY", palette) { state.togglePlay() }
+                ClosedBetaPill("CENTER", palette) { onFit() }
+                ClosedBetaPill("ALL RINGS", palette) { state.statusMessage = "ALL RINGS" }
+                ClosedBetaPill("SCRUB", palette) { state.statusMessage = "SCRUB" }
+                ClosedBetaPill("THEME", palette) { onTheme() }
+            }
         }
     }
 }
 
 @Composable
-private fun ClosedBetaPill(text: String, palette: BetaPalette, selected: Boolean = false, onClick: () -> Unit) {
+private fun ClosedBetaPill(
+    text: String,
+    palette: BetaPalette,
+    selected: Boolean = false,
+    compact: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val pillHeight = if (compact) 34.dp else if (selected) 42.dp else 34.dp
+    val pillWidth = if (compact) 64.dp else if (selected) 92.dp else 78.dp
     Box(
         modifier = Modifier
-            .height(if (selected) 42.dp else 34.dp)
-            .width(if (selected) 92.dp else 78.dp)
+            .height(pillHeight)
+            .width(pillWidth)
             .shadow(16.dp, RoundedCornerShape(18.dp), clip = false)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 if (selected) UiBrush.linearGradient(listOf(palette.accent, palette.accentDeep))
-                else UiBrush.linearGradient(listOf(Color(0x6614000E), palette.glassStrong))
+                else UiBrush.linearGradient(listOf(Color(0x6614000E), palette.glassStrong)),
             )
             .border(1.dp, palette.rim, RoundedCornerShape(18.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.material3.Text(text, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+        androidx.compose.material3.Text(
+            text = text,
+            color = Color.White,
+            fontSize = if (compact) 8.sp else 9.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
