@@ -17,10 +17,9 @@ class PlaybackOpsTest {
 
     @Test
     fun frameDuration_matchesFps() {
-        assertEquals(41L, PlaybackOps.frameDurationMs(24)) // 1000/24 = 41
+        assertEquals(41L, PlaybackOps.frameDurationMs(24))
         assertEquals(33L, PlaybackOps.frameDurationMs(30))
         assertEquals(1000L, PlaybackOps.frameDurationMs(1))
-        // Very high fps still yields >= 1ms.
         assertTrue(PlaybackOps.frameDurationMs(120) >= 1L)
     }
 
@@ -28,27 +27,20 @@ class PlaybackOpsTest {
     fun clampRange_ordersAndBounds() {
         assertEquals(0..9, PlaybackOps.clampRange(0..9, 10))
         assertEquals(0..9, PlaybackOps.clampRange(-5..99, 10))
-        // reversed input -> last pulled up to first
         assertEquals(5..5, PlaybackOps.clampRange(5..2, 10))
     }
 
     @Test
     fun setInPoint_pushesOutWhenNeeded() {
-        // in beyond out -> out follows
         assertEquals(7..7, PlaybackOps.setInPoint(2..5, 7, 10))
-        // normal
         assertEquals(3..8, PlaybackOps.setInPoint(2..8, 3, 10))
-        // clamp
         assertEquals(9..9, PlaybackOps.setInPoint(0..4, 50, 10))
     }
 
     @Test
     fun setOutPoint_pullsInWhenNeeded() {
-        // out before in -> in follows back
         assertEquals(3..3, PlaybackOps.setOutPoint(5..8, 3, 10))
-        // normal
         assertEquals(2..6, PlaybackOps.setOutPoint(2..8, 6, 10))
-        // clamp to last
         assertEquals(2..9, PlaybackOps.setOutPoint(2..4, 99, 10))
     }
 
@@ -72,7 +64,6 @@ class PlaybackOpsTest {
 
     @Test
     fun nextFrame_loopsAtOutPoint() {
-        // out-point with loop -> back to in-point
         assertEquals(2 to true, PlaybackOps.nextFrame(8, 2..8, loop = true))
     }
 
@@ -83,16 +74,46 @@ class PlaybackOpsTest {
 
     @Test
     fun nextFrame_jumpsToInPointWhenOutsideRange() {
-        // current before in
         assertEquals(2 to true, PlaybackOps.nextFrame(0, 2..8, loop = true))
-        // current after out
         assertEquals(2 to true, PlaybackOps.nextFrame(9, 2..8, loop = false))
     }
 
     @Test
     fun nextFrame_singleFrameRange() {
-        // range of one frame: loop stays, non-loop stops
         assertEquals(5 to true, PlaybackOps.nextFrame(5, 5..5, loop = true))
         assertEquals(5 to false, PlaybackOps.nextFrame(5, 5..5, loop = false))
+    }
+
+    @Test
+    fun nextTick_staysOnHeldFrameUntilExposureIsConsumed() {
+        val first = PlaybackOps.nextTick(2, 0..4, loop = true, ticksRemaining = 3) { 1 }
+        assertEquals(2, first.frame)
+        assertEquals(2, first.ticksRemaining)
+        assertFalse(first.advanced)
+
+        val second = PlaybackOps.nextTick(2, 0..4, loop = true, ticksRemaining = 2) { 1 }
+        assertEquals(2, second.frame)
+        assertEquals(1, second.ticksRemaining)
+        assertFalse(second.advanced)
+
+        val third = PlaybackOps.nextTick(2, 0..4, loop = true, ticksRemaining = 1) { frame ->
+            if (frame == 3) 4 else 1
+        }
+        assertEquals(3, third.frame)
+        assertEquals(4, third.ticksRemaining)
+        assertTrue(third.advanced)
+    }
+
+    @Test
+    fun nextTick_stopsOnlyAfterFinalFrameHoldCompletes() {
+        val waiting = PlaybackOps.nextTick(4, 0..4, loop = false, ticksRemaining = 2) { 1 }
+        assertTrue(waiting.stillPlaying)
+        assertEquals(4, waiting.frame)
+        assertEquals(1, waiting.ticksRemaining)
+
+        val stopped = PlaybackOps.nextTick(4, 0..4, loop = false, ticksRemaining = 1) { 1 }
+        assertFalse(stopped.stillPlaying)
+        assertEquals(4, stopped.frame)
+        assertEquals(0, stopped.ticksRemaining)
     }
 }
