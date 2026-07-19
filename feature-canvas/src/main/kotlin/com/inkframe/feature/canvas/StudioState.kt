@@ -272,6 +272,7 @@ class StudioState : ViewModel() {
 
     var clipboardCel by mutableStateOf<Cel?>(null)
         private set
+    private var clipboardHold = Scene.MIN_HOLD
 
     val canPaste: Boolean get() = clipboardCel != null
     val hasCelAtCurrentFrame: Boolean get() = activeLayer.cels.containsKey(currentFrame)
@@ -292,12 +293,15 @@ class StudioState : ViewModel() {
     }
 
     fun copyCel() {
-        clipboardCel = TimelineOps.explicitCel(activeLayer, currentFrame)
+        val cel = TimelineOps.explicitCel(activeLayer, currentFrame)
+        clipboardCel = cel
+        if (cel != null) clipboardHold = currentHold
     }
 
     fun cutCel() {
         val cel = TimelineOps.explicitCel(activeLayer, currentFrame) ?: return
         clipboardCel = cel
+        clipboardHold = currentHold
         updateLayer(activeLayerId) { TimelineOps.clearCel(it, currentFrame) }
     }
 
@@ -310,8 +314,8 @@ class StudioState : ViewModel() {
             updateScene { currentScene ->
                 TimelineOps.insertFrames(currentScene, currentScene.frameCount, to - currentScene.frameCount + 1)
             }
-            updateScene { TimelineOps.setHold(it, to, sourceHold) }
         }
+        updateScene { TimelineOps.setHold(it, to, sourceHold) }
         updateLayer(activeLayerId) { TimelineOps.duplicateCel(it, currentFrame, to, newId) }
         postEngineWork?.invoke { engine -> engine.cloneSurface(src.surfaceId, newId) }
         currentFrame = to
@@ -322,6 +326,8 @@ class StudioState : ViewModel() {
         val clip = clipboardCel ?: return
         val newId = surfaceIds.getAndIncrement()
         updateLayer(activeLayerId) { TimelineOps.pasteCel(it, currentFrame, clip, newId) }
+        updateScene { TimelineOps.setHold(it, currentFrame, clipboardHold) }
+        playbackTicksRemaining = currentHold
         postEngineWork?.invoke { engine -> engine.cloneSurface(clip.surfaceId, newId) }
     }
 
