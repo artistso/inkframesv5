@@ -87,6 +87,8 @@ class GlassHorizonStageLayoutTest {
     fun noRoomWindowOmitsStageWithoutConsumingControlReserve() {
         val viewportHeight = 260f
         val placement = GlassHorizonStageLayout.place(640f, viewportHeight, 16f / 9f, fontScale = 1f)
+        val availableFrameHeight = placement.stageAreaBottomDp - placement.stageAreaTopDp
+        val availableCanvasHeight = availableFrameHeight - GlassHorizonStageLayout.FRAME_OPTICAL_PADDING_DP
 
         assertFalse(placement.stageVisible)
         assertEquals(
@@ -98,7 +100,8 @@ class GlassHorizonStageLayoutTest {
         assertEquals(0f, placement.canvasHeightDp, 0f)
         assertEquals(0f, placement.frameWidthDp, 0f)
         assertEquals(0f, placement.frameHeightDp, 0f)
-        assertTrue(placement.stageAreaBottomDp < placement.stageAreaTopDp)
+        assertTrue(availableFrameHeight > 0f)
+        assertTrue(availableCanvasHeight < GlassHorizonStageLayout.MIN_RENDERABLE_EXTENT_DP)
     }
 
     @Test
