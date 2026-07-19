@@ -33,14 +33,26 @@ class GlassHorizonTitleSpecTest {
     }
 
     @Test
-    fun titleKeepsBindingTopRhythmAndReservesCommands() {
+    fun defaultScaleKeepsBindingTopRhythmAndReservesCommands() {
         assertEquals(14f, GlassHorizonTitleSpec.TOP_OFFSET_DP, 0f)
         assertEquals(3f, GlassHorizonTitleSpec.SUBTITLE_TOP_GAP_DP, 0f)
-        assertEquals(39f, GlassHorizonTitleSpec.measuredTextBlockHeightDp, 0f)
-        assertEquals(66f, GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP, 0f)
-        assertEquals(81f, GlassHorizonTitleSpec.COMMAND_CLUSTER_HEIGHT_DP, 0f)
-        assertEquals(147f, GlassHorizonTitleSpec.commandBottomDp, 0f)
-        assertTrue(GlassHorizonTitleSpec.commandClearanceDp >= 12f)
+        assertEquals(39f, GlassHorizonTitleSpec.measuredTextBlockHeightDp(1f), 0f)
+        assertEquals(53f, GlassHorizonTitleSpec.titleBottomDp(1f), 0f)
+        assertEquals(66f, GlassHorizonTitleSpec.commandTopDp(1f), 0f)
+        assertEquals(147f, GlassHorizonTitleSpec.commandBottomDp(1f), 0f)
+        assertTrue(
+            GlassHorizonTitleSpec.commandTopDp(1f) - GlassHorizonTitleSpec.titleBottomDp(1f) >=
+                GlassHorizonTitleSpec.MIN_COMMAND_CLEARANCE_DP,
+        )
+    }
+
+    @Test
+    fun largeTextPushesCommandsDownInsteadOfOverlappingTitle() {
+        val fontScale = 2f
+        assertEquals(73f, GlassHorizonTitleSpec.measuredTextBlockHeightDp(fontScale), 0f)
+        assertEquals(87f, GlassHorizonTitleSpec.titleBottomDp(fontScale), 0f)
+        assertEquals(99f, GlassHorizonTitleSpec.commandTopDp(fontScale), 0f)
+        assertEquals(180f, GlassHorizonTitleSpec.commandBottomDp(fontScale), 0f)
     }
 
     @Test
@@ -48,5 +60,10 @@ class GlassHorizonTitleSpecTest {
         assertTrue(GlassHorizonTitleSpec.SUBTITLE_PLATE_ALPHA >= 0.80f)
         assertTrue(GlassHorizonTitleSpec.SUBTITLE_HORIZONTAL_PADDING_DP >= 8f)
         assertTrue(GlassHorizonTitleSpec.SUBTITLE_VERTICAL_PADDING_DP >= 1f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun invalidFontScaleIsRejected() {
+        GlassHorizonTitleSpec.measuredTextBlockHeightDp(0f)
     }
 }
