@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,10 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush as UiBrush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -628,53 +625,6 @@ private data class BetaAction(
 )
 
 private fun BetaNode?.toggle(node: BetaNode): BetaNode? = if (this == node) null else node
-
-@Composable
-private fun ClosedBetaAtmosphere(palette: BetaPalette, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        drawRect(
-            brush = UiBrush.radialGradient(
-                colors = listOf(
-                    if (palette.accent == Color(0xFF2D75FF)) Color(0xFFD8E6FF) else Color(0xFFFFD9E2),
-                    palette.rose,
-                    if (palette.accent == Color(0xFF2D75FF)) Color(0xFF5B96F3) else Color(0xFFD77FA0),
-                    palette.accent,
-                    palette.accentDeep,
-                    palette.violet,
-                ),
-                center = Offset(size.width * 0.5f, -size.height * 0.12f),
-                radius = size.maxDimension * 0.98f,
-            ),
-        )
-        val origin = Offset(size.width * 0.5f, -18f)
-        listOf(-64f, -44f, -24f, -6f, 16f, 38f, 58f).forEachIndexed { index, degrees ->
-            val radians = degrees / 180f * PI.toFloat()
-            val reach = size.maxDimension * 1.35f
-            val center = Offset(origin.x + cos(radians) * reach, origin.y + sin(radians) * reach)
-            val spread = size.width * if (index % 2 == 0) 0.08f else 0.045f
-            val path = Path().apply {
-                moveTo(origin.x, origin.y)
-                lineTo(center.x - spread, center.y)
-                lineTo(center.x + spread, center.y)
-                close()
-            }
-            drawPath(path, Color.White, alpha = if (index % 2 == 0) 0.11f else 0.06f, blendMode = BlendMode.Screen)
-        }
-        repeat(260) { i ->
-            val x = ((i * 73) % 997) / 997f * size.width
-            val y = ((i * 193) % 991) / 991f * size.height
-            drawCircle(Color.White.copy(alpha = if (i % 3 == 0) 0.026f else 0.014f), radius = if (i % 5 == 0) 0.9f else 0.55f, center = Offset(x, y), blendMode = BlendMode.Overlay)
-        }
-        drawRect(
-            brush = UiBrush.radialGradient(
-                0.55f to Color.Transparent,
-                1f to Color(0xAA14000E),
-                center = Offset(size.width * 0.5f, size.height * 0.46f),
-                radius = size.maxDimension * 0.80f,
-            ),
-        )
-    }
-}
 
 @Composable
 private fun ClosedBetaTopCluster(
