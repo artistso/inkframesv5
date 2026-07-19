@@ -3,8 +3,14 @@ package com.inkframe.core.model
 import java.util.UUID
 
 /**
- * A scene owns a timeline (measured in frames) and an ordered stack of layers.
+ * A scene owns a timeline (measured in authored frames) and an ordered stack of layers.
  * Layer index 0 is the BOTTOM of the stack; the last entry is composited on top.
+ *
+ * [holds] stores the exposure count for each authored frame. A hold of 1 displays the
+ * frame for one project tick; a hold of 2 displays it on twos, and so on up to 8. This
+ * is intentionally separate from sparse layer cels: a layer may still carry its previous
+ * cel into an authored frame that has no explicit cel, while the scene-level hold controls
+ * how long that complete frame composition remains on screen.
  */
 data class Scene(
     val id: String = UUID.randomUUID().toString(),
@@ -13,12 +19,27 @@ data class Scene(
     val layers: List<Layer> = emptyList(),
     val playbackRange: IntRange = 0 until frameCount,
     val loop: Boolean = true,
+    val holds: List<Int> = List(frameCount) { MIN_HOLD },
 ) {
     init {
         require(frameCount >= 1) { "A scene needs at least one frame" }
+        require(holds.size == frameCount) {
+            "holds size ${holds.size} must match frameCount $frameCount"
+        }
+        require(holds.all { it in MIN_HOLD..MAX_HOLD }) {
+            "frame holds must be in $MIN_HOLD..$MAX_HOLD"
+        }
     }
 
     fun layerById(id: String): Layer? = layers.firstOrNull { it.id == id }
+
+    /** Returns the validated exposure count for [frame]. */
+    fun holdAt(frame: Int): Int = holds[frame.coerceIn(0, frameCount - 1)]
+
+    companion object {
+        const val MIN_HOLD = 1
+        const val MAX_HOLD = 8
+    }
 }
 
 /** Blend modes supported by the GL compositor. Ordinal maps to a shader uniform. */
@@ -52,7 +73,7 @@ data class Layer(
         require(opacity in 0f..1f) { "opacity must be 0..1" }
     }
 
-    /** Resolves which cel is exposed at [frame], honouring frame holds. */
+    /** Resolves which cel is exposed at [frame], honouring sparse cel holds. */
     fun celAt(frame: Int): Cel? {
         cels[frame]?.let { return it }
         var best: Cel? = null
