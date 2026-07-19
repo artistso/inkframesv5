@@ -314,7 +314,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             state = state,
             onFit = { canvasView?.fitToScreen() },
             onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = 62.dp),
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP.dp),
         )
 
         ClosedBetaStage(
