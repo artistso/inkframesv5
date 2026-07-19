@@ -154,6 +154,10 @@ class StudioState : ViewModel() {
     fun setBusy(busy: Boolean) { _isBusy = busy }
 
     fun replaceProject(loaded: Project) {
+        // Cel clipboard entries are engine surface references. Any project replacement may
+        // reset or recreate the engine, so retaining them would produce phantom paste cels.
+        clipboardCel = null
+        clipboardHold = Scene.MIN_HOLD
         project = loaded
         val firstScene = loaded.activeScene ?: loaded.scenes.firstOrNull()
         activeLayerId = firstScene?.layers?.firstOrNull()?.id ?: activeLayerId

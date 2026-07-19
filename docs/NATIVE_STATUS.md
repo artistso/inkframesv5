@@ -28,9 +28,12 @@ The active Kotlin runtime currently includes these bounded parity slices:
 - the first native Brush Lab surface with Direct, Balanced, and Smooth stroke-feel presets;
 - live Brush Lab controls for size, minimum pressure size, opacity, hardness, spacing, smoothing, pressure response, and build-up;
 - independent per-brush tuning retained while switching tools during the current studio session;
+- six native project starters: Classic sketch, HD animation, Square social, Phone vertical, Pixel art, and Neon loop;
+- a native custom-canvas creator with validated dimensions, FPS, starter frames, paper selection, preview, and explicit replacement action;
+- blank-project CanvasView recreation isolated from archive open/recovery so loaded GPU cel surfaces are retained;
 - crash-safe local project recovery and native archive save/open.
 
-Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, and advanced diagnostic controls are not yet native parity claims.
+Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, and durable custom-template storage are not yet native parity claims.
 
 ## Web reference boundary
 

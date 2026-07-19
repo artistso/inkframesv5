@@ -16,6 +16,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,15 +40,21 @@ import com.inkframe.core.model.BrushLabPresets
 /**
  * Adds the bounded parity controls currently layered over the native Glass Horizon shell.
  *
- * Hold timing and Brush Lab launchers sit in the right command field, outside CanvasView's
- * direct MotionEvent routing. Brush Lab itself opens in a Compose dialog window, so S Pen
- * interaction with its controls cannot leak through and paint on the artwork beneath it.
+ * Hold timing, new-project, and Brush Lab launchers sit in the right command field, outside
+ * CanvasView's direct MotionEvent routing. Dialog windows intercept input so S Pen interaction
+ * with their controls cannot leak through and paint on the artwork beneath them.
  */
 @Composable
 fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
     val brushSession = remember(state) { BrushLabSessionRegistry.forState(state) }
     var showBrushLab by rememberSaveable { mutableStateOf(false) }
+    var showProjectCreator by rememberSaveable { mutableStateOf(false) }
+    var blankCanvasGeneration by rememberSaveable { mutableLongStateOf(0L) }
+    var canvasSignature by rememberSaveable {
+        mutableStateOf(ProjectCanvasRecreation.signature(state.project))
+    }
     val observedBrush = state.brush
+    val observedProject = state.project
 
     // ClosedBetaGlassHorizonScreen still selects factory brushes directly. Reconcile that
     // brush-id transition with the ViewModel-associated session cache so each brush regains
@@ -56,8 +64,21 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
         if (restored != observedBrush) state.updateBrush { restored }
     }
 
+    // Archive open/recovery restores pixels into the existing engine before replacing the
+    // Project model, so those paths must not recreate CanvasView. A blank project whose size
+    // changed outside this wrapper (the legacy Gallery NEW action) is safe to recreate.
+    LaunchedEffect(observedProject.id) {
+        val decision = ProjectCanvasRecreation.observe(canvasSignature, observedProject)
+        canvasSignature = decision.nextSignature
+        if (decision.recreate) blankCanvasGeneration += 1L
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        ClosedBetaGlassHorizonScreen(state = state)
+        // CanvasView is constructed with immutable pixel dimensions. This generation advances
+        // only for blank template/custom creation, never for archive open or recovery with art.
+        key(blankCanvasGeneration) {
+            ClosedBetaGlassHorizonScreen(state = state)
+        }
         val compactHeight = maxHeight < 420.dp
 
         Column(
@@ -80,17 +101,29 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
                     onDecrease = { state.adjustCurrentHold(-1) },
                 )
             }
-            GlassCommandButton(
-                label = "LAB",
-                actionLabel = "Open Brush Lab",
-                selected = showBrushLab,
-                onClick = {
-                    state.updateBrush { current ->
-                        brushSession.record(BrushAdjustments.normalized(current))
-                    }
-                    showBrushLab = true
-                },
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                GlassCommandButton(
+                    label = "NEW",
+                    actionLabel = "Create a new project",
+                    selected = showProjectCreator,
+                    onClick = {
+                        showBrushLab = false
+                        showProjectCreator = true
+                    },
+                )
+                GlassCommandButton(
+                    label = "LAB",
+                    actionLabel = "Open Brush Lab",
+                    selected = showBrushLab,
+                    onClick = {
+                        state.updateBrush { current ->
+                            brushSession.record(BrushAdjustments.normalized(current))
+                        }
+                        showProjectCreator = false
+                        showBrushLab = true
+                    },
+                )
+            }
         }
     }
 
@@ -111,6 +144,26 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
                 state.statusMessage = "BRUSH LAB · RESET ${state.brush.name.uppercase()}"
             },
             onDismiss = { showBrushLab = false },
+        )
+    }
+
+    if (showProjectCreator) {
+        GlassProjectCreatorDialog(
+            onCreate = { project ->
+                showProjectCreator = false
+                canvasSignature = ProjectCanvasRecreation.signature(project)
+                blankCanvasGeneration += 1L
+                state.replaceProject(project)
+                state.statusMessage = buildString {
+                    append("NEW · ")
+                    append(project.name.uppercase())
+                    append(" · ")
+                    append(project.canvas.widthPx)
+                    append("×")
+                    append(project.canvas.heightPx)
+                }
+            },
+            onDismiss = { showProjectCreator = false },
         )
     }
 }
