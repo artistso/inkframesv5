@@ -128,7 +128,10 @@ object ProjectCodec {
         val frameCount = v["frameCount"].asInt()
         val start = v.optional("playbackStart")?.asInt() ?: 0
         val end = v.optional("playbackEnd")?.asInt() ?: (frameCount - 1)
-        val rawHolds = v.optional("holds")?.asArr()?.items?.map { it.asInt() }.orEmpty()
+        val rawHolds = (v.optional("holds") as? JsonValue.Arr)?.items?.map { item ->
+            val number = (item as? JsonValue.Num)?.value
+            if (number != null && number.isFinite()) number.toInt() else Scene.MIN_HOLD
+        }.orEmpty()
         val holds = List(frameCount) { index ->
             (rawHolds.getOrNull(index) ?: Scene.MIN_HOLD)
                 .coerceIn(Scene.MIN_HOLD, Scene.MAX_HOLD)
