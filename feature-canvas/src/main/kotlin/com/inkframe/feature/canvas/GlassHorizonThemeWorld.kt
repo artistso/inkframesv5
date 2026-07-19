@@ -34,6 +34,12 @@ internal data class GlassHorizonWorldPalette(
     val glintColor: Color,
 )
 
+internal data class GlassHorizonRaySpec(
+    val degreesFromVertical: Float,
+    val spreadFraction: Float,
+    val sourceAlpha: Float,
+)
+
 /** Pure, testable theme-world specification used by the Compose atmosphere. */
 internal object GlassHorizonThemeWorld {
     val layerOrder: List<GlassHorizonAtmosphereLayer> = listOf(
@@ -42,6 +48,16 @@ internal object GlassHorizonThemeWorld {
         GlassHorizonAtmosphereLayer.GRAIN,
         GlassHorizonAtmosphereLayer.VIGNETTE,
         GlassHorizonAtmosphereLayer.GLINT,
+    )
+
+    val raySpecs: List<GlassHorizonRaySpec> = listOf(
+        GlassHorizonRaySpec(-64f, 0.080f, 0.35f),
+        GlassHorizonRaySpec(-44f, 0.045f, 0.22f),
+        GlassHorizonRaySpec(-24f, 0.075f, 0.30f),
+        GlassHorizonRaySpec(-6f, 0.040f, 0.18f),
+        GlassHorizonRaySpec(16f, 0.072f, 0.30f),
+        GlassHorizonRaySpec(38f, 0.046f, 0.22f),
+        GlassHorizonRaySpec(58f, 0.076f, 0.32f),
     )
 
     val plum: GlassHorizonWorldPalette = GlassHorizonWorldPalette(
@@ -75,6 +91,11 @@ internal object GlassHorizonThemeWorld {
     )
 
     fun palette(isBlue: Boolean): GlassHorizonWorldPalette = if (isBlue) blue else plum
+
+    fun rayDirection(spec: GlassHorizonRaySpec): Offset {
+        val radians = spec.degreesFromVertical / 180f * PI.toFloat()
+        return Offset(sin(radians), cos(radians))
+    }
 }
 
 /**
@@ -132,23 +153,14 @@ private fun GlassHorizonRays(
 ) {
     Canvas(modifier) {
         val origin = Offset(size.width * 0.5f, 0f)
-        val raySpecs = listOf(
-            Triple(-64f, 0.080f, 0.35f),
-            Triple(-44f, 0.045f, 0.22f),
-            Triple(-24f, 0.075f, 0.30f),
-            Triple(-6f, 0.040f, 0.18f),
-            Triple(16f, 0.072f, 0.30f),
-            Triple(38f, 0.046f, 0.22f),
-            Triple(58f, 0.076f, 0.32f),
-        )
-        raySpecs.forEach { (degrees, spreadFraction, sourceAlpha) ->
-            val radians = degrees / 180f * PI.toFloat()
+        GlassHorizonThemeWorld.raySpecs.forEach { spec ->
+            val direction = GlassHorizonThemeWorld.rayDirection(spec)
             val reach = size.maxDimension * 1.42f
             val center = Offset(
-                origin.x + cos(radians) * reach,
-                origin.y + sin(radians) * reach,
+                origin.x + direction.x * reach,
+                origin.y + direction.y * reach,
             )
-            val spread = size.width * spreadFraction
+            val spread = size.width * spec.spreadFraction
             val path = Path().apply {
                 moveTo(origin.x, origin.y)
                 lineTo(center.x - spread, center.y)
@@ -159,7 +171,7 @@ private fun GlassHorizonRays(
             drawPath(
                 path = path,
                 color = palette.rayColor,
-                alpha = sourceAlpha * 0.42f,
+                alpha = spec.sourceAlpha * 0.42f,
                 blendMode = BlendMode.Screen,
             )
         }
