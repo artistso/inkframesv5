@@ -74,6 +74,15 @@ object PlaybackOps {
         ticksRemaining: Int,
         holdAt: (Int) -> Int,
     ): TickResult {
+        if (current !in range) {
+            return TickResult(
+                frame = range.first,
+                ticksRemaining = holdAt(range.first).coerceIn(Scene.MIN_HOLD, Scene.MAX_HOLD),
+                stillPlaying = true,
+                advanced = true,
+            )
+        }
+
         val remaining = ticksRemaining.coerceAtLeast(1)
         if (remaining > 1) {
             return TickResult(
