@@ -21,11 +21,10 @@ data class Dab(val center: Vec2, val size: Float, val rotationRad: Float, val fl
 /**
  * Converts a noisy stream of stylus samples into a clean run of evenly spaced dabs.
  *
- * This mirrors the working web-wrapper stroke feel: stabilize input first, fit a
- * Catmull-Rom curve through recent samples, then walk the curve by accumulated
- * arc length so dab spacing remains stable across slow and fast strokes. The final
- * tail is explicitly flushed so strokes reach the pen-up position instead of
- * visually stopping short.
+ * This mirrors the reference stroke feel: stabilize input first, fit a Catmull-Rom
+ * curve through recent samples, then walk the curve by accumulated arc length so dab
+ * spacing remains stable across slow and fast strokes. The final tail is explicitly
+ * flushed so strokes reach the pen-up position instead of visually stopping short.
  */
 class StrokeProcessor(private val brush: Brush) {
     private val raw = ArrayList<InputSample>()
@@ -82,11 +81,15 @@ class StrokeProcessor(private val brush: Brush) {
     ): List<Dab> {
         val dabs = ArrayList<Dab>()
         val chord = s1.pos.distanceTo(s2.pos)
-        if (chord <= 0.001f) return dabs
-
         val avgPressure = (s1.pressure + s2.pressure) * 0.5f
         val diameter = brush.diameterForPressure(avgPressure).coerceAtLeast(0.5f)
         val step = max(0.5f, brush.spacing.coerceAtLeast(0.01f) * diameter)
+
+        if (chord <= 0.001f) {
+            if (forceEnd) flushForcedEnd(dabs, step)
+            return dabs
+        }
+
         val subdivisions = max(4, ceil(chord / max(1f, step * 0.5f)).toInt())
 
         var previous = lastCurvePoint ?: s1.pos
@@ -111,17 +114,22 @@ class StrokeProcessor(private val brush: Brush) {
         lastCurvePoint = previous
 
         if (forceEnd) {
-            val last = raw.last()
-            val lastDab = lastDabPoint
-            if (lastDab == null || lastDab.distanceTo(last.pos) > step * 0.45f) {
-                val prevPoint = if (raw.size >= 2) raw[raw.size - 2].pos else last.pos
-                dabs.add(dabAt(last.pos, last.pressure, atan2(last.pos.y - prevPoint.y, last.pos.x - prevPoint.x)))
-                lastDabPoint = last.pos
-                distanceSinceLastDab = 0f
-            }
+            flushForcedEnd(dabs, step)
         }
 
         return dabs
+    }
+
+    private fun flushForcedEnd(dabs: MutableList<Dab>, step: Float) {
+        val last = raw.last()
+        val lastDab = lastDabPoint
+        if (lastDab == null || lastDab.distanceTo(last.pos) > step * 0.45f) {
+            val prevPoint = if (raw.size >= 2) raw[raw.size - 2].pos else last.pos
+            dabs.add(dabAt(last.pos, last.pressure, atan2(last.pos.y - prevPoint.y, last.pos.x - prevPoint.x)))
+            lastDabPoint = last.pos
+            lastCurvePoint = last.pos
+            distanceSinceLastDab = 0f
+        }
     }
 
     private fun dabAt(p: Vec2, pressure: Float, rotationRad: Float): Dab = Dab(
