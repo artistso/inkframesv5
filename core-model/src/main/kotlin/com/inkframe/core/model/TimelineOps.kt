@@ -2,7 +2,8 @@ package com.inkframe.core.model
 
 /**
  * Pure timeline editing operations on the document model — the exposure-sheet edits an
- * animator relies on: clear / move / duplicate / paste cels, and insert / remove frames.
+ * animator relies on: clear / move / duplicate / paste cels, insert / remove frames, and
+ * explicit per-frame hold timing.
  *
  * Everything here is a referentially-transparent transformation returning new immutable
  * model objects, so it is fully unit-testable without GL. Operations are explicit about
@@ -13,8 +14,8 @@ package com.inkframe.core.model
  *    must be independently editable; the engine clones the source surface's pixels into
  *    that id (see `PaintEngine.cloneSurface`). The model only records the new handle.
  *
- * "Frame" operations act across the whole [Scene] (all layers) like a real timeline
- * insert/remove; per-layer cel edits act on a single [Layer].
+ * "Frame" operations act across the whole [Scene] (all layers and hold entries) like a
+ * real timeline insert/remove; per-layer cel edits act on a single [Layer].
  */
 object TimelineOps {
 
@@ -24,7 +25,7 @@ object TimelineOps {
     fun explicitCel(layer: Layer, frame: Int): Cel? = layer.cels[frame]
 
     /** Removes the explicit cel at [frame], if any. Frames after it may then re-expose
-     * an earlier cel via frame-holds, matching exposure-sheet behaviour. */
+     * an earlier cel via sparse cel holds, matching exposure-sheet behaviour. */
     fun clearCel(layer: Layer, frame: Int): Layer =
         if (layer.cels.containsKey(frame)) layer.copy(cels = layer.cels - frame) else layer
 
@@ -68,8 +69,8 @@ object TimelineOps {
 
     /**
      * Shifts every explicit cel at frame >= [fromFrame] by [delta] frames. Used as the
-     * primitive for inserting/removing exposure. Cels that would move to a negative frame
-     * are dropped. With a positive delta, processes high→low to avoid clobbering.
+     * primitive for inserting/removing authored frames. Cels that would move to a negative
+     * frame are dropped.
      */
     fun shiftCels(layer: Layer, fromFrame: Int, delta: Int): Layer {
         if (delta == 0) return layer
@@ -88,25 +89,29 @@ object TimelineOps {
     // ---- Frame edits (whole scene) -----------------------------------------
 
     /**
-     * Inserts [count] blank frames before index [at] across all layers (cels at frame
-     * >= [at] shift right by [count]); grows [Scene.frameCount] and the playback range.
+     * Inserts [count] authored frames before index [at] across all layers. Later cels
+     * shift right and new hold entries begin at 1 tick.
      */
     fun insertFrames(scene: Scene, at: Int, count: Int = 1): Scene {
         require(count >= 1) { "count must be >= 1" }
         val clampedAt = at.coerceIn(0, scene.frameCount)
         val layers = scene.layers.map { shiftCels(it, clampedAt, count) }
         val newCount = scene.frameCount + count
+        val holds = scene.holds.toMutableList().apply {
+            repeat(count) { add(clampedAt, Scene.MIN_HOLD) }
+        }
         return scene.copy(
             layers = layers,
             frameCount = newCount,
+            holds = holds,
             playbackRange = expandRange(scene.playbackRange, clampedAt, count, newCount),
         )
     }
 
     /**
-     * Removes [count] frames starting at [at] across all layers. Explicit cels on the
-     * removed frames are deleted; later cels shift left. [Scene.frameCount] never drops
-     * below 1.
+     * Removes [count] authored frames starting at [at] across all layers. Explicit cels on
+     * removed frames are deleted, later cels shift left, and matching hold entries are
+     * removed. A scene always retains one frame with a 1-tick hold.
      */
     fun removeFrames(scene: Scene, at: Int, count: Int = 1): Scene {
         require(count >= 1) { "count must be >= 1" }
@@ -120,26 +125,51 @@ object TimelineOps {
             for ((k, v) in layer.cels) {
                 when {
                     k < clampedAt -> result[k] = v
-                    k < clampedAt + removable -> { /* removed */ }
+                    k < clampedAt + removable -> Unit
                     else -> result[k - removable] = v
                 }
             }
             layer.copy(cels = result)
         }
+
+        val holds = scene.holds.toMutableList().apply {
+            repeat(removable) {
+                if (clampedAt < size) removeAt(clampedAt)
+            }
+        }.let { remaining ->
+            if (remaining.isEmpty()) listOf(Scene.MIN_HOLD) else remaining
+        }
+
         return scene.copy(
             layers = layers,
             frameCount = keepCount,
+            holds = holds,
             playbackRange = clampRange(scene.playbackRange, keepCount),
         )
     }
 
+    /** Sets the exposure count for one authored frame, clamped to the supported 1..8 range. */
+    fun setHold(scene: Scene, frame: Int, hold: Int): Scene {
+        val index = frame.coerceIn(0, scene.frameCount - 1)
+        val value = hold.coerceIn(Scene.MIN_HOLD, Scene.MAX_HOLD)
+        if (scene.holds[index] == value) return scene
+        val holds = scene.holds.toMutableList()
+        holds[index] = value
+        return scene.copy(holds = holds)
+    }
+
+    /** Adds [delta] ticks to one frame's hold, respecting the 1..8 parity range. */
+    fun adjustHold(scene: Scene, frame: Int, delta: Int): Scene =
+        setHold(scene, frame, scene.holdAt(frame) + delta)
+
     /**
-     * Extends the exposure of the cel exposed at [frame] by [holdFrames]: inserts blank
-     * frames immediately after [frame] so the current drawing holds longer on screen.
-     * Convenience over [insertFrames].
+     * Extends the exposure of the authored frame at [frame] without inserting fake frames.
+     * This matches the web model's independent `holds[]` timing array.
      */
-    fun extendExposure(scene: Scene, frame: Int, holdFrames: Int = 1): Scene =
-        insertFrames(scene, frame + 1, holdFrames)
+    fun extendExposure(scene: Scene, frame: Int, holdFrames: Int = 1): Scene {
+        require(holdFrames >= 1) { "holdFrames must be >= 1" }
+        return adjustHold(scene, frame, holdFrames)
+    }
 
     // ---- Range helpers ------------------------------------------------------
 

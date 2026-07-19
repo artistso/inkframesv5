@@ -77,8 +77,9 @@ object ExportManager {
     }
 
     /**
-     * Encodes the plan as a ZIP of PNG frames to [out]. Each entry is named with a
-     * zero-padded ordinal so the sequence sorts correctly.
+     * Encodes the plan as a ZIP of PNG timing frames to [out]. Held authored frames are
+     * repeated once per exposure tick so importing the sequence at [ExportPlan.fps]
+     * reproduces the same timing as native playback, GIF, and MP4 output.
      */
     fun exportPngSequence(
         plan: ExportPlan,
@@ -87,17 +88,25 @@ object ExportManager {
         frameRenderer: (frameIndex: Int) -> IntArray,
         progress: Progress? = null,
     ) {
+        val expandedTotal = plan.pngSequenceFrameCount
+        var ordinal = 0
         ZipOutputStream(BufferedOutputStream(out)).use { zip ->
-            plan.frames.forEachIndexed { i, pf ->
+            for (pf in plan.frames) {
                 val argb = frameRenderer(pf.frameIndex)
                 val bmp = Bitmap.createBitmap(plan.widthPx, plan.heightPx, Bitmap.Config.ARGB_8888)
-                bmp.setPixels(argb, 0, plan.widthPx, 0, 0, plan.widthPx, plan.heightPx)
-                val name = ExportPlanner.frameFileName(prefix, i, plan.frameCount)
-                zip.putNextEntry(ZipEntry(name))
-                bmp.compress(Bitmap.CompressFormat.PNG, 100, zip)
-                zip.closeEntry()
-                bmp.recycle()
-                progress?.onProgress(i + 1, plan.frameCount)
+                try {
+                    bmp.setPixels(argb, 0, plan.widthPx, 0, 0, plan.widthPx, plan.heightPx)
+                    repeat(pf.exposureTicks) {
+                        val name = ExportPlanner.frameFileName(prefix, ordinal, expandedTotal)
+                        zip.putNextEntry(ZipEntry(name))
+                        bmp.compress(Bitmap.CompressFormat.PNG, 100, zip)
+                        zip.closeEntry()
+                        ordinal += 1
+                        progress?.onProgress(ordinal, expandedTotal)
+                    }
+                } finally {
+                    bmp.recycle()
+                }
             }
         }
     }
