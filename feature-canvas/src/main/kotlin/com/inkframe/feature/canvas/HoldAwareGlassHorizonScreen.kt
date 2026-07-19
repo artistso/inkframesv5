@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -46,7 +47,11 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            HoldGlassButton(label = "−", enabled = state.currentHold > 1) {
+            HoldGlassButton(
+                label = "−",
+                actionLabel = "Decrease frame hold",
+                enabled = state.currentHold > 1,
+            ) {
                 state.adjustCurrentHold(-1)
             }
             BasicText(
@@ -56,11 +61,15 @@ fun HoldAwareGlassHorizonScreen(state: StudioState = viewModel()) {
                     color = Color(0xFFFFF0F3),
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     letterSpacing = 0.8.sp,
                 ),
             )
-            HoldGlassButton(label = "+", enabled = state.currentHold < 8) {
+            HoldGlassButton(
+                label = "+",
+                actionLabel = "Increase frame hold",
+                enabled = state.currentHold < 8,
+            ) {
                 state.adjustCurrentHold(1)
             }
         }
@@ -72,6 +81,7 @@ private val HoldPillShape = RoundedCornerShape(percent = 50)
 @Composable
 private fun HoldGlassButton(
     label: String,
+    actionLabel: String,
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
@@ -81,11 +91,16 @@ private fun HoldGlassButton(
 
     Box(
         modifier = Modifier
-            .sizeIn(minWidth = 36.dp, minHeight = 36.dp)
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .clip(HoldPillShape)
             .background(fill)
             .border(1.dp, stroke, HoldPillShape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(
+                enabled = enabled,
+                onClickLabel = actionLabel,
+                role = Role.Button,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         BasicText(
