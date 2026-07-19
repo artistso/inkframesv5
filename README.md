@@ -2,7 +2,7 @@
 
 # InkFrame Studio
 
-### The Glass Horizon · A free 2D animation & drawing studio
+### The Glass Horizon · Native Android drawing and frame-by-frame animation studio
 
 <img src="media/The_Glass_Horizon_Project_Philosophy.png" alt="InkFrame Studio — the Glass Horizon interface, floating rose-quartz orbs around a paper-white canvas" width="100%" />
 
@@ -12,241 +12,136 @@
 
 <br/>
 
-**Radial glass-orb interface · stylus-first · runs anywhere HTML runs.**
-
-[![Android CI](https://github.com/artistso/inkframesv5/actions/workflows/android.yml/badge.svg)](https://github.com/artistso/inkframesv5/actions/workflows/android.yml)
+**Native Kotlin · Jetpack Compose · OpenGL ES · offline-first · stylus-first.**
 
 </div>
 
 ---
 
-InkFrame is a **2D drawing and frame-by-frame animation app** that doesn't look like anything else. Instead of docked toolbars, **glowing rose-quartz orbs** fan out around your canvas – brushes left, colour/actions right, timeline bottom. Everything stays out of the way of the drawing.
+InkFrame Studio is a **2D drawing and frame-by-frame animation app** with the Glass Horizon interface: glowing rose-quartz command orbs around a centered paper canvas, a perimeter frame board, a glass scrub rail, and a stylus-first native drawing surface.
 
-The entire app is a single-file HTML build (`web/index.html`) that runs in any browser and ships as an Android APK via a thin WebView shell.
+The current Android product is **not** a WebView wrapper. Android startup is owned by Kotlin, Jetpack Compose, and OpenGL ES. The historical web implementation remains in the repository only as a visual and interaction reference for the native port.
 
-- **Zero install** – open `web/index.html`, draw.
-- **Fully offline** – IndexedDB autosaves every 800 ms. No account, no network, no AI in your artwork.
-- **Same code everywhere** – browser, PWA, tablet APK are identical.
-- **Free forever** – no subscription, no purchase price, and no advertising.
-- **MIT Licensed**
+Canonical status: [`docs/NATIVE_STATUS.md`](docs/NATIVE_STATUS.md)
 
----
+## Current product boundary
 
-## A personal statement from Steven Michael Allen Owens
-
-> **Personal testimony:** The following is Steven Michael Allen Owens’s own account, published in his own words. It is presented as a personal statement and not as an independently verified factual finding.
-
-Hi, my name is **Steven Michael Allen Owens**.
-
-In January 2018, I became, in my account, a victim of kidnapping and torture. I believe I was forcibly chemically castrated against my will, without a judge or an attorney. I took a simple muscle relaxer and walked into a small clinic in Hoquiam, Washington. I have not seen my family and friends in nearly nine years.
-
-I believe I was turned into a trans female against my will. A sign was placed around my neck that read, **“I have the mind of an 8 year old, please do not sexualize me,”** and I was paraded around three different cities.
-
-I took to social media in the hope that people in and around Ocean Shores, Washington would no longer hit me, hurt me, throw rocks at me, infantilize me, or attempt to murder me again.
-
-Throughout all of this, I made this brilliant and wonderful art and animation application. I am giving **InkFrame** away for free: no subscriptions, no cost, and no ads. I hope that you remember my name.
-
-I am Steven Owens. I have hyperthymesia. I am a polymath, computer scientist, mathematician, physicist, and more. I have worked in botany and nursery construction. I was a table-games dealer and a pit boss. I miss my mommy, my two sisters, my brother, and my nephews and nieces.
-
-I believe that on July 15, 2026, I will be placed on high amounts of neurological sedatives that will take away my name again, cripple my neurology, and kill me. These are my last words to the world.
-
-I love my two kitty cats: **The Sonshine and The Universe**. They brought me out of polypharmacy, amnesia, and anesthesia. They help me stay calm throughout what I describe as this kidnapping, and they help me continue trying to care for them at every turn.
-
-— **Steven Michael Allen Owens**
-
----
+- **Android runtime:** native Kotlin / Jetpack Compose / OpenGL ES.
+- **Artwork path:** native `CanvasView`, `feature-canvas`, and `engine-gl`.
+- **Launch path:** `SplashActivity -> MainActivity -> ClosedBetaGlassHorizonScreen`.
+- **Offline by design:** no account, no advertising, no analytics, no automatic upload path.
+- **No Android WebView:** no `WebView`, no JavaScript bridge, no packaged browser runtime, no `INTERNET` permission.
+- **Web reference only:** `web/index.html` remains the historical Glass Horizon design reference, not the Android runtime.
 
 ## Quick start
 
 ```bash
-# Try it – no build
-open web/index.html
-
-# Dev server with HMR
-./inkframe-cli dev
-# → http://localhost:5173
-
-# Build web
-./inkframe-cli build-web
-# → web/dist/
-
-# Build Android APK (debug, fully wrapped)
-./inkframe-cli build-apk
-# → app/build/outputs/apk/debug/app-debug.apk
-```
-
-Grab a prebuilt debug APK from any green CI run: **Actions → Android CI → inkframe-debug-apk**
-
----
-
-## CLI pipeline
-
-All build and release tasks go through `./inkframe-cli`:
-
-```
-dev              Vite HMR dev server
-build-web        Production build → web/dist/
-serve            Static server http://localhost:8080
-build-apk        Gradle debug APK
-test             ./gradlew test (210 JVM unit tests)
-bump <patch|minor|major>  Bump web/metadata.json + package.json
-release-check    Verify release readiness, print git tag commands
-help
-```
-
-Full docs: [`AGENT.md`](AGENT.md)
-
-### Media export
-
-PNG, animated GIF, and MP4/WebM export are available inside InkFrame through the **Actions** orb. This is the supported export path in both the browser and Android application.
-
-Headless `.inkframe` archive conversion is not currently supported by `inkframe-cli`. The historical Puppeteer helper was removed from the repository and has not been validated against the current layered v3 archive format.
-
----
-
-## Agent Mode / GitHub CLI
-
-No AI is embedded in InkFrame itself. Agent Mode drives the repo from outside via GitHub CLI:
-
-```bash
-# clone
+# Clone
 gh repo clone artistso/inkframesv5
+cd inkframesv5
 
-# run a CI build remotely (apk / web / test / all)
-gh workflow run agent-build.yml -f task=apk
-gh run watch
-gh run download -n inkframe-agent-apk
+# Run all JVM/unit tests
+./inkframe-cli test
 
-# cut a signed release – builds verified APK and Play-ready AAB
-./inkframe-cli bump patch
-./inkframe-cli release-check
-git tag v0.x.y && git push origin v0.x.y
-# → .github/workflows/release.yml signs and publishes APK, AAB, and checksums
+# Build a local developer APK when an Android SDK is available
+./inkframe-cli build-apk
 ```
 
-The signed workflow is fail-closed and requires the repository's permanent Android upload-key secrets. AABs from ordinary Android CI use a disposable verification key and must not be uploaded to Google Play.
+For CI-built QA artifacts, use GitHub Actions. The current native QA release lane publishes a non-debuggable `com.inkframe.studio.qa` APK tied to an exact commit and SHA-256 record.
 
-Agent workflow: [`.github/workflows/agent-build.yml`](.github/workflows/agent-build.yml)
+## Native build requirements
 
-CLI entry point for agents: [`inkframe-cli`](inkframe-cli) – build, test, release preparation, and GitHub workflow helpers.
+| Requirement | Version / notes |
+|---|---|
+| JDK | 17 |
+| Android SDK | API 36 platform, Build Tools 35.x |
+| Minimum Android | API 26 |
+| Target device | Samsung Galaxy Tab S10+ with S Pen |
+| Build system | Gradle wrapper, Android Gradle Plugin, Kotlin |
 
----
+Native Android metadata is stored in `gradle/inkframe-app.properties`.
 
-## Features
+## Features under the native line
 
 **Drawing**
-- 9 brushes: pencil, ink (tilt-aware), marker, watercolor, frost glass, smudge/blur, glow, neon, star
-- Brush Lab – long-press any brush: size / opacity / hardness / spacing / jitter / taper / texture / response – per-brush, persisted
-- StreamLine smoothing, QuickShape (hold → snap to line/ellipse)
-- Catmull-Rom spline strokes, palm rejection, stylus-only mode
-- Living Line – inertial nib width + orientation
+
+- Native OpenGL ES canvas.
+- S Pen, finger, pressure, hover/lens, pan, and zoom pathways.
+- Brush selection, size controls, color swatches, eyedropper/fill hooks, undo/redo routing.
 
 **Animation**
-- Multi-frame timeline, per-frame holds
-- Layers per frame – opacity, visibility, 11 blend modes
-- Onion skin – past/future tint, scrub-reach
-- Motion blur, dissolve playback, loop in/out, 1–24 fps
 
-**I/O**
-- Import reference image (PNG/JPEG/GIF/WebP, drag-drop)
-- Export PNG, GIF (pure-JS GIF89a), MP4/WebM (MediaRecorder)
-- IndexedDB autosave, `.inkframe` archive import/export
-- Multi-project gallery – 4 canvases
+- Frame board around the drawing stage.
+- Bottom scrub rail.
+- Frame add, duplicate, delete, copy/paste, loop, and playback controls.
+- Layer operations routed through the native model.
 
-**Ergonomics**
-- Themes, Zen mode, fullscreen
-- 2-finger pinch = zoom, 2-finger tap = undo, 3-finger tap = redo
-- PWA installable
+**Files and export**
 
-Full feature list & architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- `.inkframe` project save/open path through Android document pickers.
+- GIF, MP4, and PNG sequence export pathways through native Android file destinations.
+- Offline project recovery.
 
----
+**Interface**
+
+- Glass Horizon atmosphere.
+- Rose/plum optical nodes.
+- Perimeter frame board.
+- Stylus lens overlay.
+- Tablet-first landscape layout.
 
 ## Repository layout
 
-```
-web/
-  index.html          # the whole app – UI + engine, single file
-  gif-encoder.js      # GIF89a encoder (port of core-common/gif/)
-  autosave.js         # IndexedDB persistence
-  brush-math.js       # grain, angle ease, Catmull-Rom
-  manifest.webmanifest
-app/                  # Android WebView shell (Kotlin)
-core-common/          # legacy Kotlin utilities – still tested
-core-model/           # legacy Kotlin data model
-engine-gl/            # legacy OpenGL ES paint engine
-feature-canvas/
-feature-layers/
-media/                # hero.png, demo.gif, …
-.github/workflows/
-  android.yml         # CI – tests + debug APK + disposable-key production verification
-  release.yml         # v* tag → permanent-key signed APK/AAB → GitHub Release
-  agent-build.yml     # workflow_dispatch – for Agent Mode
-inkframe-cli          # root CLI entry point
-tools/
-  check-doc-links.mjs # deterministic local documentation-link validation
-  bump-version.mjs
-  prepare-release.mjs
-  update-release-notes.mjs
-ARCHITECTURE.md       # app structure and module map
-BUILD.md              # Android/web build notes
-AGENT.md              # CLI + agent workflow guide
-PRIVACY.md            # offline/privacy notes
-RELEASING.md          # GitHub Release process
-RELEASE_CHECKLIST.md  # tester smoke checklist
-RELEASE_NOTES.md      # generated tester-facing notes
-ROADMAP.md            # canonical current development plan
-CIRCULAR_CANVAS_PLAN.md # shipped historical design record
-
+```text
+app/                    Native Android application shell, Compose host, signing/package config
+core-common/            Pure utilities and math
+core-model/             Document model, package codec, defaults, export planning
+engine-gl/              OpenGL ES paint/compositor engine
+feature-canvas/         Native canvas, Glass Horizon Compose surface, export/recovery bridge
+feature-layers/         Layer feature code
+web/                    Historical Glass Horizon reference and web prototype, not Android runtime
 docs/
-  BRUSH_ENGINE_ROADMAP.md # shipped stabilizer research record
+  NATIVE_STATUS.md      Current source of truth for Android runtime status
+  MAINLINE_KOTLIN_MIGRATION.md
+  GLASS_HORIZON_VISUAL_CONTRACT.md
+gradle/
+  inkframe-app.properties
+.github/workflows/      Native CI, QA APK, signing, and release checks
+inkframe-cli            Local and agent command entry point
 ```
 
-The `core-*`, `engine-gl`, `feature-*` modules are the earlier native Kotlin implementation. They still compile and test in CI, but the shipping app is the WebView build – faster to iterate. See `ARCHITECTURE.md`.
+## Development rules
 
----
+1. Keep Android native: no WebView, JavaScript bridge, packaged web runtime, or browser storage dependency.
+2. Keep the artwork path offline and private.
+3. Treat `gradle/inkframe-app.properties` as the native Android metadata source.
+4. Treat `docs/NATIVE_STATUS.md` and `docs/GLASS_HORIZON_VISUAL_CONTRACT.md` as binding documentation.
+5. Preserve the historical web app only as a design reference until the native port no longer needs it.
+6. Never commit keystores, service-account JSON, passwords, signing secrets, or generated private credentials.
+7. Add tests or package-inspection gates for behavior, persistence, signing, Android storage, and network-boundary changes.
 
-## Build – Android APK and Play AAB
+## Release boundary
 
-Debug APK – fully wrapped, offline, sideload-ready. No Play signing.
+A QA APK is a test artifact, not a public release. It must be recorded with its exact commit, artifact name, package name, certificate, and SHA-256.
 
-```bash
-./inkframe-cli build-apk
-# app/build/outputs/apk/debug/app-debug.apk
-```
+A production release requires:
 
-A version tag matching `web/metadata.json` triggers the signed release workflow. With the permanent upload key configured, it produces:
-
-- `InkFrame-v<version>-signed.apk`
-- `InkFrame-v<version>-signed.aab`
-- `SHA256SUMS.txt`
-
-The signed AAB is the artifact intended for manual upload to the Google Play Console internal-testing track.
-
-Full Android build notes: [`BUILD.md`](BUILD.md)
-
----
-
-## Contributing
-
-PRs against `main`. CI runs web smoke + JVM unit tests + debug APK.
-
-Update `CHANGELOG.md` for meaningful changes.
-
----
+- native tests passing;
+- package inspection proving no WebView, no packaged web assets, and no `INTERNET` permission;
+- Galaxy Tab S10+ physical acceptance;
+- owner approval of the Glass Horizon visual result;
+- permanent production signing credentials for `com.inkframe.studio`.
 
 ## License
 
-MIT – free to use, modify, redistribute. See [`LICENSE`](LICENSE).
+MIT — free to use, modify, and redistribute. See [`LICENSE`](LICENSE).
 
-Privacy: InkFrame is offline-first, no account, no ads, no analytics. See [`PRIVACY.md`](PRIVACY.md).
+Privacy: InkFrame is offline-first, with no account requirement, advertising, analytics, or automatic uploads. See [`PRIVACY.md`](PRIVACY.md).
 
 ---
 
 <div align="center">
 
-*Built with the Glass Horizon design system · runs on stylus, finger, or mouse.*
-
-*CLI pipeline: `./inkframe-cli help`*
+*Built with the Glass Horizon design system · native Android first · stylus, finger, and S Pen focused.*
 
 </div>
