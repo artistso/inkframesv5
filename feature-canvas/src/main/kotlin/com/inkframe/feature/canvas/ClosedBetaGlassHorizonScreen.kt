@@ -322,25 +322,27 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             modifier = Modifier.align(Alignment.TopCenter).offset(y = stagePlacement.commandTopDp.dp),
         )
 
-        ClosedBetaStage(
-            state = state,
-            palette = palette,
-            canvasWidth = canvasWidth,
-            canvasHeight = canvasHeight,
-            frameWidth = frameWidth,
-            frameHeight = frameHeight,
-            onFrame = ::requestFrame,
-            onAddFrame = {
-                state.insertFrame()
-                canvasView?.requestRender()
-            },
-            onCanvasReady = { view ->
-                canvasView = view
-                recoveryController.attach(view)
-            },
-            onArtworkChanged = state::markArtworkModified,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft, y = frameTop),
-        )
+        if (stagePlacement.stageVisible) {
+            ClosedBetaStage(
+                state = state,
+                palette = palette,
+                canvasWidth = canvasWidth,
+                canvasHeight = canvasHeight,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                onFrame = ::requestFrame,
+                onAddFrame = {
+                    state.insertFrame()
+                    canvasView?.requestRender()
+                },
+                onCanvasReady = { view ->
+                    canvasView = view
+                    recoveryController.attach(view)
+                },
+                onArtworkChanged = state::markArtworkModified,
+                modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft, y = frameTop),
+            )
+        }
 
         ClosedBetaScrubRail(
             state = state,
