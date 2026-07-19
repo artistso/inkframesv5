@@ -1,0 +1,20 @@
+name: Native Runtime Boundary
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-boundary:
+    name: Check native Android boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate native runtime boundary
+        run: python3 tools/check_native_boundary.py
