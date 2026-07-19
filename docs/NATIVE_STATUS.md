@@ -1,7 +1,7 @@
 # InkFrame native Android status
 
 Status: **binding current repository status**  
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-19
 
 InkFrame Android development is now a **native Kotlin / Jetpack Compose / OpenGL ES** application.
 
@@ -17,7 +17,20 @@ The Android application must not be described as a WebView wrapper, a browser ru
 - Minimum Android version: API 26
 - Application shell: Kotlin + Jetpack Compose
 - Artwork engine: native OpenGL ES through `feature-canvas` and `engine-gl`
-- Launch path: `SplashActivity -> MainActivity -> ClosedBetaGlassHorizonScreen`
+- Launch path: `SplashActivity -> MainActivity -> HoldAwareGlassHorizonScreen -> ClosedBetaGlassHorizonScreen`
+
+## Current native parity slices
+
+The active Kotlin runtime currently includes these bounded parity slices:
+
+- pressure-responsive native stroke processing with spacing, smoothing, pressure response, and S Pen eraser routing;
+- explicit per-frame hold values from 1 through 8, including hold-aware playback and export timing;
+- the first native Brush Lab surface with Direct, Balanced, and Smooth stroke-feel presets;
+- live Brush Lab controls for size, minimum pressure size, opacity, hardness, spacing, smoothing, pressure response, and build-up;
+- independent per-brush tuning retained while switching tools during the current studio session;
+- crash-safe local project recovery and native archive save/open.
+
+Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, and advanced diagnostic controls are not yet native parity claims.
 
 ## Web reference boundary
 
