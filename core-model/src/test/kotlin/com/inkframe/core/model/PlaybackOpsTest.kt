@@ -105,6 +105,17 @@ class PlaybackOpsTest {
     }
 
     @Test
+    fun nextTick_outsideRangeJumpsBeforeConsumingStaleHold() {
+        val tick = PlaybackOps.nextTick(9, 2..5, loop = false, ticksRemaining = 7) { frame ->
+            if (frame == 2) 3 else 1
+        }
+        assertEquals(2, tick.frame)
+        assertEquals(3, tick.ticksRemaining)
+        assertTrue(tick.stillPlaying)
+        assertTrue(tick.advanced)
+    }
+
+    @Test
     fun nextTick_stopsOnlyAfterFinalFrameHoldCompletes() {
         val waiting = PlaybackOps.nextTick(4, 0..4, loop = false, ticksRemaining = 2) { 1 }
         assertTrue(waiting.stillPlaying)
