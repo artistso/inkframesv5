@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "savedAt": 1690000000000,
+  "pi": 0,
+  "projects": [
+    {
+      "name": "Legacy One",
+      "w": 4,
+      "h": 4,
+      "cur": 0,
+      "fps": 10,
+      "paper": "#112233",
+      "holds": [1, 2],
+      "frames": [
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAHklEQVR42mP8z8DwnwEKmBia/yPBEIaGkGkAAB6mAv8JeSY6AAAAAElFTkSuQmCC",
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAIElEQVR42mP8z8DwnwEKmP5j+M8AVQwMDKg6mBgAAA10BP9oLGi0AAAAAElFTkSuQmCC"
+      ]
+    }
+  ]
+}
