@@ -5,6 +5,7 @@ import com.inkframe.core.model.Brush
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 
 class StrokeProcessorTest {
 
@@ -19,8 +20,7 @@ class StrokeProcessorTest {
     @Test
     fun singleTap_producesOneDab() {
         val sp = StrokeProcessor(brush())
-        sp.add(sample(50f, 50f))
-        val dabs = sp.finish()
+        val dabs = sp.add(sample(50f, 50f)) + sp.finish()
         assertEquals(1, dabs.size)
         assertEquals(50f, dabs[0].center.x, 0.5f)
         assertEquals(50f, dabs[0].center.y, 0.5f)
@@ -43,6 +43,43 @@ class StrokeProcessorTest {
     }
 
     @Test
+    fun finish_flushesTailToLastInputPoint() {
+        val sp = StrokeProcessor(brush())
+        val all = ArrayList<Dab>()
+        for (i in 0..7) all += sp.add(sample(i * 13f, 0f, i * 8L))
+        all += sp.finish()
+
+        val last = all.last().center
+        assertEquals(91f, last.x, 1.25f)
+        assertEquals(0f, last.y, 0.5f)
+    }
+
+    @Test
+    fun finish_flushesTailWhenPenUpRepeatsPreviousPosition() {
+        val sp = StrokeProcessor(brush())
+        val all = ArrayList<Dab>()
+        all += sp.add(sample(0f, 0f, 0L))
+        all += sp.add(sample(20f, 0f, 8L))
+        all += sp.add(sample(20f, 0f, 16L))
+        all += sp.finish()
+
+        val last = all.last().center
+        assertEquals(20f, last.x, 0.5f)
+        assertEquals(0f, last.y, 0.5f)
+    }
+
+    @Test
+    fun horizontalStroke_dabsCarryForwardRotation() {
+        val sp = StrokeProcessor(brush())
+        val all = ArrayList<Dab>()
+        for (i in 0..12) all += sp.add(sample(i * 10f, 0f, i * 8L))
+        all += sp.finish()
+
+        val rotated = all.drop(1).filter { abs(it.rotationRad) < 0.25f }
+        assertTrue("expected horizontal dab rotations", rotated.size >= all.size / 2)
+    }
+
+    @Test
     fun dabSize_followsBrushDiameter() {
         val sp = StrokeProcessor(brush())
         val all = ArrayList<Dab>()
@@ -56,9 +93,7 @@ class StrokeProcessorTest {
         val sp = StrokeProcessor(brush())
         for (i in 0..10) sp.add(sample(i * 10f, 0f))
         sp.reset()
-        // After reset, a single sample + finish behaves like a fresh single tap.
-        sp.add(sample(5f, 5f))
-        val dabs = sp.finish()
+        val dabs = sp.add(sample(5f, 5f)) + sp.finish()
         assertEquals(1, dabs.size)
     }
 
@@ -70,6 +105,6 @@ class StrokeProcessorTest {
         for (i in 0..30) all += sp.add(sample(i * 10f, 0f, i * 8L))
         all += sp.finish()
         // All dabs should remain on/near the horizontal line (y ~ 0).
-        all.forEach { assertTrue("dab strayed: ${it.center.y}", kotlin.math.abs(it.center.y) < 5f) }
+        all.forEach { assertTrue("dab strayed: ${it.center.y}", abs(it.center.y) < 5f) }
     }
 }
