@@ -55,10 +55,22 @@ class ExportPlannerTest {
             range = Range.ALL,
         )
         assertEquals(3, plan.frameCount)
+        assertEquals(listOf(1, 3, 2), plan.frames.map { it.exposureTicks })
         assertTrue(plan.frames[0].durationMs in 41..42)
         assertTrue(plan.frames[1].durationMs in 124..126)
         assertTrue(plan.frames[2].durationMs in 82..84)
         assertTrue(plan.totalDurationMs in 249..251)
+    }
+
+    @Test
+    fun pngSequence_expandsOneImagePerExposureTick() {
+        val plan = ExportPlanner.plan(
+            scene(3, holds = listOf(1, 3, 2)),
+            canvas,
+            range = Range.ALL,
+        )
+        assertEquals(6, plan.pngSequenceFrameCount)
+        assertEquals(listOf(0, 1, 1, 1, 2, 2), plan.expandedPngFrameIndices())
     }
 
     @Test
@@ -77,6 +89,11 @@ class ExportPlannerTest {
             frameStep = 2,
         )
         assertEquals(listOf(0, 2, 4), plan.frames.map { it.frameIndex })
+        assertEquals(listOf(3, 7, 2), plan.frames.map { it.exposureTicks })
+        assertEquals(
+            listOf(0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 4, 4),
+            plan.expandedPngFrameIndices(),
+        )
         // Windows are (1+2), (3+4), (1+1) timing ticks.
         assertTrue(plan.frames[0].durationMs in 124..126)
         assertTrue(plan.frames[1].durationMs in 291..293)
