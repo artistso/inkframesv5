@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: parity/glass-horizon-title
-      - name: Insert binding product title
+      - name: Use measured title command offset
         shell: bash
         run: |
           python3 - <<'PY'
@@ -24,56 +24,34 @@ jobs:
 
           path = Path('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt')
           text = path.read_text()
-
-          old = '''        ClosedBetaTopCluster(
-                      palette = palette,
-                      state = state,
-                      onFit = { canvasView?.fitToScreen() },
-                      onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
-                      modifier = Modifier.align(Alignment.TopCenter).offset(y = 12.dp),
-                  )
-          '''
-          new = '''        GlassHorizonTitle(
-                      accent = palette.accent,
-                      rose = palette.rose,
-                      dim = palette.dim,
-                      modifier = Modifier
-                          .align(Alignment.TopCenter)
-                          .offset(y = GlassHorizonTitleSpec.TOP_OFFSET_DP.dp),
-                  )
-
-                  ClosedBetaTopCluster(
-                      palette = palette,
-                      state = state,
-                      onFit = { canvasView?.fitToScreen() },
-                      onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
-                      modifier = Modifier.align(Alignment.TopCenter).offset(y = 62.dp),
-                  )
-          '''
+          old = 'modifier = Modifier.align(Alignment.TopCenter).offset(y = 62.dp),'
+          new = 'modifier = Modifier.align(Alignment.TopCenter).offset(y = GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP.dp),'
 
           if old in text:
               text = text.replace(old, new, 1)
-          elif 'GlassHorizonTitle(' not in text:
-              raise SystemExit('top cluster anchor missing')
+          elif new not in text:
+              raise SystemExit('title command offset anchor missing')
 
           if text.count('GlassHorizonTitle(') != 1:
               raise SystemExit('expected exactly one product title call')
+          if text.count('GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP') != 1:
+              raise SystemExit('expected exactly one measured command offset')
 
           path.write_text(text)
           PY
 
           git diff --check
           git diff -- feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
-      - name: Commit bounded title integration
+      - name: Commit measured shell geometry
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo 'Product title is already integrated.'
+            echo 'Measured title geometry is already applied.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
-          git commit -m 'Place binding title above Glass Horizon controls'
+          git commit -m 'Use measured Glass Horizon title clearance'
           git push origin HEAD:parity/glass-horizon-title
