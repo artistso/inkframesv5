@@ -23,7 +23,11 @@ internal object GlassHorizonStageLayout {
     const val CANVAS_WIDTH_FRACTION: Float = 0.64f
     const val FRAME_OPTICAL_PADDING_DP: Float = 28f
     const val HEADER_TO_STAGE_GAP_DP: Float = 12f
-    const val BOTTOM_CONTROL_RESERVE_DP: Float = 56f
+    const val FRAME_BADGE_OVERFLOW_DP: Float = 30f
+    const val SCRUB_RAIL_TOP_INSET_DP: Float = 46f
+    const val FRAME_BADGE_TO_SCRUB_GAP_DP: Float = 8f
+    const val BOTTOM_CONTROL_RESERVE_DP: Float =
+        FRAME_BADGE_OVERFLOW_DP + SCRUB_RAIL_TOP_INSET_DP + FRAME_BADGE_TO_SCRUB_GAP_DP
     const val MIN_CANVAS_EXTENT_DP: Float = 1f
 
     fun place(
