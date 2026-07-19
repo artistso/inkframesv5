@@ -300,12 +300,21 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         val frameLeft = (maxWidth - frameWidth) / 2
         val frameTop = stageTop
 
+        GlassHorizonTitle(
+            accent = palette.accent,
+            rose = palette.rose,
+            dim = palette.dim,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = GlassHorizonTitleSpec.TOP_OFFSET_DP.dp),
+        )
+
         ClosedBetaTopCluster(
             palette = palette,
             state = state,
             onFit = { canvasView?.fitToScreen() },
             onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = 12.dp),
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = 62.dp),
         )
 
         ClosedBetaStage(
