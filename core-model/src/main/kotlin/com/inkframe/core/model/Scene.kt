@@ -19,7 +19,7 @@ data class Scene(
     val layers: List<Layer> = emptyList(),
     val playbackRange: IntRange = 0 until frameCount,
     val loop: Boolean = true,
-    val holds: List<Int> = List(frameCount) { MIN_HOLD },
+    val holds: List<Int> = List(frameCount) { 1 },
 ) {
     init {
         require(frameCount >= 1) { "A scene needs at least one frame" }
