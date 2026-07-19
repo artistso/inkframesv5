@@ -39,18 +39,29 @@ internal object GlassHorizonTitleSpec {
     const val SUBTITLE_HORIZONTAL_PADDING_DP: Float = 8f
     const val COMMAND_TOP_OFFSET_DP: Float = 66f
     const val COMMAND_CLUSTER_HEIGHT_DP: Float = 81f
+    const val MIN_COMMAND_CLEARANCE_DP: Float = 12f
     const val SUBTITLE_PLATE_ALPHA: Float = 0.82f
 
     val displayedTitle: String get() = TITLE.uppercase(Locale.ROOT)
     val displayedSubtitle: String get() = SUBTITLE.uppercase(Locale.ROOT)
     val accessibilityLabel: String get() = "$TITLE. $SUBTITLE"
-    val measuredTextBlockHeightDp: Float
-        get() = TITLE_LINE_HEIGHT_SP + SUBTITLE_TOP_GAP_DP +
-            SUBTITLE_LINE_HEIGHT_SP + 2f * SUBTITLE_VERTICAL_PADDING_DP
-    val commandClearanceDp: Float
-        get() = COMMAND_TOP_OFFSET_DP - TOP_OFFSET_DP - measuredTextBlockHeightDp
-    val commandBottomDp: Float
-        get() = COMMAND_TOP_OFFSET_DP + COMMAND_CLUSTER_HEIGHT_DP
+
+    fun measuredTextBlockHeightDp(fontScale: Float): Float {
+        require(fontScale > 0f)
+        val scaledLineHeight = (TITLE_LINE_HEIGHT_SP + SUBTITLE_LINE_HEIGHT_SP) * fontScale
+        return scaledLineHeight + SUBTITLE_TOP_GAP_DP + 2f * SUBTITLE_VERTICAL_PADDING_DP
+    }
+
+    fun titleBottomDp(fontScale: Float): Float =
+        TOP_OFFSET_DP + measuredTextBlockHeightDp(fontScale)
+
+    fun commandTopDp(fontScale: Float): Float = maxOf(
+        COMMAND_TOP_OFFSET_DP,
+        titleBottomDp(fontScale) + MIN_COMMAND_CLEARANCE_DP,
+    )
+
+    fun commandBottomDp(fontScale: Float): Float =
+        commandTopDp(fontScale) + COMMAND_CLUSTER_HEIGHT_DP
 }
 
 /** Fixed top-center product identity from the binding Glass Horizon contract. */
