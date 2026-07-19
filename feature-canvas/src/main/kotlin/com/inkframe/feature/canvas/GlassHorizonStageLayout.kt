@@ -2,6 +2,8 @@ package com.inkframe.feature.canvas
 
 internal data class GlassHorizonStagePlacement(
     val stageVisible: Boolean,
+    val hostWidthDp: Float,
+    val hostHeightDp: Float,
     val titleBottomDp: Float,
     val commandTopDp: Float,
     val commandBottomDp: Float,
@@ -17,8 +19,11 @@ internal data class GlassHorizonStagePlacement(
 
 /**
  * Pure layout policy that reserves the product title and command cluster before fitting artwork.
- * This prevents later-composed AndroidView content from painting over or receiving input through
- * the fixed Glass Horizon header at any supported landscape window height or accessibility scale.
+ *
+ * The OpenGL host must remain composed even when the visible stage cannot fit. Hidden placements
+ * therefore retain a one-physical-pixel host offscreen while exposing zero visual frame/canvas
+ * dimensions. This preserves the same CanvasView, EGL context, engine, recovery controller, and
+ * GPU surface identities across compact/freeform window resizing.
  */
 internal object GlassHorizonStageLayout {
     const val CANVAS_WIDTH_FRACTION: Float = 0.64f
@@ -29,19 +34,23 @@ internal object GlassHorizonStageLayout {
     const val FRAME_BADGE_TO_SCRUB_GAP_DP: Float = 8f
     const val BOTTOM_CONTROL_RESERVE_DP: Float =
         FRAME_BADGE_OVERFLOW_DP + SCRUB_RAIL_TOP_INSET_DP + FRAME_BADGE_TO_SCRUB_GAP_DP
-    const val MIN_RENDERABLE_EXTENT_DP: Float = 0.01f
+    const val MIN_RENDERABLE_EXTENT_PX: Float = 1f
+    const val HIDDEN_HOST_OFFSET_MULTIPLIER: Float = 2f
 
     fun place(
         viewportWidthDp: Float,
         viewportHeightDp: Float,
         documentAspect: Float,
         fontScale: Float,
+        density: Float,
     ): GlassHorizonStagePlacement {
         require(viewportWidthDp > 0f)
         require(viewportHeightDp > 0f)
         require(documentAspect > 0f)
         require(fontScale > 0f)
+        require(density > 0f)
 
+        val minimumHostExtentDp = MIN_RENDERABLE_EXTENT_PX / density
         val titleBottom = GlassHorizonTitleSpec.titleBottomDp(fontScale)
         val commandTop = GlassHorizonTitleSpec.commandTopDp(fontScale)
         val commandBottom = GlassHorizonTitleSpec.commandBottomDp(fontScale)
@@ -52,16 +61,16 @@ internal object GlassHorizonStageLayout {
         val availableCanvasWidth = viewportWidthDp * CANVAS_WIDTH_FRACTION
 
         if (
-            availableCanvasHeight < MIN_RENDERABLE_EXTENT_DP ||
-            availableCanvasWidth < MIN_RENDERABLE_EXTENT_DP
+            availableCanvasHeight < minimumHostExtentDp ||
+            availableCanvasWidth < minimumHostExtentDp
         ) {
             return hiddenPlacement(
+                minimumHostExtentDp = minimumHostExtentDp,
                 titleBottom = titleBottom,
                 commandTop = commandTop,
                 commandBottom = commandBottom,
                 stageAreaTop = stageAreaTop,
                 stageAreaBottom = stageAreaBottom,
-                viewportWidthDp = viewportWidthDp,
             )
         }
 
@@ -70,16 +79,16 @@ internal object GlassHorizonStageLayout {
         val canvasWidth = minOf(availableCanvasWidth, availableCanvasHeight * documentAspect)
         val canvasHeight = canvasWidth / documentAspect
         if (
-            canvasWidth < MIN_RENDERABLE_EXTENT_DP ||
-            canvasHeight < MIN_RENDERABLE_EXTENT_DP
+            canvasWidth < minimumHostExtentDp ||
+            canvasHeight < minimumHostExtentDp
         ) {
             return hiddenPlacement(
+                minimumHostExtentDp = minimumHostExtentDp,
                 titleBottom = titleBottom,
                 commandTop = commandTop,
                 commandBottom = commandBottom,
                 stageAreaTop = stageAreaTop,
                 stageAreaBottom = stageAreaBottom,
-                viewportWidthDp = viewportWidthDp,
             )
         }
 
@@ -90,6 +99,8 @@ internal object GlassHorizonStageLayout {
 
         return GlassHorizonStagePlacement(
             stageVisible = true,
+            hostWidthDp = canvasWidth,
+            hostHeightDp = canvasHeight,
             titleBottomDp = titleBottom,
             commandTopDp = commandTop,
             commandBottomDp = commandBottom,
@@ -105,14 +116,16 @@ internal object GlassHorizonStageLayout {
     }
 
     private fun hiddenPlacement(
+        minimumHostExtentDp: Float,
         titleBottom: Float,
         commandTop: Float,
         commandBottom: Float,
         stageAreaTop: Float,
         stageAreaBottom: Float,
-        viewportWidthDp: Float,
     ): GlassHorizonStagePlacement = GlassHorizonStagePlacement(
         stageVisible = false,
+        hostWidthDp = minimumHostExtentDp,
+        hostHeightDp = minimumHostExtentDp,
         titleBottomDp = titleBottom,
         commandTopDp = commandTop,
         commandBottomDp = commandBottom,
@@ -120,8 +133,8 @@ internal object GlassHorizonStageLayout {
         canvasHeightDp = 0f,
         frameWidthDp = 0f,
         frameHeightDp = 0f,
-        frameLeftDp = viewportWidthDp / 2f,
-        frameTopDp = stageAreaTop,
+        frameLeftDp = -minimumHostExtentDp * HIDDEN_HOST_OFFSET_MULTIPLIER,
+        frameTopDp = -minimumHostExtentDp * HIDDEN_HOST_OFFSET_MULTIPLIER,
         stageAreaTopDp = stageAreaTop,
         stageAreaBottomDp = stageAreaBottom,
     )
