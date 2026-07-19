@@ -129,6 +129,22 @@ class GlassHorizonStageLayoutTest {
     }
 
     @Test
+    fun nonIntegerDensityVisibleHostMeetsPhysicalPixelFloor() {
+        val density = 2.9f
+        val placement = GlassHorizonStageLayout.place(
+            viewportWidthDp = 1280f,
+            viewportHeightDp = 720f,
+            documentAspect = 1f / 651f,
+            fontScale = 1f,
+            density = density,
+        )
+
+        assertTrue(placement.stageVisible)
+        assertTrue(placement.hostWidthDp * density >= GlassHorizonStageLayout.MIN_VISIBLE_EXTENT_PX)
+        assertTrue(placement.hostHeightDp * density >= GlassHorizonStageLayout.MIN_VISIBLE_EXTENT_PX)
+    }
+
+    @Test
     fun extremeTallArchiveUsesOnePhysicalPixelOffscreenHost() {
         val density = 3f
         val aspect = 1f / 16_384f
