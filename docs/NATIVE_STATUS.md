@@ -31,9 +31,12 @@ The active Kotlin runtime currently includes these bounded parity slices:
 - six native project starters: Classic sketch, HD animation, Square social, Phone vertical, Pixel art, and Neon loop;
 - a native custom-canvas creator with validated dimensions, FPS, starter frames, paper selection, preview, and explicit replacement action;
 - blank-project CanvasView recreation isolated from archive open/recovery so loaded GPU cel surfaces are retained;
+- a five-layer native Glass Horizon theme world: horizon, rays, fine grain, vignette, and transient glint;
+- the exact binding rose/plum horizon progression plus a complete blue counterpart with persistent native theme selection;
+- landscape corner-derived gradient geometry and draw-time ray feathering that remain consistent across API 26 through API 36;
 - crash-safe local project recovery and native archive save/open.
 
-Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, and durable custom-template storage are not yet native parity claims.
+Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, final title typography, approved frame-glass optics, eight-node drag persistence, spring radial animation, and the complete live stylus lens are not yet native parity claims.
 
 ## Web reference boundary
 
