@@ -2,7 +2,8 @@ package com.inkframe.feature.canvas
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,10 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush as UiBrush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -70,14 +69,36 @@ import kotlin.math.sin
  */
 @Composable
 fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
+    val context = LocalContext.current
+    val themePreferences = remember(context) {
+        context.getSharedPreferences("glass-horizon-world", android.content.Context.MODE_PRIVATE)
+    }
+    val storedTheme = remember(themePreferences) {
+        themePreferences.getString("theme", BetaTheme.PLUM.name)
+    }
     var canvasView by remember { mutableStateOf<CanvasView?>(null) }
     var openNode by rememberSaveable { mutableStateOf<BetaNode?>(BetaNode.TOOLS) }
-    var theme by rememberSaveable { mutableStateOf(BetaTheme.PLUM) }
+    var theme by rememberSaveable {
+        mutableStateOf(BetaTheme.entries.firstOrNull { it.name == storedTheme } ?: BetaTheme.PLUM)
+    }
+    var glintPulse by remember { mutableStateOf(false) }
     var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
 
+    val glintAlpha by animateFloatAsState(
+        targetValue = if (glintPulse) 0.72f else 0f,
+        animationSpec = tween(durationMillis = if (glintPulse) 120 else 360),
+        label = "Glass Horizon interaction glint",
+    )
     val palette = betaPalette(theme)
-    val context = LocalContext.current
     val resolver = context.contentResolver
+
+    fun selectTheme(next: BetaTheme) {
+        if (theme == next) return
+        theme = next
+        themePreferences.edit().putString("theme", next.name).apply()
+        glintPulse = true
+        state.statusMessage = "THEME · ${next.name}"
+    }
 
     val recoveryController = remember(context, state) {
         ProjectRecoveryController(
@@ -250,12 +271,23 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         }
     }
 
+    LaunchedEffect(glintPulse) {
+        if (glintPulse) {
+            delay(180)
+            glintPulse = false
+        }
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(palette.violet),
     ) {
-        ClosedBetaAtmosphere(palette, Modifier.fillMaxSize())
+        GlassHorizonAtmosphere(
+            isBlue = theme == BetaTheme.BLUE,
+            glintAlpha = glintAlpha,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         val documentAspect = state.project.canvas.aspectRatio
         val canvasWidthLimit = maxWidth * 0.64f
@@ -272,7 +304,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             palette = palette,
             state = state,
             onFit = { canvasView?.fitToScreen() },
-            onTheme = { theme = if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM },
+            onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
             modifier = Modifier.align(Alignment.TopCenter).offset(y = 12.dp),
         )
 
@@ -391,8 +423,8 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             open = openNode == BetaNode.THEMES,
             onToggle = { openNode = openNode.toggle(BetaNode.THEMES) },
             actions = listOf(
-                BetaAction("PLUM", color = betaPalette(BetaTheme.PLUM).accent, selected = theme == BetaTheme.PLUM) { theme = BetaTheme.PLUM },
-                BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) { theme = BetaTheme.BLUE },
+                BetaAction("PLUM", color = betaPalette(BetaTheme.PLUM).accent, selected = theme == BetaTheme.PLUM) { selectTheme(BetaTheme.PLUM) },
+                BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) { selectTheme(BetaTheme.BLUE) },
             ),
             fan = Fan.LEFT_UP,
             modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = maxHeight * 0.50f),
@@ -595,53 +627,6 @@ private data class BetaAction(
 private fun BetaNode?.toggle(node: BetaNode): BetaNode? = if (this == node) null else node
 
 @Composable
-private fun ClosedBetaAtmosphere(palette: BetaPalette, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        drawRect(
-            brush = UiBrush.radialGradient(
-                colors = listOf(
-                    if (palette.accent == Color(0xFF2D75FF)) Color(0xFFD8E6FF) else Color(0xFFFFD9E2),
-                    palette.rose,
-                    if (palette.accent == Color(0xFF2D75FF)) Color(0xFF5B96F3) else Color(0xFFD77FA0),
-                    palette.accent,
-                    palette.accentDeep,
-                    palette.violet,
-                ),
-                center = Offset(size.width * 0.5f, -size.height * 0.12f),
-                radius = size.maxDimension * 0.98f,
-            ),
-        )
-        val origin = Offset(size.width * 0.5f, -18f)
-        listOf(-64f, -44f, -24f, -6f, 16f, 38f, 58f).forEachIndexed { index, degrees ->
-            val radians = degrees / 180f * PI.toFloat()
-            val reach = size.maxDimension * 1.35f
-            val center = Offset(origin.x + cos(radians) * reach, origin.y + sin(radians) * reach)
-            val spread = size.width * if (index % 2 == 0) 0.08f else 0.045f
-            val path = Path().apply {
-                moveTo(origin.x, origin.y)
-                lineTo(center.x - spread, center.y)
-                lineTo(center.x + spread, center.y)
-                close()
-            }
-            drawPath(path, Color.White, alpha = if (index % 2 == 0) 0.11f else 0.06f, blendMode = BlendMode.Screen)
-        }
-        repeat(260) { i ->
-            val x = ((i * 73) % 997) / 997f * size.width
-            val y = ((i * 193) % 991) / 991f * size.height
-            drawCircle(Color.White.copy(alpha = if (i % 3 == 0) 0.026f else 0.014f), radius = if (i % 5 == 0) 0.9f else 0.55f, center = Offset(x, y), blendMode = BlendMode.Overlay)
-        }
-        drawRect(
-            brush = UiBrush.radialGradient(
-                0.55f to Color.Transparent,
-                1f to Color(0xAA14000E),
-                center = Offset(size.width * 0.5f, size.height * 0.46f),
-                radius = size.maxDimension * 0.80f,
-            ),
-        )
-    }
-}
-
-@Composable
 private fun ClosedBetaTopCluster(
     palette: BetaPalette,
     state: StudioState,
@@ -659,7 +644,7 @@ private fun ClosedBetaTopCluster(
             ClosedBetaPill("CENTER", palette) { onFit() }
             ClosedBetaPill("ALL RINGS", palette) { state.statusMessage = "ALL RINGS" }
             ClosedBetaPill("SCRUB", palette) { state.statusMessage = "SCRUB" }
-            ClosedBetaPill("TIMING", palette) { onTheme() }
+            ClosedBetaPill("THEME", palette) { onTheme() }
         }
     }
 }
