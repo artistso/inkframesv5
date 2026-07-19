@@ -1,0 +1,89 @@
+name: Title Popup Margin Branch Patch
+
+on:
+  push:
+    branches: [parity/glass-horizon-title]
+    paths:
+      - '.github/workflows/title-popup-margin-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-popup-margins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: parity/glass-horizon-title
+      - name: Expand popup surfaces without moving radial circles
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt')
+          text = path.read_text()
+
+          old_offset = '''                val popupOffset = with(density) {
+                              IntOffset(
+                                  x = (offset.first + 5.dp).roundToPx(),
+                                  y = (offset.second + 5.dp).roundToPx(),
+                              )
+                          }
+          '''
+          new_offset = '''                val popupOffset = with(density) {
+                              IntOffset(
+                                  x = RadialPopupLayout.compensatedX(offset.first.value).dp.roundToPx(),
+                                  y = RadialPopupLayout.compensatedY(offset.second.value).dp.roundToPx(),
+                              )
+                          }
+          '''
+          if old_offset not in text:
+              raise SystemExit('radial popup offset anchor missing')
+          text = text.replace(old_offset, new_offset, 1)
+
+          old_content = '''                ) {
+                              ClosedBetaKid(action, palette)
+                          }
+          '''
+          new_content = '''                ) {
+                              Box(
+                                  modifier = Modifier.padding(
+                                      start = RadialPopupLayout.START_PADDING_DP.dp,
+                                      top = RadialPopupLayout.TOP_PADDING_DP.dp,
+                                      end = RadialPopupLayout.END_PADDING_DP.dp,
+                                      bottom = RadialPopupLayout.BOTTOM_PADDING_DP.dp,
+                                  ),
+                              ) {
+                                  ClosedBetaKid(action, palette)
+                              }
+                          }
+          '''
+          if old_content not in text:
+              raise SystemExit('radial popup content anchor missing')
+          text = text.replace(old_content, new_content, 1)
+
+          if '(offset.first + 5.dp).roundToPx()' in text:
+              raise SystemExit('uncompensated popup offset remains')
+          if text.count('RadialPopupLayout.BOTTOM_PADDING_DP.dp') != 1:
+              raise SystemExit('popup margin policy must be used exactly once')
+
+          path.write_text(text)
+          PY
+
+          git diff --check
+          git diff -- feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
+      - name: Commit popup label containment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Popup label containment is already integrated.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add feature-canvas/src/main/kotlin/com/inkframe/feature/canvas/ClosedBetaGlassHorizonScreen.kt
+          git commit -m 'Contain radial popup labels and shadows'
+          git push origin HEAD:parity/glass-horizon-title
