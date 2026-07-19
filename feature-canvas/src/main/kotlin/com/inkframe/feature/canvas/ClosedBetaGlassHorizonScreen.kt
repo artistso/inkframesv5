@@ -785,7 +785,6 @@ private fun ClosedBetaStage(
                                 ),
                             )
                             .border(1.dp, palette.stroke, frameShape)
-                            .padding(14.dp)
                     } else {
                         base
                     }
