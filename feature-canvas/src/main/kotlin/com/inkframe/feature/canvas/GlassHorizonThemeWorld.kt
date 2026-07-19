@@ -7,15 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.sin
 
 internal enum class GlassHorizonAtmosphereLayer {
@@ -40,6 +39,11 @@ internal data class GlassHorizonRaySpec(
     val sourceAlpha: Float,
 )
 
+internal data class GlassHorizonRayFeather(
+    val spreadScale: Float,
+    val alphaShare: Float,
+)
+
 /** Pure, testable theme-world specification used by the Compose atmosphere. */
 internal object GlassHorizonThemeWorld {
     val layerOrder: List<GlassHorizonAtmosphereLayer> = listOf(
@@ -58,6 +62,17 @@ internal object GlassHorizonThemeWorld {
         GlassHorizonRaySpec(16f, 0.072f, 0.30f),
         GlassHorizonRaySpec(38f, 0.046f, 0.22f),
         GlassHorizonRaySpec(58f, 0.076f, 0.32f),
+    )
+
+    /**
+     * Draw-time feathering replaces RenderEffect blur so ray edges remain soft on API 26–30.
+     * Shares sum to one, preserving the reference layer's 42% total opacity budget.
+     */
+    val rayFeathers: List<GlassHorizonRayFeather> = listOf(
+        GlassHorizonRayFeather(spreadScale = 1.48f, alphaShare = 0.08f),
+        GlassHorizonRayFeather(spreadScale = 1.30f, alphaShare = 0.14f),
+        GlassHorizonRayFeather(spreadScale = 1.14f, alphaShare = 0.22f),
+        GlassHorizonRayFeather(spreadScale = 1.00f, alphaShare = 0.56f),
     )
 
     val plum: GlassHorizonWorldPalette = GlassHorizonWorldPalette(
@@ -96,6 +111,13 @@ internal object GlassHorizonThemeWorld {
         val radians = spec.degreesFromVertical / 180f * PI.toFloat()
         return Offset(sin(radians), cos(radians))
     }
+
+    fun farthestCornerRadius(width: Float, height: Float, center: Offset): Float = maxOf(
+        hypot(center.x, center.y),
+        hypot(width - center.x, center.y),
+        hypot(center.x, height - center.y),
+        hypot(width - center.x, height - center.y),
+    )
 }
 
 /**
@@ -117,7 +139,7 @@ internal fun GlassHorizonAtmosphere(
             val palette = GlassHorizonThemeWorld.palette(blue)
             Box(Modifier.fillMaxSize()) {
                 GlassHorizonLayer(palette, Modifier.fillMaxSize())
-                GlassHorizonRays(palette, Modifier.fillMaxSize().blur(2.dp))
+                GlassHorizonRays(palette, Modifier.fillMaxSize())
                 GlassHorizonGrain(palette, Modifier.fillMaxSize())
                 GlassHorizonVignette(palette, Modifier.fillMaxSize())
             }
@@ -136,11 +158,12 @@ private fun GlassHorizonLayer(
     modifier: Modifier,
 ) {
     Canvas(modifier) {
+        val center = Offset(size.width * 0.5f, -size.height * 0.12f)
         drawRect(
             brush = Brush.radialGradient(
                 colorStops = palette.horizonStops.toTypedArray(),
-                center = Offset(size.width * 0.5f, -size.height * 0.12f),
-                radius = size.width * 1.20f,
+                center = center,
+                radius = GlassHorizonThemeWorld.farthestCornerRadius(size.width, size.height, center),
             ),
         )
     }
@@ -160,20 +183,21 @@ private fun GlassHorizonRays(
                 origin.x + direction.x * reach,
                 origin.y + direction.y * reach,
             )
-            val spread = size.width * spec.spreadFraction
-            val path = Path().apply {
-                moveTo(origin.x, origin.y)
-                lineTo(center.x - spread, center.y)
-                lineTo(center.x + spread, center.y)
-                close()
+            GlassHorizonThemeWorld.rayFeathers.forEach { feather ->
+                val spread = size.width * spec.spreadFraction * feather.spreadScale
+                val path = Path().apply {
+                    moveTo(origin.x, origin.y)
+                    lineTo(center.x - spread, center.y)
+                    lineTo(center.x + spread, center.y)
+                    close()
+                }
+                drawPath(
+                    path = path,
+                    color = palette.rayColor,
+                    alpha = spec.sourceAlpha * 0.42f * feather.alphaShare,
+                    blendMode = BlendMode.Screen,
+                )
             }
-            // The reference layer is 42% overall opacity; source wedges retain their own alpha.
-            drawPath(
-                path = path,
-                color = palette.rayColor,
-                alpha = spec.sourceAlpha * 0.42f,
-                blendMode = BlendMode.Screen,
-            )
         }
     }
 }
@@ -210,6 +234,7 @@ private fun GlassHorizonVignette(
     modifier: Modifier,
 ) {
     Canvas(modifier) {
+        val center = Offset(size.width * 0.5f, size.height * 0.42f)
         drawRect(
             brush = Brush.radialGradient(
                 colorStops = arrayOf(
@@ -217,8 +242,8 @@ private fun GlassHorizonVignette(
                     0.55f to Color.Transparent,
                     1.00f to palette.vignetteColor,
                 ),
-                center = Offset(size.width * 0.5f, size.height * 0.42f),
-                radius = size.maxDimension * 0.92f,
+                center = center,
+                radius = GlassHorizonThemeWorld.farthestCornerRadius(size.width, size.height, center),
             ),
         )
     }
