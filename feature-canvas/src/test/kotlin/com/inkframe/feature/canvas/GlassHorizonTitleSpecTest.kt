@@ -33,12 +33,20 @@ class GlassHorizonTitleSpecTest {
     }
 
     @Test
-    fun titleKeepsBindingTopRhythmAndClearsCommands() {
+    fun titleKeepsBindingTopRhythmAndReservesCommands() {
         assertEquals(14f, GlassHorizonTitleSpec.TOP_OFFSET_DP, 0f)
         assertEquals(3f, GlassHorizonTitleSpec.SUBTITLE_TOP_GAP_DP, 0f)
-        assertEquals(37f, GlassHorizonTitleSpec.measuredTextBlockHeightDp, 0f)
-        assertEquals(62f, GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP, 0f)
-        assertTrue(GlassHorizonTitleSpec.commandClearanceDp >= 10f)
-        assertTrue(GlassHorizonTitleSpec.TITLE_TRACKING_SP > GlassHorizonTitleSpec.SUBTITLE_SIZE_SP * 0.4f)
+        assertEquals(39f, GlassHorizonTitleSpec.measuredTextBlockHeightDp, 0f)
+        assertEquals(66f, GlassHorizonTitleSpec.COMMAND_TOP_OFFSET_DP, 0f)
+        assertEquals(81f, GlassHorizonTitleSpec.COMMAND_CLUSTER_HEIGHT_DP, 0f)
+        assertEquals(147f, GlassHorizonTitleSpec.commandBottomDp, 0f)
+        assertTrue(GlassHorizonTitleSpec.commandClearanceDp >= 12f)
+    }
+
+    @Test
+    fun subtitleUsesHighContrastReadabilityPlate() {
+        assertTrue(GlassHorizonTitleSpec.SUBTITLE_PLATE_ALPHA >= 0.80f)
+        assertTrue(GlassHorizonTitleSpec.SUBTITLE_HORIZONTAL_PADDING_DP >= 8f)
+        assertTrue(GlassHorizonTitleSpec.SUBTITLE_VERTICAL_PADDING_DP >= 1f)
     }
 }
