@@ -13,16 +13,12 @@ import com.inkframe.core.common.parseJson
 
 /**
  * Serializes a [Project] document (the structural model only — no pixels) to and from
- * JSON. Pixel data for each [Cel] is stored separately as a PNG named by its surfaceId;
- * the JSON references that id. This keeps the document human-readable and the binary
- * payload out-of-band, exactly how the `.inkframe` package is laid out.
- *
- * Pure Kotlin — fully unit-testable on the JVM.
+ * JSON. Pixel data for each [Cel] is stored separately as a PNG named by its surfaceId.
  */
 object ProjectCodec {
 
-    /** Bumped when the on-disk schema changes; [fromJson] can branch on it. */
-    const val FORMAT_VERSION = 1
+    /** v2 adds scene-level per-frame hold counts. v1 files decode with all holds = 1. */
+    const val FORMAT_VERSION = 2
 
     fun toJsonString(project: Project, pretty: Boolean = true): String =
         encode(project).toJsonString(pretty)
@@ -60,6 +56,7 @@ object ProjectCodec {
         "id" to JsonValue.of(s.id),
         "name" to JsonValue.of(s.name),
         "frameCount" to JsonValue.of(s.frameCount),
+        "holds" to JsonValue.arr(s.holds.map { JsonValue.of(it) }),
         "playbackStart" to JsonValue.of(s.playbackRange.first),
         "playbackEnd" to JsonValue.of(s.playbackRange.last),
         "loop" to JsonValue.of(s.loop),
@@ -74,9 +71,7 @@ object ProjectCodec {
         "locked" to JsonValue.of(l.locked),
         "blendMode" to JsonValue.of(l.blendMode.name),
         "cels" to JsonValue.arr(
-            l.cels.entries.sortedBy { it.key }.map { (frame, cel) ->
-                encodeCel(frame, cel)
-            },
+            l.cels.entries.sortedBy { it.key }.map { (frame, cel) -> encodeCel(frame, cel) },
         ),
     )
 
@@ -133,6 +128,11 @@ object ProjectCodec {
         val frameCount = v["frameCount"].asInt()
         val start = v.optional("playbackStart")?.asInt() ?: 0
         val end = v.optional("playbackEnd")?.asInt() ?: (frameCount - 1)
+        val rawHolds = v.optional("holds")?.asArr()?.items?.map { it.asInt() }.orEmpty()
+        val holds = List(frameCount) { index ->
+            (rawHolds.getOrNull(index) ?: Scene.MIN_HOLD)
+                .coerceIn(Scene.MIN_HOLD, Scene.MAX_HOLD)
+        }
         return Scene(
             id = v["id"].asString(),
             name = v["name"].asString(),
@@ -140,6 +140,7 @@ object ProjectCodec {
             layers = v["layers"].asArr().items.map { decodeLayer(it) },
             playbackRange = start..end,
             loop = v.optional("loop")?.asBool() ?: true,
+            holds = holds,
         )
     }
 
