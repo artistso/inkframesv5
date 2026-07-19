@@ -1,168 +1,188 @@
-# InkFrame Release & Tablet Smoke Checklist
+# InkFrame Native Release & Tablet Smoke Checklist
 
-Use this checklist for every release candidate, signed build, fresh APK install,
-or new Android tablet/WebView version.
+Use this checklist for every native QA APK, signed build, fresh install, release candidate, or Google Play submission candidate.
 
-## 1. Back up artwork first
+Target device: **Samsung Galaxy Tab S10+ with S Pen**.
+
+## 1. Identify the artifact
+
+Record before installation:
+
+- commit SHA;
+- workflow run;
+- artifact name and ID;
+- APK or AAB filename;
+- SHA-256 checksum;
+- package name;
+- certificate fingerprint;
+- build type: local debug, stable QA, private signed dry run, or production release.
+
+A QA APK is a physical-test artifact only. It is not public release approval.
+
+## 2. Back up artwork first
 
 Inside InkFrame:
 
-1. Open **Studio**.
-2. Tap **Backup archive**.
-3. Save the downloaded `.inkframe` outside browser/app storage, such as Downloads, Drive, or external storage.
-4. Optional: open **Gallery ▸ Manage** and use **Export archive** as a second path.
+1. Open the current Gallery or Project controls.
+2. Save a `.inkframe` archive through the Android system picker.
+3. Store the archive outside app-local storage.
+4. Reopen that archive once before testing destructive operations.
 
-Browser storage, APK reinstalls, and WebView data clears can remove local autosaves. A `.inkframe` archive is the portable backup.
+Clearing app storage or uninstalling the app may remove local recovery data. A `.inkframe` archive is the portable backup.
 
-## 2. Wait for release-candidate CI
+## 3. Wait for native CI
 
-Open the latest Android CI run:
+Open the latest native Android workflow:
 
 <https://github.com/artistso/inkframesv5/actions/workflows/android.yml>
 
-Required green jobs:
+Required green checks for a QA artifact:
 
-- **Web and Brush Engine V2**
-- **Unit tests (JVM)**
-- **Build debug APK**
-- **Verify signed production APK and AAB**
+- native Glass Horizon boundary check;
+- release Kotlin compile and native tests;
+- stable non-debuggable QA APK build;
+- APK inspection proving no WebView, no packaged web assets, and no `INTERNET` permission.
 
-The web job must include core geometry, ribbon coverage, radius continuity,
-contact boundaries, session continuity, discontinuity segmentation, coalesced
-input, runtime policy, debug assets, release assets, and generated-index boot.
-The production verification job must assemble both formats with a disposable
-CI-only key, verify signatures, and inspect the packaged production assets.
+Required green checks for a production artifact:
 
-## 3. Install the debug RC APK
+- all QA gates above;
+- permanent signing readiness;
+- signed non-debuggable production APK build;
+- production package inspection for `com.inkframe.studio`.
 
-1. Open the completed Android CI run.
-2. Download the **`inkframe-debug-apk`** artifact.
-3. Unzip it.
-4. Install `app-debug.apk` on the target tablet.
-5. Confirm the Studio panel initially reports **Engine · V2** on a fresh app-data install.
+## 4. Install the native QA APK
 
-Debug contains full trace and native S Pen diagnostics. Do not use it as the
-public signed release.
+1. Open issue #142 or the completed native Android workflow run.
+2. Download the latest `inkframe-native-qa-release-<sha>` artifact.
+3. Verify the SHA-256 checksum.
+4. Install the APK on the target tablet.
+5. Confirm package name is `com.inkframe.studio.qa` for QA.
+6. Confirm launch path is `SplashActivity -> MainActivity -> native Glass Horizon surface`.
 
-## 4. Brush Engine V2 release gate
+Do not use a QA APK as the public signed release.
 
-Use an S Pen with:
+## 5. Glass Horizon visual gate
 
-```text
-Engine: V2
-Preset: Balanced
-Coverage: Ribbon
-Width guard: Guarded
-Contact: Strict
-```
+Capture and review screenshots for:
 
-Test all of the following:
-
-- 50 separate short strokes with large pen relocations between strokes.
-- One uninterrupted 15-second spiral.
-- Rapid zigzags and abrupt reversals.
-- Slow, medium, and flick-speed diagonals.
-- Taps and one-move dashes.
-- Deliberate light-to-heavy and heavy-to-light pressure ramps.
-- Ink and Eraser.
-- Pause/resume, app background/foreground, and lock-screen interruption.
-- Open and close Studio/Brush controls during drawing.
+- clean launch;
+- Tools opened;
+- Frames opened;
+- one frosted overlay;
+- canvas with visible native ink.
 
 Acceptance criteria:
 
-- No long diagonal bridge between separate strokes.
-- No long bridge inside an uninterrupted stroke.
-- A corrupted coordinate may create a small safe gap or isolated cap, never a connecting line.
-- Taps and short dashes remain visible.
-- Intentional pressure ramps remain monotonic and responsive.
-- Eraser never reconnects to an earlier eraser location.
-- Undo treats each physical stroke as one operation.
+- full rose/plum atmospheric world, not a uniform dark background;
+- title and subtitle remain `InkFrame` and `The Glass Horizon`;
+- aspect-ratio-correct paper inside rounded frame glass;
+- frame board wraps all four sides of the drawing stage;
+- bottom scrub rail is separate from the frame board;
+- radial glass nodes remain reachable and do not default over the drawing surface;
+- stylus lens appears only for S Pen hover/contact;
+- no conventional Material dashboard, rail, side panel, or WebView/browser frame appears.
 
-Switch to **Original** and repeat a control set. Confirm the fallback remains
-independent and usable.
+Owner visual approval is required before production release.
 
-If any spike survives, stop immediately and export the debug trace before drawing
-again. Do not tag the release until the trace is reviewed.
+## 6. S Pen and drawing gate
 
-## 5. General browser/PWA smoke test
+Use an S Pen and test:
+
+- separate short strokes with large pen relocations between strokes;
+- one uninterrupted long spiral;
+- rapid zigzags and abrupt reversals;
+- slow, medium, and flick-speed diagonals;
+- taps and one-move dashes;
+- light-to-heavy and heavy-to-light pressure ramps;
+- eraser where supported;
+- hover/lens behavior;
+- pan and zoom;
+- pause/resume, app background/foreground, and lock-screen interruption;
+- open and close Glass Horizon controls during drawing.
+
+Acceptance criteria:
+
+- no connecting bridge between separate strokes;
+- taps and short dashes remain visible;
+- pressure ramps remain responsive;
+- eraser behavior remains isolated;
+- undo treats each physical stroke as one operation.
+
+## 7. Animation gate
 
 Verify:
 
-- Start overlay appears on a fresh/no-recovery session.
-- **Import archive** restores a `.inkframe`.
-- **Gallery ▸ Manage** opens.
-- Project templates and custom width/height/FPS/frame count work.
-- Export archive creates a `.inkframe` and import restores it.
-- Brush Lab opens and texture/preset Save/Use/Export/Import/Delete work.
-- Stylus diagnostics reports pressure/tilt/button data where supported.
-- Barrel mode cycles **Pick → Erase → Off**.
+- frame selection from the perimeter board;
+- frame add;
+- frame duplicate/copy/paste/delete where available;
+- held/current/filled frame visual states;
+- bottom scrub rail navigation;
+- play/pause;
+- loop behavior;
+- onion skin if available;
+- thumbnail/playback compositor order.
 
-## 6. General APK smoke test
+## 8. Project and archive gate
 
 Verify:
 
-- App launches fully offline.
-- Drawing works with S Pen and supported touch/finger controls.
-- Palm rejection and stylus-only toggles behave.
-- PNG export saves to `Pictures/InkFrame`.
-- GIF export completes and saves.
-- Video export completes or reports unsupported cleanly.
-- Archive export/import works from Studio and Gallery.
-- App pause/resume does not lose work.
-- Rotation/background/lock-screen recovery behaves acceptably.
+- create project;
+- save `.inkframe` archive;
+- open saved archive;
+- app pause/resume does not lose work;
+- force-close/relaunch recovery behaves acceptably;
+- archive migration works for intentionally supported older fixtures;
+- active frame, layers, canvas shape, artwork, and preferences remain intact after restore.
 
-## 7. Version and generated notes
+## 9. Export gate
 
-For a normal release, add accepted user-facing changes under `CHANGELOG.md`
-`[Unreleased]`. A large release may instead use
-`release-notes/<next-version>.md`. The version command fails before modifying
-metadata when neither source contains release notes.
+Verify:
 
-Replace the placeholders and run:
+- PNG sequence export;
+- GIF export;
+- MP4 export if enabled;
+- cancellation handling;
+- failure messages are explicit and non-destructive;
+- exported files open from the selected Android destination.
+
+## 10. Privacy and package boundary gate
+
+Verify from CI inspection and device behavior:
+
+- no `android.permission.INTERNET`;
+- no `android.webkit.WebView` markers;
+- no `addJavascriptInterface` markers;
+- no packaged `web/index.html` or browser JS runtime;
+- no analytics, advertising, account, crash-reporting, remote inference, or automatic upload prompt;
+- airplane mode does not block normal drawing, save, open, or export workflows.
+
+## 11. Version and generated notes
+
+For a normal release, add accepted user-facing changes under `CHANGELOG.md` `[Unreleased]` or create a non-empty `release-notes/<next-version>.md` for a large release.
+
+Then run the release preparation command and review the diff:
 
 ```bash
-./inkframe-cli bump <next-version> --date YYYY-MM-DD
-node tools/update-release-notes.mjs --check
-node web/tests/version-smoke.mjs
+./inkframe-cli gh-release <patch|minor|major|version>
+git status --short
+git diff
 ```
 
-Review `RELEASE_NOTES.md`, commit the changes, wait for every required CI gate,
-and run:
+Review `RELEASE_NOTES.md`, commit only reviewed release files, wait for every required CI gate, and run:
 
 ```bash
 ./inkframe-cli release-check
 ```
 
-## 8. Signing prerequisites
+## 12. Signing prerequisites
 
-Confirm all Actions secrets exist:
+Confirm production signing readiness in `RELEASING.md` before producing a public release.
 
-```text
-INKFRAME_KEYSTORE_BASE64
-INKFRAME_KEYSTORE_PASSWORD
-INKFRAME_KEY_ALIAS
-INKFRAME_KEY_PASSWORD
-```
+## 13. Publish and verify the signed release
 
-Confirm the original `.jks`, alias, and passwords are stored securely outside
-GitHub. See `RELEASING.md` for setup and recovery requirements.
+After the approved release candidate is on `main`, derive the tag from committed metadata and follow `RELEASING.md`.
 
-## 9. Publish and verify the signed release
-
-After the approved release candidate is merged to `main`, derive the tag from the
-committed metadata rather than typing a historical version:
-
-```bash
-VERSION="$(node -p "require('./web/metadata.json').version")"
-git tag -a "v${VERSION}" -m "InkFrame Studio ${VERSION}"
-git push origin main "v${VERSION}"
-```
-
-Watch:
-
-<https://github.com/artistso/inkframesv5/actions/workflows/release.yml>
-
-The workflow must pass signature and packaged-asset verification and publish:
+The release workflow must pass signature and package-boundary verification and publish:
 
 ```text
 InkFrame-v${VERSION}-signed.apk
@@ -170,5 +190,4 @@ InkFrame-v${VERSION}-signed.aab
 SHA256SUMS.txt
 ```
 
-Install the signed APK on a clean device and repeat the minimum Brush Engine V2,
-offline launch, archive, PNG, and GIF tests before distributing it broadly.
+Install the signed APK on a clean device and repeat the minimum native launch, S Pen drawing, archive, PNG, GIF, MP4, privacy, and lifecycle tests before distributing broadly.
