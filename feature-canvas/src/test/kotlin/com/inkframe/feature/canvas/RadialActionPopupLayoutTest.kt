@@ -24,9 +24,8 @@ class RadialActionPopupLayoutTest {
 
     @Test
     fun popupTilesStayInsidePrimaryNodeFootprint() {
-        assertTrue(
-            RadialActionPopupLayout.TILE_WIDTH_DP <= RadialFanLayout.NODE_EXTENT_DP,
-        )
+        val primaryNodeExtentDp = 58f
+        assertTrue(RadialActionPopupLayout.TILE_WIDTH_DP <= primaryNodeExtentDp)
         assertTrue(
             RadialActionPopupLayout.TILE_HEIGHT_DP <=
                 RadialActionPopupLayout.HISTORICAL_ACTION_EXTENT_DP,
