@@ -46,9 +46,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -998,39 +1001,33 @@ private fun ClosedBetaNode(
     fan: Fan,
     modifier: Modifier = Modifier,
 ) {
-    val fanOffsets = if (open) {
-        actions.indices.map { index ->
-            val offset = betaFanOffset(index, fan)
-            RadialFanOffset(offset.first.value, offset.second.value)
-        }
-    } else {
-        emptyList()
-    }
-    val bounds = RadialFanLayout.bounds(fanOffsets)
-
-    Box(
-        modifier = modifier
-            .offset(x = bounds.minXDp.dp, y = bounds.minYDp.dp)
-            .size(bounds.widthDp.dp, bounds.heightDp.dp),
-    ) {
+    Box(modifier.size(58.dp), contentAlignment = Alignment.Center) {
         if (open) {
+            val density = LocalDensity.current
             actions.forEachIndexed { index, action ->
-                val offset = fanOffsets[index]
-                ClosedBetaKid(
-                    action = action,
-                    palette = palette,
-                    modifier = Modifier.offset(
-                        x = bounds.actionXDp(offset).dp,
-                        y = bounds.actionYDp(offset).dp,
+                val offset = betaFanOffset(index, fan)
+                val popupOffset = with(density) {
+                    IntOffset(
+                        x = RadialActionPopupLayout.popupXDp(offset.first.value).dp.roundToPx(),
+                        y = RadialActionPopupLayout.popupYDp(offset.second.value).dp.roundToPx(),
+                    )
+                }
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = popupOffset,
+                    properties = PopupProperties(
+                        focusable = false,
+                        clippingEnabled = false,
                     ),
-                )
+                ) {
+                    ClosedBetaKid(action, palette)
+                }
             }
         }
 
         val shape = CircleShape
         Box(
             modifier = Modifier
-                .offset(x = bounds.nodeXDp.dp, y = bounds.nodeYDp.dp)
                 .size(58.dp)
                 .shadow(if (open) 24.dp else 14.dp, shape, clip = false)
                 .clip(shape)
@@ -1061,41 +1058,42 @@ private fun ClosedBetaNode(
 
 @Composable
 private fun ClosedBetaKid(action: BetaAction, palette: BetaPalette, modifier: Modifier = Modifier) {
-    val shape = CircleShape
+    val tileShape = RoundedCornerShape(0.dp)
     Box(
         modifier = modifier
-            .size(48.dp)
-            .shadow(16.dp, shape, clip = false)
-            .clip(shape)
+            .size(
+                RadialActionPopupLayout.TILE_WIDTH_DP.dp,
+                RadialActionPopupLayout.TILE_HEIGHT_DP.dp,
+            )
             .background(
                 when {
-                    action.color != null -> UiBrush.radialGradient(listOf(action.color, Color(0xAA14000E)))
+                    action.color != null -> UiBrush.linearGradient(listOf(action.color, Color(0xFF14000E)))
                     action.selected -> UiBrush.linearGradient(listOf(palette.accent, palette.accentDeep))
-                    else -> UiBrush.radialGradient(listOf(palette.glassStrong, palette.glassFill, Color(0x5514000E)))
+                    else -> UiBrush.linearGradient(listOf(palette.glassStrong, Color(0xFF14000E)))
                 },
+                tileShape,
             )
-            .border(if (action.selected) 2.dp else 1.dp, if (action.selected) palette.rim else palette.stroke, shape)
-            .clickable(onClick = action.onClick),
+            .border(
+                if (action.selected) 2.dp else 1.dp,
+                if (action.selected) palette.rim else palette.stroke,
+                tileShape,
+            )
+            .clickable(onClick = action.onClick)
+            .padding(horizontal = 3.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center,
     ) {
         androidx.compose.material3.Text(
-            text = if (action.color != null) "" else action.glyph.uppercase(),
+            text = action.label,
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 7.sp,
+            lineHeight = 8.sp,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
-        )
-        androidx.compose.material3.Text(
-            text = action.label,
-            color = palette.dim,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = .8.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 20.dp),
-            maxLines = 1,
+            maxLines = 2,
         )
     }
 }
+
 
 private fun betaFanOffset(index: Int, fan: Fan): Pair<Dp, Dp> {
     val step = 48f
