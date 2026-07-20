@@ -31,6 +31,22 @@ import java.io.OutputStream
  * MotionEvents (including historical batched samples and pressure) into engine
  * stroke events. Configured for OpenGL ES 3.0, RGBA8888, dirty rendering.
  */
+internal object CanvasViewportResizePolicy {
+    const val COLLAPSED_MAX_EXTENT_PX: Int = 1
+
+    fun isCollapsed(widthPx: Int, heightPx: Int): Boolean =
+        widthPx <= COLLAPSED_MAX_EXTENT_PX || heightPx <= COLLAPSED_MAX_EXTENT_PX
+
+    fun shouldFit(
+        viewportInitialized: Boolean,
+        oldWidthPx: Int,
+        oldHeightPx: Int,
+        newWidthPx: Int,
+        newHeightPx: Int,
+    ): Boolean = !viewportInitialized ||
+        (isCollapsed(oldWidthPx, oldHeightPx) && !isCollapsed(newWidthPx, newHeightPx))
+}
+
 @SuppressLint("ViewConstructor")
 class CanvasView(
     context: Context,
@@ -372,9 +388,16 @@ class CanvasView(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        val shouldFit = CanvasViewportResizePolicy.shouldFit(
+            viewportInitialized = viewportInitialized,
+            oldWidthPx = oldw,
+            oldHeightPx = oldh,
+            newWidthPx = w,
+            newHeightPx = h,
+        )
         viewW = w.toFloat().coerceAtLeast(1f)
         viewH = h.toFloat().coerceAtLeast(1f)
-        if (!viewportInitialized) {
+        if (shouldFit) {
             viewportInitialized = true
             fitToScreen()
         }

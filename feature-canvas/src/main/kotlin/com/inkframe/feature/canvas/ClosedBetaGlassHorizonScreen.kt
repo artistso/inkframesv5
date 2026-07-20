@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,15 +39,19 @@ import androidx.compose.ui.graphics.Brush as UiBrush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -290,27 +295,47 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         )
 
         val documentAspect = state.project.canvas.aspectRatio
-        val canvasWidthLimit = maxWidth * 0.64f
-        val canvasHeightLimit = maxHeight * 0.74f
-        val canvasWidth = minOf(canvasWidthLimit, canvasHeightLimit * documentAspect)
-        val canvasHeight = canvasWidth / documentAspect
-        val frameWidth = canvasWidth + 28.dp
-        val frameHeight = canvasHeight + 28.dp
-        val stageTop = (maxHeight - frameHeight) / 2 + 6.dp
-        val frameLeft = (maxWidth - frameWidth) / 2
-        val frameTop = stageTop
+        val localDensity = LocalDensity.current
+        val stagePlacement = GlassHorizonStageLayout.place(
+            viewportWidthDp = maxWidth.value,
+            viewportHeightDp = maxHeight.value,
+            documentAspect = documentAspect,
+            fontScale = localDensity.fontScale,
+            density = localDensity.density,
+        )
+        val hostWidth = stagePlacement.hostWidthDp.dp
+        val hostHeight = stagePlacement.hostHeightDp.dp
+        val canvasWidth = stagePlacement.canvasWidthDp.dp
+        val canvasHeight = stagePlacement.canvasHeightDp.dp
+        val frameWidth = stagePlacement.frameWidthDp.dp
+        val frameHeight = stagePlacement.frameHeightDp.dp
+        val frameLeft = stagePlacement.frameLeftDp.dp
+        val frameTop = stagePlacement.frameTopDp.dp
+
+        GlassHorizonTitle(
+            accent = palette.accent,
+            rose = palette.rose,
+            dim = palette.dim,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = GlassHorizonTitleSpec.TOP_OFFSET_DP.dp),
+        )
 
         ClosedBetaTopCluster(
             palette = palette,
             state = state,
+            compact = stagePlacement.compactCommands,
             onFit = { canvasView?.fitToScreen() },
             onTheme = { selectTheme(if (theme == BetaTheme.PLUM) BetaTheme.BLUE else BetaTheme.PLUM) },
-            modifier = Modifier.align(Alignment.TopCenter).offset(y = 12.dp),
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = stagePlacement.commandTopDp.dp),
         )
 
         ClosedBetaStage(
             state = state,
             palette = palette,
+            stageVisible = stagePlacement.stageVisible,
+            hostWidth = hostWidth,
+            hostHeight = hostHeight,
             canvasWidth = canvasWidth,
             canvasHeight = canvasHeight,
             frameWidth = frameWidth,
@@ -346,6 +371,14 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
         val rightX = maxWidth - 56.dp
         val bottomY = maxHeight - 54.dp
         val centerX = maxWidth / 2
+        val topNodeY = if (stagePlacement.compactCommands) {
+            (stagePlacement.commandBottomDp + GlassHorizonStageLayout.COMPACT_NODE_GAP_DP).dp
+        } else {
+            92.dp
+        }
+        val lineNodeY = if (stagePlacement.compactCommands) topNodeY + 128.dp else 220.dp
+        val fxNodeY = if (stagePlacement.compactCommands) topNodeY + 104.dp else 196.dp
+        val themesNodeY = if (stagePlacement.compactCommands) topNodeY + 196.dp else maxHeight * 0.50f
 
         ClosedBetaNode(
             node = BetaNode.TOOLS,
@@ -359,7 +392,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             fan = Fan.RIGHT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = 92.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = topNodeY),
         )
         ClosedBetaNode(
             node = BetaNode.LINE,
@@ -383,7 +416,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("REDO", selected = state.canRedo) { canvasView?.redo() },
             ),
             fan = Fan.RIGHT_DOWN,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = 220.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = lineNodeY),
         )
 
         ClosedBetaNode(
@@ -398,7 +431,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 }
             },
             fan = Fan.LEFT_DOWN,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = 92.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = topNodeY),
         )
         ClosedBetaNode(
             node = BetaNode.FX,
@@ -415,7 +448,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("REPORT") { state.statusMessage = "REPORT READY" },
             ),
             fan = Fan.LEFT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = 196.dp),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = fxNodeY),
         )
         ClosedBetaNode(
             node = BetaNode.THEMES,
@@ -427,7 +460,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) { selectTheme(BetaTheme.BLUE) },
             ),
             fan = Fan.LEFT_UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = maxHeight * 0.50f),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = themesNodeY),
         )
 
         ClosedBetaNode(
@@ -630,42 +663,79 @@ private fun BetaNode?.toggle(node: BetaNode): BetaNode? = if (this == node) null
 private fun ClosedBetaTopCluster(
     palette: BetaPalette,
     state: StudioState,
+    compact: Boolean,
     onFit: () -> Unit,
     onTheme: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClosedBetaPill("Engine · V2", palette, selected = true) { state.statusMessage = "ENGINE · V2" }
-            ClosedBetaPill("Brush Lab", palette, selected = true) { state.showBrushSettings = true }
+    if (compact) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ClosedBetaPill(if (state.isPlaying) "PAUSE" else "PLAY", palette, compact = true) {
+                state.togglePlay()
+            }
+            ClosedBetaPill("CENTER", palette, compact = true) { onFit() }
+            ClosedBetaPill("THEME", palette, compact = true) { onTheme() }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-            ClosedBetaPill(if (state.isPlaying) "PAUSE" else "PLAY", palette) { state.togglePlay() }
-            ClosedBetaPill("CENTER", palette) { onFit() }
-            ClosedBetaPill("ALL RINGS", palette) { state.statusMessage = "ALL RINGS" }
-            ClosedBetaPill("SCRUB", palette) { state.statusMessage = "SCRUB" }
-            ClosedBetaPill("THEME", palette) { onTheme() }
+    } else {
+        Column(
+            modifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ClosedBetaPill("Engine · V2", palette, selected = true) {
+                    state.statusMessage = "ENGINE · V2"
+                }
+                ClosedBetaPill("Brush Lab", palette, selected = true) {
+                    state.showBrushSettings = true
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                ClosedBetaPill(if (state.isPlaying) "PAUSE" else "PLAY", palette) { state.togglePlay() }
+                ClosedBetaPill("CENTER", palette) { onFit() }
+                ClosedBetaPill("ALL RINGS", palette) { state.statusMessage = "ALL RINGS" }
+                ClosedBetaPill("SCRUB", palette) { state.statusMessage = "SCRUB" }
+                ClosedBetaPill("THEME", palette) { onTheme() }
+            }
         }
     }
 }
 
 @Composable
-private fun ClosedBetaPill(text: String, palette: BetaPalette, selected: Boolean = false, onClick: () -> Unit) {
+private fun ClosedBetaPill(
+    text: String,
+    palette: BetaPalette,
+    selected: Boolean = false,
+    compact: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val pillHeight = if (compact) 34.dp else if (selected) 42.dp else 34.dp
+    val pillWidth = if (compact) 64.dp else if (selected) 92.dp else 78.dp
     Box(
         modifier = Modifier
-            .height(if (selected) 42.dp else 34.dp)
-            .width(if (selected) 92.dp else 78.dp)
+            .height(pillHeight)
+            .width(pillWidth)
             .shadow(16.dp, RoundedCornerShape(18.dp), clip = false)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 if (selected) UiBrush.linearGradient(listOf(palette.accent, palette.accentDeep))
-                else UiBrush.linearGradient(listOf(Color(0x6614000E), palette.glassStrong))
+                else UiBrush.linearGradient(listOf(Color(0x6614000E), palette.glassStrong)),
             )
             .border(1.dp, palette.rim, RoundedCornerShape(18.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.material3.Text(text, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+        androidx.compose.material3.Text(
+            text = text,
+            color = Color.White,
+            fontSize = if (compact) 8.sp else 9.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -673,6 +743,9 @@ private fun ClosedBetaPill(text: String, palette: BetaPalette, selected: Boolean
 private fun ClosedBetaStage(
     state: StudioState,
     palette: BetaPalette,
+    stageVisible: Boolean,
+    hostWidth: Dp,
+    hostHeight: Dp,
     canvasWidth: Dp,
     canvasHeight: Dp,
     frameWidth: Dp,
@@ -683,80 +756,106 @@ private fun ClosedBetaStage(
     onArtworkChanged: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier.size(frameWidth, frameHeight), contentAlignment = Alignment.Center) {
-        ClosedBetaFrameBoard(
-            state = state,
-            palette = palette,
-            width = frameWidth,
-            height = frameHeight,
-            onFrame = onFrame,
-            onAddFrame = onAddFrame,
-            modifier = Modifier.align(Alignment.Center),
-        )
-        val frameShape = RoundedCornerShape(30.dp)
-        Box(
-            modifier = Modifier
-                .size(frameWidth, frameHeight)
-                .shadow(30.dp, frameShape, clip = false)
-                .clip(frameShape)
-                .background(UiBrush.linearGradient(listOf(palette.glassStrong, palette.glassFill, Color(0x5514000E))))
-                .border(1.dp, palette.stroke, frameShape)
-                .padding(14.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(canvasWidth, canvasHeight)
+    val containerWidth = if (stageVisible) frameWidth else hostWidth
+    val containerHeight = if (stageVisible) frameHeight else hostHeight
+    val frameShape = RoundedCornerShape(30.dp)
+    val canvasShape = RoundedCornerShape(16.dp)
+
+    Box(modifier.size(containerWidth, containerHeight), contentAlignment = Alignment.Center) {
+        if (stageVisible) {
+            ClosedBetaFrameBoard(
+                state = state,
+                palette = palette,
+                width = frameWidth,
+                height = frameHeight,
+                onFrame = onFrame,
+                onAddFrame = onAddFrame,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
+        key("persistent-gl-host") {
+            val frameModifier = Modifier
+                .size(containerWidth, containerHeight)
+                .let { base ->
+                    if (stageVisible) {
+                        base
+                            .shadow(30.dp, frameShape, clip = false)
+                            .clip(frameShape)
+                            .background(
+                                UiBrush.linearGradient(
+                                    listOf(palette.glassStrong, palette.glassFill, Color(0x5514000E)),
+                                ),
+                            )
+                            .border(1.dp, palette.stroke, frameShape)
+                    } else {
+                        base
+                    }
+                }
+
+            Box(frameModifier) {
+                val hostModifier = Modifier
+                    .size(hostWidth, hostHeight)
                     .align(Alignment.Center)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(palette.blush)
-                    .border(1.dp, Color(0x6614000E), RoundedCornerShape(16.dp)),
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        CanvasView(
-                            context = context,
-                            canvasWidth = state.project.canvas.widthPx,
-                            canvasHeight = state.project.canvas.heightPx,
-                            sceneProvider = { state.buildDrawList() },
-                            backgroundColorProvider = { state.project.canvas.backgroundColor },
-                            strokeConfig = {
-                                CanvasView.StrokeConfig(
-                                    targetSurfaceId = state.ensureActiveCel(),
-                                    brush = state.brush,
-                                    color = state.color,
-                                )
-                            },
-                            onEngineReady = state::bindEngine,
-                        ).also { view ->
-                            onCanvasReady(view)
-                            view.setShowChecker(state.showChecker)
-                            state.onUiInvalidate = { view.post { view.requestRender() } }
-                            state.postEngineWork = { block -> view.runOnEngine(block) }
-                            view.onViewportChanged = { scale -> view.post { state.setZoom(scale) } }
-                            view.onContextRestored = {
-                                view.requestRender()
-                                state.statusMessage = "ARTWORK RESTORED"
-                            }
-                            view.onStrokeInput = { status -> state.statusMessage = status }
-                            view.onArtworkChanged = onArtworkChanged
-                            view.onColorSampled = { sampled ->
-                                state.eyedropperActive = false
-                                view.eyedropperActive = false
-                                sampled?.let { state.commitColor(it.withAlpha(1f)) }
-                            }
-                            view.onFilled = {
-                                state.fillActive = false
-                                view.fillActive = false
-                            }
+                    .let { base ->
+                        if (stageVisible) {
+                            base
+                                .clip(canvasShape)
+                                .background(palette.blush)
+                                .border(1.dp, Color(0x6614000E), canvasShape)
+                        } else {
+                            base
                         }
-                    },
-                    update = { view ->
-                        view.eyedropperActive = state.eyedropperActive
-                        view.fillActive = state.fillActive
-                        view.setShowChecker(state.showChecker)
-                    },
-                )
+                    }
+
+                Box(hostModifier) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { context ->
+                            CanvasView(
+                                context = context,
+                                canvasWidth = state.project.canvas.widthPx,
+                                canvasHeight = state.project.canvas.heightPx,
+                                sceneProvider = { state.buildDrawList() },
+                                backgroundColorProvider = { state.project.canvas.backgroundColor },
+                                strokeConfig = {
+                                    CanvasView.StrokeConfig(
+                                        targetSurfaceId = state.ensureActiveCel(),
+                                        brush = state.brush,
+                                        color = state.color,
+                                    )
+                                },
+                                onEngineReady = state::bindEngine,
+                            ).also { view ->
+                                onCanvasReady(view)
+                                view.setShowChecker(state.showChecker)
+                                state.onUiInvalidate = { view.post { view.requestRender() } }
+                                state.postEngineWork = { block -> view.runOnEngine(block) }
+                                view.onViewportChanged = { scale -> view.post { state.setZoom(scale) } }
+                                view.onContextRestored = {
+                                    view.requestRender()
+                                    state.statusMessage = "ARTWORK RESTORED"
+                                }
+                                view.onStrokeInput = { status -> state.statusMessage = status }
+                                view.onArtworkChanged = onArtworkChanged
+                                view.onColorSampled = { sampled ->
+                                    state.eyedropperActive = false
+                                    view.eyedropperActive = false
+                                    sampled?.let { state.commitColor(it.withAlpha(1f)) }
+                                }
+                                view.onFilled = {
+                                    state.fillActive = false
+                                    view.fillActive = false
+                                }
+                            }
+                        },
+                        update = { view ->
+                            view.eyedropperActive = state.eyedropperActive
+                            view.fillActive = state.fillActive
+                            view.setShowChecker(state.showChecker)
+                        },
+                    )
+                }
             }
         }
     }
@@ -902,13 +1001,30 @@ private fun ClosedBetaNode(
     fan: Fan,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier, contentAlignment = Alignment.Center) {
+    Box(modifier.size(58.dp), contentAlignment = Alignment.Center) {
         if (open) {
+            val density = LocalDensity.current
             actions.forEachIndexed { index, action ->
                 val offset = betaFanOffset(index, fan)
-                ClosedBetaKid(action, palette, Modifier.offset(x = offset.first, y = offset.second))
+                val popupOffset = with(density) {
+                    IntOffset(
+                        x = RadialActionPopupLayout.popupXDp(offset.first.value).dp.roundToPx(),
+                        y = RadialActionPopupLayout.popupYDp(offset.second.value).dp.roundToPx(),
+                    )
+                }
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = popupOffset,
+                    properties = PopupProperties(
+                        focusable = false,
+                        clippingEnabled = false,
+                    ),
+                ) {
+                    ClosedBetaKid(action, palette)
+                }
             }
         }
+
         val shape = CircleShape
         Box(
             modifier = Modifier
@@ -942,41 +1058,42 @@ private fun ClosedBetaNode(
 
 @Composable
 private fun ClosedBetaKid(action: BetaAction, palette: BetaPalette, modifier: Modifier = Modifier) {
-    val shape = CircleShape
+    val tileShape = RoundedCornerShape(0.dp)
     Box(
         modifier = modifier
-            .size(48.dp)
-            .shadow(16.dp, shape, clip = false)
-            .clip(shape)
+            .size(
+                RadialActionPopupLayout.TILE_WIDTH_DP.dp,
+                RadialActionPopupLayout.TILE_HEIGHT_DP.dp,
+            )
             .background(
                 when {
-                    action.color != null -> UiBrush.radialGradient(listOf(action.color, Color(0xAA14000E)))
+                    action.color != null -> UiBrush.linearGradient(listOf(action.color, Color(0xFF14000E)))
                     action.selected -> UiBrush.linearGradient(listOf(palette.accent, palette.accentDeep))
-                    else -> UiBrush.radialGradient(listOf(palette.glassStrong, palette.glassFill, Color(0x5514000E)))
+                    else -> UiBrush.linearGradient(listOf(palette.glassStrong, Color(0xFF14000E)))
                 },
+                tileShape,
             )
-            .border(if (action.selected) 2.dp else 1.dp, if (action.selected) palette.rim else palette.stroke, shape)
-            .clickable(onClick = action.onClick),
+            .border(
+                if (action.selected) 2.dp else 1.dp,
+                if (action.selected) palette.rim else palette.stroke,
+                tileShape,
+            )
+            .clickable(onClick = action.onClick)
+            .padding(horizontal = 3.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center,
     ) {
         androidx.compose.material3.Text(
-            text = if (action.color != null) "" else action.glyph.uppercase(),
+            text = action.label,
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 7.sp,
+            lineHeight = 8.sp,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
-        )
-        androidx.compose.material3.Text(
-            text = action.label,
-            color = palette.dim,
-            fontSize = 8.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = .8.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).offset(y = 20.dp),
-            maxLines = 1,
+            maxLines = 2,
         )
     }
 }
+
 
 private fun betaFanOffset(index: Int, fan: Fan): Pair<Dp, Dp> {
     val step = 48f

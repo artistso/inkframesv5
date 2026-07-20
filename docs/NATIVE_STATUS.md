@@ -34,9 +34,13 @@ The active Kotlin runtime currently includes these bounded parity slices:
 - a five-layer native Glass Horizon theme world: horizon, rays, fine grain, vignette, and transient glint;
 - the exact binding rose/plum horizon progression plus a complete blue counterpart with persistent native theme selection;
 - landscape corner-derived gradient geometry and draw-time ray feathering that remain consistent across API 26 through API 36;
+- the exact source identity `InkFrame` / `The Glass Horizon`, with uppercase visual presentation and a single mixed-case TalkBack heading;
+- a fixed top-center display-serif title treatment with explicit size, line height, tracking, theme gradient, subtitle contrast plate, and accessibility semantics;
+- font-scale-aware header reservation that prevents the title and two-row command cluster from overlapping the OpenGL artwork stage;
+- bounded stage fitting for normal, compact, extreme-aspect, and no-room freeform windows, including frame-badge clearance above the scrub rail;
 - crash-safe local project recovery and native archive save/open.
 
-Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, final title typography, approved frame-glass optics, eight-node drag persistence, spring radial animation, and the complete live stylus lens are not yet native parity claims.
+Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, owner-approved final font matching, approved frame-glass optics, eight-node drag persistence, spring radial animation, and the complete live stylus lens are not yet native parity claims.
 
 ## Web reference boundary
 
