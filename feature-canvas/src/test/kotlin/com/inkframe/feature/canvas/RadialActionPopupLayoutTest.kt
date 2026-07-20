@@ -21,4 +21,15 @@ class RadialActionPopupLayoutTest {
         assertTrue(RadialActionPopupLayout.TILE_WIDTH_DP > 0f)
         assertTrue(RadialActionPopupLayout.TILE_HEIGHT_DP > 0f)
     }
+
+    @Test
+    fun popupTilesStayInsidePrimaryNodeFootprint() {
+        assertTrue(
+            RadialActionPopupLayout.TILE_WIDTH_DP <= RadialFanLayout.NODE_EXTENT_DP,
+        )
+        assertTrue(
+            RadialActionPopupLayout.TILE_HEIGHT_DP <=
+                RadialActionPopupLayout.HISTORICAL_ACTION_EXTENT_DP,
+        )
+    }
 }
