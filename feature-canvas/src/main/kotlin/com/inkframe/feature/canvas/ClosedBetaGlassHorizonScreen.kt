@@ -46,12 +46,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -1001,41 +998,39 @@ private fun ClosedBetaNode(
     fan: Fan,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier, contentAlignment = Alignment.Center) {
+    val fanOffsets = if (open) {
+        actions.indices.map { index ->
+            val offset = betaFanOffset(index, fan)
+            RadialFanOffset(offset.first.value, offset.second.value)
+        }
+    } else {
+        emptyList()
+    }
+    val bounds = RadialFanLayout.bounds(fanOffsets)
+
+    Box(
+        modifier = modifier
+            .offset(x = bounds.minXDp.dp, y = bounds.minYDp.dp)
+            .size(bounds.widthDp.dp, bounds.heightDp.dp),
+    ) {
         if (open) {
-            val density = LocalDensity.current
             actions.forEachIndexed { index, action ->
-                val offset = betaFanOffset(index, fan)
-                val popupOffset = with(density) {
-                    IntOffset(
-                        x = RadialPopupLayout.compensatedX(offset.first.value).dp.roundToPx(),
-                        y = RadialPopupLayout.compensatedY(offset.second.value).dp.roundToPx(),
-                    )
-                }
-                Popup(
-                    alignment = Alignment.TopStart,
-                    offset = popupOffset,
-                    properties = PopupProperties(
-                        focusable = false,
-                        clippingEnabled = false,
+                val offset = fanOffsets[index]
+                ClosedBetaKid(
+                    action = action,
+                    palette = palette,
+                    modifier = Modifier.offset(
+                        x = bounds.actionXDp(offset).dp,
+                        y = bounds.actionYDp(offset).dp,
                     ),
-                ) {
-                    Box(
-                        modifier = Modifier.padding(
-                            start = RadialPopupLayout.START_PADDING_DP.dp,
-                            top = RadialPopupLayout.TOP_PADDING_DP.dp,
-                            end = RadialPopupLayout.END_PADDING_DP.dp,
-                            bottom = RadialPopupLayout.BOTTOM_PADDING_DP.dp,
-                        ),
-                    ) {
-                        ClosedBetaKid(action, palette)
-                    }
-                }
+                )
             }
         }
+
         val shape = CircleShape
         Box(
             modifier = Modifier
+                .offset(x = bounds.nodeXDp.dp, y = bounds.nodeYDp.dp)
                 .size(58.dp)
                 .shadow(if (open) 24.dp else 14.dp, shape, clip = false)
                 .clip(shape)
