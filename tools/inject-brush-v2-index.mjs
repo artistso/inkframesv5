@@ -5,6 +5,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { injectCanvasShape } from './inject-canvas-shape.mjs';
+import { injectViewportGestures } from './inject-viewport-gestures.mjs';
 import { injectOnionSkinStudio } from './inject-onion-skin-studio.mjs';
 import { injectFeedbackReport } from './inject-feedback-report.mjs';
 import { injectStaticBackground } from './inject-static-background.mjs';
@@ -38,6 +39,7 @@ function replaceOnce(source, needle, replacement, label) {
 
 const scriptsNeedle = '<script src="brush-math.js"></script>\n<script src="flood-fill.js"></script>';
 const nativeScript = diagnostics ? '<script src="brush-engine-v2/native.js"></script>\n' : '';
+const performanceUiScript = diagnostics ? '<script src="brush-engine-v2/performance-ui.js"></script>\n' : '';
 const scripts = `<script src="brush-math.js"></script>
 <!-- INKFRAME_BRUSH_V2_RUNTIME: generated into APK assets only -->
 <script>window.InkFrameBuild=Object.freeze(${JSON.stringify(buildConfig)});</script>
@@ -61,12 +63,13 @@ ${nativeScript}<script src="brush-engine-v2/engine.js"></script>
 <script src="brush-engine-v2/adapter.js"></script>
 <script src="brush-engine-v2/session.js"></script>
 <script src="brush-engine-v2/ghost-runtime.js"></script>
+<script src="brush-engine-v2/performance.js"></script>
 <script src="brush-engine-v2/input.js"></script>
 <script src="brush-engine-v2/coverage-ui.js"></script>
 <script src="brush-engine-v2/stabilizer-ui.js"></script>
 <script src="brush-engine-v2/ghost-ui.js"></script>
 <script src="brush-engine-v2/lab-ui.js"></script>
-<script src="brush-engine-v2/preset-ui.js"></script>
+${performanceUiScript}<script src="brush-engine-v2/preset-ui.js"></script>
 <script src="brush-engine-v2/preview-compare.js"></script>
 <script src="brush-engine-v2/preview-pad.js"></script>
 <script src="flood-fill.js"></script>`;
@@ -161,6 +164,7 @@ const upHook = `  const up=e=>{
 html = replaceOnce(html, upNeedle, upHook, 'pointerup handoff');
 
 html = injectCanvasShape(html, replaceOnce);
+html = injectViewportGestures(html, replaceOnce);
 html = injectOnionSkinStudio(html, replaceOnce);
 html = injectFeedbackReport(html, replaceOnce);
 html = injectStaticBackground(html, replaceOnce);
@@ -172,6 +176,8 @@ const requiredMarkers = [
   `"diagnostics":${diagnostics}`,
   `"defaultBrushEngine":"${defaultBrushEngine}"`,
   'creator-statement.js',
+  'viewport-gestures.js',
+  'InkFrameViewportEnvironment',
   'onion-skin-studio.js',
   'InkFrameOnionStudioEnvironment',
   'feedback-report.js',
@@ -194,6 +200,7 @@ const requiredMarkers = [
   'brush-engine-v2/radius.js',
   'brush-engine-v2/ghost-trail.js',
   'brush-engine-v2/ghost-runtime.js',
+  'brush-engine-v2/performance.js',
   'brush-engine-v2/runtime.js',
   'brush-engine-v2/session.js',
   'brush-engine-v2/input.js',
@@ -206,12 +213,15 @@ const requiredMarkers = [
   'brush-engine-v2/preview-compare.js',
   'brush-engine-v2/preview-pad.js',
 ];
-if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js');
+if (diagnostics) requiredMarkers.push('brush-engine-v2/native.js', 'brush-engine-v2/performance-ui.js');
 for (const marker of requiredMarkers) {
   if (!html.includes(marker)) throw new Error(`Generated index failed verification: ${marker}`);
 }
 if (!diagnostics && html.includes('<script src="brush-engine-v2/native.js"></script>')) {
   throw new Error('Release index must not load native diagnostics');
+}
+if (!diagnostics && html.includes('<script src="brush-engine-v2/performance-ui.js"></script>')) {
+  throw new Error('Release index must not load performance diagnostics');
 }
 
 mkdirSync(dirname(output), { recursive: true });

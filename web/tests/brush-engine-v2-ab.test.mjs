@@ -19,6 +19,7 @@ const ghostTrailFile = resolve(root, 'web/brush-engine-v2/ghost-trail.js');
 const adapterFile = resolve(root, 'web/brush-engine-v2/adapter.js');
 const sessionFile = resolve(root, 'web/brush-engine-v2/session.js');
 const ghostRuntimeFile = resolve(root, 'web/brush-engine-v2/ghost-runtime.js');
+const performanceFile = resolve(root, 'web/brush-engine-v2/performance.js');
 const inputFile = resolve(root, 'web/brush-engine-v2/input.js');
 const temp = mkdtempSync(resolve(tmpdir(), 'inkframe-v2-ab-'));
 const generated = resolve(temp, 'index.html');
@@ -54,9 +55,10 @@ try {
     'brush-engine-v2/rasterizer.js','brush-engine-v2/ghost-trail.js','brush-engine-v2/trace.js',
     'brush-engine-v2/runtime.js','brush-engine-v2/native.js','brush-engine-v2/engine.js',
     'brush-engine-v2/tuning.js','brush-engine-v2/user-presets.js','brush-engine-v2/adapter.js',
-    'brush-engine-v2/session.js','brush-engine-v2/ghost-runtime.js','brush-engine-v2/input.js',
-    'brush-engine-v2/coverage-ui.js','brush-engine-v2/stabilizer-ui.js','brush-engine-v2/ghost-ui.js',
-    'brush-engine-v2/lab-ui.js','brush-engine-v2/preset-ui.js','brush-engine-v2/preview-pad.js',
+    'brush-engine-v2/session.js','brush-engine-v2/ghost-runtime.js','brush-engine-v2/performance.js',
+    'brush-engine-v2/input.js','brush-engine-v2/coverage-ui.js','brush-engine-v2/stabilizer-ui.js',
+    'brush-engine-v2/ghost-ui.js','brush-engine-v2/lab-ui.js','brush-engine-v2/preset-ui.js',
+    'brush-engine-v2/preview-pad.js',
   ];
   for (const src of expectedScripts) {
     assert.ok(html.includes(`<script src="${src}"></script>`), `missing generated script tag: ${src}`);
@@ -72,7 +74,8 @@ try {
   assert.ok(html.indexOf('brush-engine-v2/native.js') < html.indexOf('brush-engine-v2/adapter.js'));
   assert.ok(html.indexOf('brush-engine-v2/adapter.js') < html.indexOf('brush-engine-v2/session.js'));
   assert.ok(html.indexOf('brush-engine-v2/session.js') < html.indexOf('brush-engine-v2/ghost-runtime.js'));
-  assert.ok(html.indexOf('brush-engine-v2/ghost-runtime.js') < html.indexOf('brush-engine-v2/input.js'));
+  assert.ok(html.indexOf('brush-engine-v2/ghost-runtime.js') < html.indexOf('brush-engine-v2/performance.js'));
+  assert.ok(html.indexOf('brush-engine-v2/performance.js') < html.indexOf('brush-engine-v2/input.js'));
   assert.ok(html.indexOf('brush-engine-v2/coverage-ui.js') < html.indexOf('brush-engine-v2/stabilizer-ui.js'));
   assert.ok(html.indexOf('brush-engine-v2/stabilizer-ui.js') < html.indexOf('brush-engine-v2/ghost-ui.js'));
   assert.ok(html.indexOf('brush-engine-v2/ghost-ui.js') < html.indexOf('brush-engine-v2/lab-ui.js'));
@@ -167,7 +170,69 @@ try {
   assert.equal(tuning.presetValue('direct').radiusMode, 'guarded');
   assert.equal(tuning.presetValue('direct').contactMode, 'strict');
 
-  console.log('✅ Brush Engine V2 debug preview-pad integration tests passed');
+  const frameCallbacks = [];
+  let performanceActive = false, performanceMoves = 0, performanceEnds = 0;
+  let liveRenders = 0, commits = 0, gradients = 0, stampDraws = 0;
+  const makeGradient = () => { gradients++; return { addColorStop() {} }; };
+  const makeContext = canvas => ({
+    canvas, save() {}, restore() {}, beginPath() {}, arc() {}, fill() {}, moveTo() {}, lineTo() {}, stroke() {},
+    drawImage() { stampDraws++; }, createRadialGradient: makeGradient,
+  });
+  const ownerDocument = { createElement() {
+    const canvas = { width:0, height:0, ownerDocument };
+    canvas.getContext = () => makeContext(canvas);
+    return canvas;
+  } };
+  const targetCanvas = { ownerDocument };
+  const targetContext = makeContext(targetCanvas);
+  let performanceEnv = null;
+  const performanceAdapter = {
+    begin(event, env) { performanceActive = true; performanceEnv = env; env.renderLive(); return true; },
+    move() { performanceMoves++; performanceEnv.renderLive(); return true; },
+    end() { performanceEnds++; performanceActive = false; performanceEnv.renderLive(); performanceEnv.commit(); return true; },
+    isActive: () => performanceActive,
+  };
+  const performanceSandbox = {
+    module:{exports:{}}, exports:{}, console,
+    performance:{now:()=>0},
+    requestAnimationFrame(callback) { frameCallbacks.push(callback); return frameCallbacks.length; },
+    cancelAnimationFrame() {},
+    InkFrameBrushV2:{
+      paintRoundDab() {},
+      ribbonGeometry(from,to) { return { distance:Math.hypot(to.x-from.x,to.y-from.y),radius:2,coreRadius:1,opacity:1,edgeAlpha:0 }; },
+      ribbonGapLimit() { return 100; },
+    },
+    InkFrameBrushV2Adapter:performanceAdapter,
+  };
+  vm.runInNewContext(readFileSync(performanceFile, 'utf8'), performanceSandbox, { filename:'performance.js' });
+  assert.equal(performanceAdapter.__performanceBudgetInstalled, true);
+  const dab = { x:10,y:10,radius:4,opacity:1,hardness:.9,composite:'source-over',coverage:'dabs',strokeStart:true,strokeIndex:0,strokeId:1,brushId:'ink' };
+  performanceSandbox.InkFrameBrushV2.paintRoundDab(targetContext, dab, '#123456');
+  performanceSandbox.InkFrameBrushV2.paintRoundDab(targetContext, Object.assign({}, dab, { x:12,strokeStart:false,strokeIndex:1 }), '#123456');
+  assert.equal(stampDraws, 2, 'soft dabs should draw cached stamp canvases');
+  assert.equal(gradients, 1, 'equal soft dabs must reuse one radial-gradient stamp');
+
+  const env = { renderLive() { liveRenders++; }, commit() { commits++; } };
+  performanceAdapter.begin({ preventDefault() {} }, env);
+  assert.equal(liveRenders, 1, 'stroke begin must render once');
+  for (let index=0; index<12; index++) performanceAdapter.move({ preventDefault() {} });
+  assert.equal(performanceMoves, 0, 'pointer moves must wait for the frame budget');
+  performanceAdapter.flushPerformanceQueue();
+  assert.equal(performanceMoves, 12, 'frame flush must preserve every queued move');
+  assert.equal(liveRenders, 2, 'multiple eraser invalidations must collapse to one live render');
+  for (let index=0; index<5; index++) performanceAdapter.move({ preventDefault() {} });
+  performanceAdapter.end({ preventDefault() {} });
+  assert.equal(performanceMoves, 17, 'pointer end must flush pending input before commit');
+  assert.equal(performanceEnds, 1);
+  assert.equal(commits, 1);
+  assert.equal(liveRenders, 2, 'final commit must replace a redundant scheduled live render');
+  const performanceStats = performanceAdapter.performanceStats();
+  assert.equal(performanceStats.queuedEvents, 17);
+  assert.equal(performanceStats.liveRenders, 2);
+  assert.equal(performanceStats.stampMisses, 1);
+  assert.equal(performanceStats.stampHits, 1);
+
+  console.log('✅ Brush Engine V2 debug assets, frame budget, eraser coalescing, and soft-dab cache passed');
 } finally {
   rmSync(temp, { recursive:true, force:true });
 }
