@@ -43,7 +43,15 @@ class CanvasView(
 ) : GLSurfaceView(context) {
 
     /** What to draw with right now and where (the active cel's surface). */
-    data class StrokeConfig(val targetSurfaceId: Long, val brush: Brush, val color: RgbaColor)
+    data class StrokeConfig(
+        val targetSurfaceId: Long,
+        val brush: Brush,
+        val color: RgbaColor,
+        /** True only when this gesture reserved a new, still-blank document cel. */
+        val targetWasCreated: Boolean = false,
+        /** Removes that reserved cel if Android cancels before pixels are committed. */
+        val rollbackTarget: () -> Unit = {},
+    )
 
     private val renderer: CanvasRenderer
 
@@ -92,19 +100,25 @@ class CanvasView(
     /** Visible QA signal proving that Android contact reached the native canvas. */
     var onStrokeInput: ((String) -> Unit)? = null
 
+    /** Invoked before resolving the stroke target; the host uses this to stop playback. */
+    var onStrokeStarted: (() -> Unit)? = null
+
     /** Invoked on the main thread after pixels have changed and recovery should be refreshed. */
     var onArtworkChanged: (() -> Unit)? = null
 
     /** Flood-fills the active cel at a view-space point with the current stroke colour. */
-    private fun floodFillAtView(vx: Float, vy: Float) {
-        val cfg = strokeConfig()
+    private fun floodFillAtView(vx: Float, vy: Float, cfg: StrokeConfig) {
         val canvas = toCanvas(vx, vy)
         val px = canvas.x.toInt()
         val py = canvas.y.toInt()
         renderer.post(
             CanvasRenderer.EngineEvent.Run { engine ->
                 val changed = engine.floodFill(cfg.targetSurfaceId, px, py, cfg.color)
+                if (!changed && cfg.targetWasCreated) {
+                    engine.releaseSurface(cfg.targetSurfaceId)
+                }
                 post {
+                    if (!changed && cfg.targetWasCreated) cfg.rollbackTarget()
                     onFilled?.invoke(changed)
                     if (changed) onArtworkChanged?.invoke()
                 }
@@ -385,6 +399,9 @@ class CanvasView(
     private enum class Mode { IDLE, DRAW, NAVIGATE }
     private var mode = Mode.IDLE
     private var physicalEraserStroke = false
+    private var drawPointerId = -1
+    private var drawToolType = MotionEvent.TOOL_TYPE_UNKNOWN
+    private var activeStrokeConfig: StrokeConfig? = null
 
     // Cached previous positions of the two navigation pointers (by pointer id).
     private var navIdA = -1
@@ -394,24 +411,70 @@ class CanvasView(
 
     private fun toCanvas(vx: Float, vy: Float): Vec2 = viewport.viewToCanvas(Vec2(vx, vy))
 
+    private fun sample(event: MotionEvent, pointerIndex: Int, historyIndex: Int = -1): InputSample {
+        val x: Float
+        val y: Float
+        val rawPressure: Float
+        val timeMs: Long
+        if (historyIndex >= 0) {
+            x = event.getHistoricalX(pointerIndex, historyIndex)
+            y = event.getHistoricalY(pointerIndex, historyIndex)
+            rawPressure = event.getHistoricalPressure(pointerIndex, historyIndex).coerceIn(0f, 1f)
+            timeMs = event.getHistoricalEventTime(historyIndex)
+        } else {
+            x = event.getX(pointerIndex)
+            y = event.getY(pointerIndex)
+            rawPressure = event.getPressure(pointerIndex).coerceIn(0f, 1f)
+            timeMs = event.eventTime
+        }
+        val pressure = if (rawPressure <= 0f) 0.5f else rawPressure
+        return InputSample(toCanvas(x, y), pressure, timeMs)
+    }
+
+    private fun postSamplesThrough(event: MotionEvent, pointerIndex: Int) {
+        for (historyIndex in 0 until event.historySize) {
+            renderer.post(
+                CanvasRenderer.EngineEvent.Extend(sample(event, pointerIndex, historyIndex)),
+            )
+        }
+        renderer.post(CanvasRenderer.EngineEvent.Extend(sample(event, pointerIndex)))
+    }
+
+    private fun clearDrawTracking() {
+        physicalEraserStroke = false
+        drawPointerId = -1
+        drawToolType = MotionEvent.TOOL_TYPE_UNKNOWN
+        activeStrokeConfig = null
+    }
+
+    private fun cancelActiveStroke() {
+        val cfg = activeStrokeConfig
+        renderer.post(
+            CanvasRenderer.EngineEvent.Cancel(releaseSurface = cfg?.targetWasCreated == true),
+        )
+        if (cfg?.targetWasCreated == true) cfg.rollbackTarget()
+        clearDrawTracking()
+        mode = Mode.IDLE
+    }
+
+    private fun commitActiveStroke(event: MotionEvent, pointerIndex: Int) {
+        val cfg = activeStrokeConfig ?: return
+        postSamplesThrough(event, pointerIndex)
+        renderer.post(CanvasRenderer.EngineEvent.End)
+        onStrokeInput?.invoke(
+            if (physicalEraserStroke) {
+                "ERASER COMMITTED · CEL ${cfg.targetSurfaceId}"
+            } else {
+                "INK COMMITTED · CEL ${cfg.targetSurfaceId}"
+            },
+        )
+        onArtworkChanged?.invoke()
+        clearDrawTracking()
+        mode = Mode.IDLE
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val cfg = strokeConfig()
-
-        fun sample(idx: Int, hist: Int = -1): InputSample {
-            val x: Float; val y: Float; val p: Float
-            if (hist >= 0) {
-                x = event.getHistoricalX(idx, hist)
-                y = event.getHistoricalY(idx, hist)
-                p = event.getHistoricalPressure(idx, hist).coerceIn(0f, 1f)
-            } else {
-                x = event.getX(idx); y = event.getY(idx)
-                p = event.getPressure(idx).coerceIn(0f, 1f)
-            }
-            val pressure = if (p <= 0f) 0.5f else p
-            return InputSample(toCanvas(x, y), pressure, event.eventTime)
-        }
-
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
@@ -426,11 +489,19 @@ class CanvasView(
                         // Bucket: flood-fill the active cel at the tap; don't draw.
                         mode = Mode.IDLE
                         physicalEraserStroke = false
-                        floodFillAtView(event.getX(0), event.getY(0))
+                        onStrokeStarted?.invoke()
+                        val cfg = strokeConfig()
+                        floodFillAtView(event.getX(0), event.getY(0), cfg)
                     }
                     else -> {
+                        onStrokeStarted?.invoke()
+                        val cfg = strokeConfig()
                         mode = Mode.DRAW
-                        val toolType = event.getToolType(0)
+                        val pointerIndex = event.actionIndex
+                        val toolType = event.getToolType(pointerIndex)
+                        drawPointerId = event.getPointerId(pointerIndex)
+                        drawToolType = toolType
+                        activeStrokeConfig = cfg
                         physicalEraserStroke = isPhysicalEraserTool(toolType)
                         val contactBrush = brushForStylusTool(cfg.brush, toolType)
                         onStrokeInput?.invoke(
@@ -442,7 +513,10 @@ class CanvasView(
                         )
                         renderer.post(
                             CanvasRenderer.EngineEvent.Begin(
-                                cfg.targetSurfaceId, contactBrush, cfg.color, sample(0),
+                                cfg.targetSurfaceId,
+                                contactBrush,
+                                cfg.color,
+                                sample(event, pointerIndex),
                             ),
                         )
                         requestRender()
@@ -451,21 +525,34 @@ class CanvasView(
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
-                // A second finger arrived: abandon any wet stroke and start navigating.
-                if (mode == Mode.DRAW) {
-                    renderer.post(CanvasRenderer.EngineEvent.End)
-                    onArtworkChanged?.invoke()
-                    physicalEraserStroke = false
+                when (mode) {
+                    Mode.DRAW -> when (additionalPointerAction(drawToolType)) {
+                        AdditionalPointerAction.KEEP_STYLUS_STROKE -> {
+                            // The pen keeps ownership; the extra pointer is a palm contact.
+                        }
+                        AdditionalPointerAction.CANCEL_TOUCH_STROKE_AND_NAVIGATE -> {
+                            // A provisional one-finger mark becomes a viewport gesture, so it
+                            // must disappear completely rather than becoming an accidental dot.
+                            cancelActiveStroke()
+                            if (event.pointerCount >= 2) beginNavigation(event)
+                            requestRender()
+                        }
+                    }
+                    Mode.IDLE -> if (!eyedropperActive && !fillActive && event.pointerCount >= 2) {
+                        beginNavigation(event)
+                    }
+                    Mode.NAVIGATE -> Unit
                 }
-                if (event.pointerCount >= 2) beginNavigation(event)
             }
 
             MotionEvent.ACTION_MOVE -> when (mode) {
                 Mode.DRAW -> {
-                    for (h in 0 until event.historySize) {
-                        renderer.post(CanvasRenderer.EngineEvent.Extend(sample(0, h)))
+                    val pointerIndex = event.findPointerIndex(drawPointerId)
+                    if (pointerIndex < 0) {
+                        cancelActiveStroke()
+                    } else {
+                        postSamplesThrough(event, pointerIndex)
                     }
-                    renderer.post(CanvasRenderer.EngineEvent.Extend(sample(0)))
                     requestRender()
                 }
                 Mode.NAVIGATE -> {
@@ -476,26 +563,35 @@ class CanvasView(
             }
 
             MotionEvent.ACTION_POINTER_UP -> {
-                // Dropped to one finger: stay in navigation but rebind pointers, or idle.
-                if (event.pointerCount <= 2) {
+                if (mode == Mode.DRAW) {
+                    val liftedId = event.getPointerId(event.actionIndex)
+                    if (liftedId == drawPointerId) {
+                        commitActiveStroke(event, event.actionIndex)
+                        requestRender()
+                    }
+                } else if (mode == Mode.NAVIGATE && event.pointerCount <= 2) {
                     mode = Mode.IDLE
-                    navIdA = -1; navIdB = -1
+                    navIdA = -1
+                    navIdB = -1
                 }
             }
 
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
                 if (mode == Mode.DRAW) {
-                    renderer.post(CanvasRenderer.EngineEvent.End)
-                    onStrokeInput?.invoke(
-                        if (physicalEraserStroke) {
-                            "ERASER COMMITTED · CEL ${cfg.targetSurfaceId}"
-                        } else {
-                            "INK COMMITTED · CEL ${cfg.targetSurfaceId}"
-                        },
-                    )
-                    onArtworkChanged?.invoke()
+                    val pointerIndex = event.findPointerIndex(drawPointerId)
+                        .takeIf { it >= 0 } ?: event.actionIndex
+                    commitActiveStroke(event, pointerIndex)
                 }
-                physicalEraserStroke = false
+                mode = Mode.IDLE
+                navIdA = -1; navIdB = -1
+                requestRender()
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                if (mode == Mode.DRAW) {
+                    cancelActiveStroke()
+                    onStrokeInput?.invoke("STROKE CANCELLED")
+                }
                 mode = Mode.IDLE
                 navIdA = -1; navIdB = -1
                 requestRender()

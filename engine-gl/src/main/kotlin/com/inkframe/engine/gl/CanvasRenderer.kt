@@ -48,6 +48,7 @@ class CanvasRenderer(
         data class Begin(val surfaceId: Long, val brush: Brush, val color: RgbaColor, val sample: InputSample) : EngineEvent
         data class Extend(val sample: InputSample) : EngineEvent
         data object End : EngineEvent
+        data class Cancel(val releaseSurface: Boolean) : EngineEvent
         data object Undo : EngineEvent
         data object Redo : EngineEvent
         data class Run(val block: (PaintEngine) -> Unit) : EngineEvent
@@ -111,6 +112,7 @@ class CanvasRenderer(
                 is EngineEvent.Begin -> e.beginStroke(ev.surfaceId, ev.brush, ev.color, ev.sample)
                 is EngineEvent.Extend -> e.extendStroke(ev.sample)
                 EngineEvent.End -> e.endStroke()
+                is EngineEvent.Cancel -> e.cancelStroke(releaseTargetSurface = ev.releaseSurface)
                 EngineEvent.Undo -> e.undo()
                 EngineEvent.Redo -> e.redo()
                 is EngineEvent.Run -> ev.block(e)

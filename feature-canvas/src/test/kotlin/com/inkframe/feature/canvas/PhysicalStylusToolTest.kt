@@ -36,4 +36,27 @@ class PhysicalStylusToolTest {
         assertTrue(isPhysicalEraserTool(MotionEvent.TOOL_TYPE_ERASER))
         assertFalse(isPhysicalEraserTool(MotionEvent.TOOL_TYPE_STYLUS))
     }
+
+    @Test
+    fun stylusTipAndEraserKeepStrokeOwnershipWhenPalmArrives() {
+        assertTrue(isStylusTool(MotionEvent.TOOL_TYPE_STYLUS))
+        assertTrue(isStylusTool(MotionEvent.TOOL_TYPE_ERASER))
+        assertEquals(
+            AdditionalPointerAction.KEEP_STYLUS_STROKE,
+            additionalPointerAction(MotionEvent.TOOL_TYPE_STYLUS),
+        )
+        assertEquals(
+            AdditionalPointerAction.KEEP_STYLUS_STROKE,
+            additionalPointerAction(MotionEvent.TOOL_TYPE_ERASER),
+        )
+    }
+
+    @Test
+    fun fingerStrokeYieldsToTwoFingerNavigation() {
+        assertFalse(isStylusTool(MotionEvent.TOOL_TYPE_FINGER))
+        assertEquals(
+            AdditionalPointerAction.CANCEL_TOUCH_STROKE_AND_NAVIGATE,
+            additionalPointerAction(MotionEvent.TOOL_TYPE_FINGER),
+        )
+    }
 }

@@ -721,10 +721,13 @@ private fun ClosedBetaStage(
                             sceneProvider = { state.buildDrawList() },
                             backgroundColorProvider = { state.project.canvas.backgroundColor },
                             strokeConfig = {
+                                val target = state.prepareActiveCel()
                                 CanvasView.StrokeConfig(
-                                    targetSurfaceId = state.ensureActiveCel(),
+                                    targetSurfaceId = target.surfaceId,
                                     brush = state.brush,
                                     color = state.color,
+                                    targetWasCreated = target.wasCreated,
+                                    rollbackTarget = target.rollback,
                                 )
                             },
                             onEngineReady = state::bindEngine,
@@ -738,6 +741,7 @@ private fun ClosedBetaStage(
                                 view.requestRender()
                                 state.statusMessage = "ARTWORK RESTORED"
                             }
+                            view.onStrokeStarted = state::stop
                             view.onStrokeInput = { status -> state.statusMessage = status }
                             view.onArtworkChanged = onArtworkChanged
                             view.onColorSampled = { sampled ->

@@ -323,8 +323,14 @@ fun StudioScreen(state: StudioState = viewModel()) {
                             canvasHeight = state.project.canvas.heightPx,
                             sceneProvider = { state.buildDrawList() },
                             strokeConfig = {
-                                val sid = state.ensureActiveCel()
-                                CanvasView.StrokeConfig(sid, state.brush, state.color)
+                                val target = state.prepareActiveCel()
+                                CanvasView.StrokeConfig(
+                                    targetSurfaceId = target.surfaceId,
+                                    brush = state.brush,
+                                    color = state.color,
+                                    targetWasCreated = target.wasCreated,
+                                    rollbackTarget = target.rollback,
+                                )
                             },
                             onEngineReady = { engine -> state.bindEngine(engine) },
                         ).also { view ->
@@ -336,6 +342,7 @@ fun StudioScreen(state: StudioState = viewModel()) {
                             view.onViewportChanged = { scale -> view.post { state.setZoom(scale) } }
                             // Route timeline duplicate/paste GPU clones onto the GL thread.
                             state.postEngineWork = { block -> view.runOnEngine(block) }
+                            view.onStrokeStarted = state::stop
                             // After GL-context loss + restore, redraw with recovered art.
                             view.onContextRestored = {
                                 view.requestRender()
