@@ -91,6 +91,7 @@ class PaintEngine(
     // ---- Stroke lifecycle ---------------------------------------------------
 
     fun beginStroke(surfaceId: Long, brush: Brush, color: RgbaColor, first: InputSample) {
+        if (activeStroke != null) cancelStroke()
         val cel = getOrCreateSurface(surfaceId)
         activeStroke = StrokeProcessor(brush)
         strokeCel = cel
@@ -159,6 +160,26 @@ class PaintEngine(
         strokeCelId = -1L
         strokeBrush = null
         strokeDabs.clear()
+    }
+
+    /**
+     * Discards the wet scratch stroke without touching committed cel pixels or history.
+     *
+     * Android sends cancellation for interrupted gestures, and a provisional finger stroke
+     * must also yield when it becomes a two-finger viewport gesture. A newly reserved blank
+     * surface can be released at the same time because its document cel is rolled back by the
+     * UI state owner.
+     */
+    fun cancelStroke(releaseTargetSurface: Boolean = false) {
+        val cancelledSurfaceId = strokeCelId
+        activeStroke = null
+        strokeCel = null
+        strokeCelId = -1L
+        strokeBrush = null
+        strokeDabs.clear()
+        dirty.reset()
+        strokeScratch?.clear(0f, 0f, 0f, 0f)
+        if (releaseTargetSurface && cancelledSurfaceId >= 0L) releaseSurface(cancelledSurfaceId)
     }
 
     /**
@@ -260,11 +281,7 @@ class PaintEngine(
     /** Discards all GPU surfaces and clears history — call before loading a project. */
     fun resetForLoad() {
         // Cancel any in-progress stroke.
-        activeStroke = null
-        strokeCel = null
-        strokeCelId = -1L
-        strokeBrush = null
-        strokeDabs.clear()
+        cancelStroke()
         surfaces.values.forEach { it.release() }
         surfaces.clear()
         undoStack.clear()

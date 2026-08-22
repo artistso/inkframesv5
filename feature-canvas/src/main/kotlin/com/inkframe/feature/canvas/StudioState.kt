@@ -105,6 +105,35 @@ class StudioState : ViewModel() {
         }
     }
 
+    /**
+     * A cel reserved for one in-progress stroke.
+     *
+     * [rollback] removes a newly-created blank cel when Android cancels the gesture before
+     * the engine commits pixels. Existing artwork is never removed by the rollback.
+     */
+    data class StrokeTarget(
+        val surfaceId: Long,
+        val wasCreated: Boolean,
+        val rollback: () -> Unit,
+    )
+
+    fun prepareActiveCel(): StrokeTarget {
+        val sceneId = scene.id
+        val layerId = activeLayer.id
+        val frame = currentFrame
+        val existing = activeLayer.cels[frame]
+        if (existing != null) {
+            return StrokeTarget(existing.surfaceId, wasCreated = false, rollback = {})
+        }
+
+        val surfaceId = ensureActiveCel()
+        return StrokeTarget(
+            surfaceId = surfaceId,
+            wasCreated = true,
+            rollback = { discardPreparedCel(sceneId, layerId, frame, surfaceId) },
+        )
+    }
+
     fun ensureActiveCel(): Long {
         val layer = activeLayer
         val existing = layer.cels[currentFrame]
@@ -169,11 +198,13 @@ class StudioState : ViewModel() {
         surfaceIds.set(maxId + 1)
         isPlaying = false
         playbackTicksRemaining = firstScene?.holdAt(0) ?: 1
+        onUiInvalidate?.invoke()
     }
 
     fun setFrame(frame: Int) {
         currentFrame = frame.coerceIn(0, scene.frameCount - 1)
         playbackTicksRemaining = currentHold
+        onUiInvalidate?.invoke()
     }
 
     fun togglePlay() {
@@ -190,6 +221,7 @@ class StudioState : ViewModel() {
         if (currentFrame !in range || currentFrame == range.last) currentFrame = range.first
         playbackTicksRemaining = currentHold
         isPlaying = true
+        onUiInvalidate?.invoke()
     }
 
     fun stop() {
@@ -211,6 +243,7 @@ class StudioState : ViewModel() {
         currentFrame = tick.frame
         playbackTicksRemaining = tick.ticksRemaining.coerceAtLeast(1)
         if (!tick.stillPlaying) isPlaying = false
+        onUiInvalidate?.invoke()
     }
 
     // --- Playback range, FPS, loop and holds ---------------------------------
@@ -290,6 +323,7 @@ class StudioState : ViewModel() {
         updateLayer(activeLayerId) { TimelineOps.moveCel(it, from, dest) }
         currentFrame = dest
         playbackTicksRemaining = currentHold
+        onUiInvalidate?.invoke()
     }
 
     fun clearCelAtCurrentFrame() {
@@ -324,6 +358,7 @@ class StudioState : ViewModel() {
         postEngineWork?.invoke { engine -> engine.cloneSurface(src.surfaceId, newId) }
         currentFrame = to
         playbackTicksRemaining = currentHold
+        onUiInvalidate?.invoke()
     }
 
     fun pasteCel() {
@@ -344,12 +379,14 @@ class StudioState : ViewModel() {
         currentFrame = insertionFrame
         playbackTicksRemaining = currentHold
         isPlaying = false
+        onUiInvalidate?.invoke()
     }
 
     fun removeFrame() {
         updateScene { TimelineOps.removeFrames(it, currentFrame, 1) }
         currentFrame = currentFrame.coerceIn(0, scene.frameCount - 1)
         playbackTicksRemaining = currentHold
+        onUiInvalidate?.invoke()
     }
 
     fun extendExposure(holdFrames: Int = 1) {
@@ -367,6 +404,36 @@ class StudioState : ViewModel() {
             scenes = project.scenes.map { if (it.id == scene.id) transform(it) else it },
             modifiedAtEpochMs = System.currentTimeMillis(),
         )
+        onUiInvalidate?.invoke()
+    }
+
+    private fun discardPreparedCel(
+        sceneId: String,
+        layerId: String,
+        frame: Int,
+        surfaceId: Long,
+    ) {
+        var removed = false
+        val updatedScenes = project.scenes.map { candidateScene ->
+            if (candidateScene.id != sceneId) return@map candidateScene
+            candidateScene.copy(
+                layers = candidateScene.layers.map { candidateLayer ->
+                    val prepared = candidateLayer.cels[frame]
+                    if (candidateLayer.id != layerId || prepared?.surfaceId != surfaceId) {
+                        candidateLayer
+                    } else {
+                        removed = true
+                        candidateLayer.copy(cels = candidateLayer.cels - frame)
+                    }
+                },
+            )
+        }
+        if (!removed) return
+        project = project.copy(
+            scenes = updatedScenes,
+            modifiedAtEpochMs = maxOf(System.currentTimeMillis(), project.modifiedAtEpochMs + 1L),
+        )
+        onUiInvalidate?.invoke()
     }
 
     private companion object {

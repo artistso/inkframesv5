@@ -103,6 +103,48 @@ class StudioStatePlaybackTest {
         assertNotEquals(source.surfaceId, pasted.surfaceId)
     }
 
+    @Test
+    fun frameAndPlaybackChangesInvalidateTheNativeRenderer() {
+        val state = StudioState()
+        state.replaceProject(twoFrameProject())
+        var invalidations = 0
+        state.onUiInvalidate = { invalidations++ }
+
+        state.setFrame(1)
+        assertEquals(1, invalidations)
+
+        state.togglePlay()
+        state.advancePlayback()
+        assertEquals(3, invalidations)
+    }
+
+    @Test
+    fun cancelledStrokeRollsBackOnlyItsNewBlankCel() {
+        val state = StudioState()
+        state.replaceProject(InkFrameDefaults.newProject())
+        assertFalse(state.hasCelAtCurrentFrame)
+
+        val prepared = state.prepareActiveCel()
+        assertTrue(prepared.wasCreated)
+        assertTrue(state.hasCelAtCurrentFrame)
+
+        prepared.rollback()
+        assertFalse(state.hasCelAtCurrentFrame)
+    }
+
+    @Test
+    fun cancelledStrokeNeverRemovesAnExistingCel() {
+        val state = StudioState()
+        state.replaceProject(twoFrameProject())
+        val prepared = state.prepareActiveCel()
+
+        assertFalse(prepared.wasCreated)
+        prepared.rollback()
+
+        assertTrue(state.hasCelAtCurrentFrame)
+        assertEquals(10L, state.activeLayer.cels[0]?.surfaceId)
+    }
+
     private fun twoFrameProject(): Project {
         val layer = Layer(
             id = "layer",

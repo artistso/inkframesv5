@@ -6,6 +6,13 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
+### Native Android — input and redraw hardening
+- Kept S Pen and physical-eraser strokes in control when a palm or second touch arrives, while allowing provisional finger strokes to yield cleanly to two-finger navigation.
+- Added a true cancel path for interrupted strokes so Android cancellation and pinch takeover cannot commit stray marks or undo entries.
+- Rolled back newly reserved blank cels and GPU surfaces when a stroke or no-op fill is cancelled.
+- Preserved historical MotionEvent timestamps and the final pen-up sample for more faithful stroke tails.
+- Centralized OpenGL invalidation after frame, playback, and document mutations so timeline changes cannot leave stale artwork on screen.
+
 ### Native Android — physical S Pen eraser
 - Routed Android `TOOL_TYPE_ERASER` contacts through the native eraser brush without changing the artist's selected brush.
 - Added explicit eraser contact/commit QA status and unit tests for stylus-tip, eraser, and finger tool selection.
