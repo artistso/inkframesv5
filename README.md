@@ -47,7 +47,7 @@ cd inkframesv5
 ./inkframe-cli build-apk
 ```
 
-For CI-built QA artifacts, use GitHub Actions. The native QA release lane publishes a non-debuggable `com.inkframe.studio.qa` APK tied to an exact commit and SHA-256 record. To build the branch under review without changing issues or invoking production packaging, manually run `.github/workflows/android.yml` on that branch with `qa_artifact_only: true`; download the APK, checksum, and provenance record from that run's Artifacts.
+For CI-built QA artifacts, use GitHub Actions. The native QA release lane publishes a non-debuggable `com.inkframe.studio.qa` APK tied to an exact commit and SHA-256 record. Pushing an Arena branch automatically builds its stable QA APK without changing issues or invoking production packaging. You can also manually run `.github/workflows/android.yml` on a branch with `qa_artifact_only: true`; download the APK, checksum, and provenance record from that run's Artifacts.
 
 ## Native build requirements
 
