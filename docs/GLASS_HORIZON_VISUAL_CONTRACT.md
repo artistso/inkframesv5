@@ -6,13 +6,13 @@ The native application must reproduce the original InkFrame **Glass Horizon** wo
 
 ## Authoritative source
 
-The visual and interaction source of truth is:
+The four historical Glass Horizon screenshots supplied by the product owner are now the **primary visual source of truth** for the native workspace. Their edge-control placement, top command density, bottom dock, framed paper scale, and square/circle presentation supersede conflicting parts of the earlier title/eight-node mockup contract.
 
-- `web/index.html`
-- reference commit: `e1c4addbe04e9f4cdec705559e55d1a1e54bc8c0`
-- product title: `InkFrame · The Glass Horizon`
+- Reference implementation for interaction vocabulary: `web/index.html`
+- Reference commit for the historical web design: `e1c4addbe04e9f4cdec705559e55d1a1e54bc8c0`
+- Product identity: `InkFrame · The Glass Horizon`
 
-The web implementation is a design specification only. The shipped Android runtime remains Kotlin/Compose/OpenGL and must not package or execute the web application.
+The screenshots are the visual target; the historical web implementation remains a secondary behavior reference where an equivalent native capability already exists. The shipped Android runtime remains Kotlin/Compose/OpenGL and must not package or execute the web application.
 
 ## Rejected implementations
 
@@ -50,19 +50,17 @@ The default Glass Horizon theme must reproduce these layers in this order:
 
 A nearly uniform plum, burgundy, black, or Material surface fails this contract.
 
-## 2. Product title
+## 2. Top command cluster
 
-The title is fixed at the top center, outside the drawing frame:
+The workspace does **not** use a centered product-title lockup. Branding belongs in Studio/about surfaces; the top-center area is reserved for the screenshot-matched command cluster:
 
-- `InkFrame` in a display serif/Cinzel-class face;
-- 20sp-class size, bold, uppercase presentation, approximately `.22em` tracking;
-- vertical text gradient from white through rose to accent red;
-- subtle luminous text shadow;
-- subtitle exactly `The Glass Horizon`;
-- subtitle approximately 10sp, `.28em` tracking, uppercase, rose-dim color;
-- top offset equivalent to 14px in the reference layout.
+- a compact upper pill with `Engine · V2` and `Brush Lab`;
+- a second segmented pill directly below: `PLAY`, `CENTER`, `ALL RINGS`, `SCRUB`, `TIMING`;
+- dark plum glass fill, thin rose rim, soft shadow, and small uppercase tracked labels;
+- selected states reflect playback, ring visibility, scrub visibility, or the open timing control;
+- the canvas-shape chip sits near the upper-right edge of the framed stage and reads `□ SQUARE` or `○ CIRCLE`.
 
-The subtitle must not be renamed to `The Glass Canvas`.
+Do not restore a large centered `InkFrame` title above these controls; that title/eight-node layout was explicitly superseded by the supplied screenshots.
 
 ## 3. Drawing stage and frame glass
 
@@ -84,10 +82,11 @@ The drawing surface is centered and preserves the document aspect ratio.
 - rounded radius equivalent to 16px;
 - default paper `#fff0f3`;
 - one-pixel dark edge plus deep lower shadow;
-- enough surrounding space for nodes, the perimeter frame board, and the scrub rail;
+- enough surrounding space for the edge nodes, perimeter frame board, and bottom filmstrip;
+- on a landscape tablet, the framed stage is intentionally wide (about 60–65% of the viewport) while preserving the document aspect ratio;
 - no modal should cover the canvas by default after an existing project has loaded.
 
-The canvas must not occupy most of the tablet width merely because space is available. Its scale is derived from aspect ratio and reserved command space.
+The stage should match the supplied screenshots' broad central composition rather than the earlier undersized 48%-width layout. Its fitted scale is still derived from aspect ratio and available vertical space.
 
 ## 4. Perimeter frame board
 
@@ -100,40 +99,39 @@ The animation frame board wraps the **entire perimeter** of `frameGlass`.
 - current frame scales to approximately 1.35× and uses the blush-to-accent gradient;
 - selected frame uses a white outer ring plus accent glow;
 - held frames show the small luminous rose hold indicator;
-- an optional capacity badge sits below the frame glass.
+- frame slots are allocated in groups of twelve around the perimeter, up to the 120-frame cap;
+- `ALL RINGS` controls whether the full empty-slot ring is shown;
+- the badge below the frame reports authored frames against capacity, e.g. `12 / 120`.
 
 A top-only row of dots, circles, or generic pagination indicators fails this contract.
 
-## 5. Timeline scrub rail
+## 5. Timeline scrub rail and bottom dock
 
-A separate horizontal glass rail sits below the centered stage:
+A thin, low-profile glass filmstrip runs near the bottom edge, with the larger dock nodes layered in front of it:
 
-- previous and next step controls;
-- loop-region visualization;
-- loop-in and loop-out handles;
-- playhead positioned on the track;
-- held-frame timing represented proportionally;
-- current-frame count such as `1 / 12`;
-- same glass language as the nodes and frame.
+- frame markers across the track, with the current playhead visibly distinct;
+- tapping a frame seeks; tapping the next available marker adds a frame;
+- playback, FPS, hold, and loop controls are available through the top command cluster and timing panel;
+- frame capacity remains visible in the badge under the stage rather than taking over the rail.
 
 The rail is not replaced by a conventional bottom toolbar.
 
-## 6. Primary glass nodes
+## 6. Screenshot-matched glass nodes
 
-The command system consists of circular optical nodes positioned around the stage.
+The radial nodes are distributed as in the supplied screenshots, not as a symmetric eight-node ring.
 
-Required primary nodes:
+Primary edge nodes:
 
-- Tools
-- Line
-- Color
-- Layers
-- Actions
-- Frames
-- Studio
-- Gallery
+- left: Tools, Line;
+- right: Color, FX, Actions, Themes.
 
-Each primary node must:
+Bottom dock nodes:
+
+- Studio and Gallery at bottom-left;
+- Frames, Layers, and Select grouped near the lower center;
+- a compact Report button at bottom-right.
+
+Each radial node must:
 
 - be approximately 58px in diameter;
 - use the shared translucent glass gradient, border, external shadow, inner rim, and bloom;
@@ -197,8 +195,12 @@ The target is the Samsung Galaxy Tab S10+ in landscape, with graceful support fo
 - perimeter slots remain attached to the frame geometry;
 - labels do not clip at screen edges;
 - radial children choose inward-safe arcs;
-- title, stage, and rail maintain their visual hierarchy;
+- the top command cluster, stage, edge nodes, and bottom dock maintain their visual hierarchy;
 - portrait may reorganize geometry but may not become the rejected conventional rail/panel layout.
+
+## Native UI-pass boundary
+
+The current screenshot-matching pass is intentionally limited to Compose shell and control placement. Existing playback, timing, frame, layer, color, theme, zoom, checker, save/open, and export actions may be wired to their already-shipped native behavior. The circle-mask control remains an explicit pending affordance: native `CanvasView` still renders a rectangular document, so the UI must not pretend that a circle crop also constrains input or export. Canvas selection likewise remains unavailable until a separate native feature pass. Do not alter the drawing engine or stylus pipeline as part of this visual pass.
 
 ## 11. Native implementation constraints
 
@@ -222,9 +224,9 @@ No APK may be described as the intended Glass Horizon build until all of these p
 2. **Structural review**
    - full atmospheric stack present;
    - 4:3 default canvas fitted inside rounded frame glass;
-   - frame slots on all four sides;
-   - separate timeline rail;
-   - eight draggable primary nodes;
+   - frame slots on all four sides with a `frames / 120` capacity badge;
+   - compact top command cluster and bottom filmstrip/dock;
+   - screenshot-matched left/right radial nodes plus Studio, Gallery, Frames, Layers, Select, and Report;
    - radial child menus;
    - live stylus lens.
 3. **Runtime review**

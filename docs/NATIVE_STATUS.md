@@ -33,13 +33,14 @@ The active Kotlin runtime currently includes these bounded parity slices:
 - blank-project CanvasView recreation isolated from archive open/recovery so loaded GPU cel surfaces are retained;
 - a five-layer native Glass Horizon theme world: horizon, rays, fine grain, vignette, and transient glint;
 - the exact binding rose/plum horizon progression plus a complete blue counterpart with persistent native theme selection;
-- the native InkFrame display-serif title, canonical eight optical command nodes with vector glyphs, and spring-open radial child menus;
-- a dedicated glass scrub rail with frame stepping, playback, loop state, current-frame timing, and integrated hold controls;
-- Gallery and Studio radial entry points for project creation and Brush Lab, avoiding a second command cluster over the drawing stage;
+- the screenshot-matched Glass Horizon shell with compact `Engine · V2` / `Brush Lab` and `PLAY · CENTER · ALL RINGS · SCRUB · TIMING` command strips;
+- edge-anchored Tools/Line and Color/FX/Actions/Themes radial nodes, plus the bottom Studio/Gallery/Frames/Layers/Select dock and Report control;
+- an inset perimeter frame board with a `frames / 120` badge, and a low-profile filmstrip that seeks or adds frames;
+- native playback, FPS, hold, loop, frame, layer, theme, zoom, checker, save/open, and export actions exposed from the screenshot-matched controls;
 - landscape corner-derived gradient geometry and draw-time ray feathering that remain consistent across API 26 through API 36;
 - crash-safe local project recovery and native archive save/open.
 
-Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, final title typography, approved frame-glass optics, eight-node drag persistence and the complete live stylus lens are not yet native parity claims.
+Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, circle canvas masking/input/export semantics, native canvas selection, radial-node drag persistence, final frame-glass optics, and the complete live stylus lens are not yet native parity claims. This UI pass does not change drawing-engine or stylus behavior; the shape chip reports the current circle-mask limitation rather than pretending to crop the artwork.
 
 ## Web reference boundary
 

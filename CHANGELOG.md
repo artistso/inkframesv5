@@ -6,11 +6,11 @@ semantic versioning once it reaches a public release.
 
 ## [Unreleased]
 
-### Native Android — Glass Horizon workspace UI pass
-- Added the native display-serif InkFrame title and restored the precise “The Glass Horizon” subtitle above the drawing stage.
-- Consolidated the workspace into the canonical eight optical command nodes with custom vector glyphs and spring-open radial menus.
-- Moved frame-hold controls, playback, frame stepping, loop state, and timing context into a dedicated glass scrub rail; routed new-project and Brush Lab entry through Gallery and Studio.
-- Rebalanced the fitted stage around the command orbs and scrub rail so the paper canvas no longer dominates the landscape tablet workspace.
+### Native Android — screenshot-matched Glass Horizon shell
+- Replaced the conflicting centered-title/eight-node arrangement with the screenshot-matched top command strips, edge radial nodes, bottom dock, Report control, framed stage, perimeter frame board, and low filmstrip.
+- Rebalanced the landscape stage to the wider reference composition and aligned perimeter slots/capacity count with the historical `frames / 120` presentation.
+- Routed the visible transport, timing, frame, layer, theme, zoom, checker, project, and export controls to existing native behavior.
+- Kept the pass UI-only: circle canvas masking and canvas selection remain explicitly unsupported rather than changing drawing-engine or stylus behavior.
 
 ### Native Android — physical S Pen eraser
 - Routed Android `TOOL_TYPE_ERASER` contacts through the native eraser brush without changing the artist's selected brush.

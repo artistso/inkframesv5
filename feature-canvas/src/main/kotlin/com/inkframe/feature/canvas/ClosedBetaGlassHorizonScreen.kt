@@ -50,7 +50,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -74,8 +73,8 @@ import kotlin.math.sin
 /**
  * Closed-beta Glass Horizon shell.
  *
- * This is the native Kotlin Glass Horizon workspace: atmospheric paper stage, perimeter frame
- * board, an accessible timeline rail, and the canonical eight optical command nodes.
+ * This is the screenshot-matched native Glass Horizon workspace: atmospheric framed paper,
+ * edge-anchored radial controls, compact transport commands, and a bottom filmstrip dock.
  */
 @Composable
 fun ClosedBetaGlassHorizonScreen(
@@ -97,6 +96,9 @@ fun ClosedBetaGlassHorizonScreen(
     }
     var glintPulse by remember { mutableStateOf(false) }
     var pendingExportFormat by remember { mutableStateOf<ExportManager.ExportFormat?>(null) }
+    var showAllRings by rememberSaveable { mutableStateOf(true) }
+    var showScrubRail by rememberSaveable { mutableStateOf(true) }
+    var showTiming by rememberSaveable { mutableStateOf(false) }
 
     val glintAlpha by animateFloatAsState(
         targetValue = if (glintPulse) 0.72f else 0f,
@@ -303,33 +305,26 @@ fun ClosedBetaGlassHorizonScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Keep enough of the tablet viewport free for the floating command orbs and the
-        // separate scrub rail instead of letting the drawing frame consume the whole screen.
+        // The screenshot references are the native workspace layout contract: a wide framed
+        // paper stage, edge-anchored radial tools, two compact top command strips, and a low
+        // filmstrip with the frame/layer/select dock in front of it.
         val documentAspect = state.project.canvas.aspectRatio
         val nodeCellWidth = 92.dp
-        val nodeCellHeight = 84.dp
-        val nodeGap = 20.dp
-        val radialMenuExtent = 156.dp + 25.dp + nodeGap + nodeCellWidth / 2f + 8.dp
+        val sideInset = 8.dp
         val canvasWidthLimit = minOf(
-            maxWidth * 0.48f,
-            (maxWidth - radialMenuExtent * 2 - 28.dp).coerceAtLeast(160.dp),
+            maxWidth * 0.64f,
+            (maxWidth - nodeCellWidth * 2f - sideInset * 2f).coerceAtLeast(160.dp),
         )
-        val canvasHeightLimit = minOf(
-            maxHeight * 0.74f,
-            (maxHeight - 208.dp).coerceAtLeast(160.dp),
-        )
+        val canvasHeightLimit = maxHeight * 0.72f
         val canvasWidth = minOf(canvasWidthLimit, canvasHeightLimit * documentAspect)
         val canvasHeight = canvasWidth / documentAspect
         val frameWidth = canvasWidth + 28.dp
         val frameHeight = canvasHeight + 28.dp
         val frameLeft = (maxWidth - frameWidth) / 2
-        val frameTop = (maxHeight - frameHeight) / 2 + 6.dp
+        val frameTop = (maxHeight - frameHeight) / 2 + 4.dp
         val frameRight = frameLeft + frameWidth
-
-        ClosedBetaTitle(
-            palette = palette,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
+        val leftX = sideInset
+        val rightX = (maxWidth - nodeCellWidth - sideInset).coerceAtLeast(sideInset)
 
         ClosedBetaStage(
             state = state,
@@ -338,6 +333,7 @@ fun ClosedBetaGlassHorizonScreen(
             canvasHeight = canvasHeight,
             frameWidth = frameWidth,
             frameHeight = frameHeight,
+            showAllRings = showAllRings,
             onFrame = ::requestFrame,
             onAddFrame = {
                 state.insertFrame()
@@ -351,28 +347,67 @@ fun ClosedBetaGlassHorizonScreen(
             modifier = Modifier.align(Alignment.TopStart).offset(x = frameLeft, y = frameTop),
         )
 
-        ClosedBetaScrubRail(
-            state = state,
+        ClosedBetaFrameGuides(
             palette = palette,
-            onFrame = ::requestFrame,
-            onAddFrame = {
-                state.insertFrame()
-                canvasView?.requestRender()
-            },
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = (-16).dp)
-                .fillMaxWidth(0.96f),
+                .align(Alignment.TopStart)
+                .offset(x = frameLeft - 8.dp, y = frameTop - 8.dp)
+                .size(frameWidth + 16.dp, frameHeight + 16.dp),
         )
 
-        val leftX = (frameLeft - nodeCellWidth - nodeGap).coerceAtLeast(8.dp)
-        val rightX = (frameRight + nodeGap).coerceAtMost(maxWidth - nodeCellWidth - 8.dp)
-        val verticalRange = frameHeight - nodeCellHeight
-        val nodeY0 = frameTop
-        val nodeY1 = frameTop + verticalRange / 3f
-        val nodeY2 = frameTop + verticalRange * (2f / 3f)
-        val nodeY3 = frameTop + verticalRange
+        ClosedBetaCommandBar(
+            state = state,
+            palette = palette,
+            allRings = showAllRings,
+            scrubVisible = showScrubRail,
+            timingOpen = showTiming,
+            onEngineInfo = { state.statusMessage = "ENGINE · V2 · NATIVE OPENGL" },
+            onBrushLab = onOpenBrushLab,
+            onPlay = state::togglePlay,
+            onCenter = { canvasView?.fitToScreen() },
+            onAllRings = { showAllRings = !showAllRings },
+            onScrub = { showScrubRail = !showScrubRail },
+            onTiming = { showTiming = !showTiming },
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
 
+        ClosedBetaCanvasShapeChip(
+            palette = palette,
+            onClick = {
+                state.statusMessage = "CIRCLE CANVAS MASK IS NOT AVAILABLE IN THE NATIVE RENDERER YET"
+            },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = frameRight - 100.dp, y = frameTop - 30.dp),
+        )
+
+        if (showTiming) {
+            ClosedBetaTimingPopover(
+                state = state,
+                palette = palette,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 68.dp),
+            )
+        }
+
+        if (showScrubRail) {
+            ClosedBetaScrubRail(
+                state = state,
+                palette = palette,
+                onFrame = ::requestFrame,
+                onAddFrame = {
+                    state.insertFrame()
+                    canvasView?.requestRender()
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-8).dp)
+                    .fillMaxWidth(0.96f),
+            )
+        }
+
+        // Left-side primary nodes.
         ClosedBetaNode(
             node = BetaNode.TOOLS,
             palette = palette,
@@ -385,8 +420,8 @@ fun ClosedBetaGlassHorizonScreen(
                     state.statusMessage = "BRUSH · ${brush.name.uppercase()}"
                 }
             },
-            fan = Fan.LEFT_DOWN,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = nodeY0),
+            fan = Fan.RIGHT,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = 48.dp),
         )
         ClosedBetaNode(
             node = BetaNode.LINE,
@@ -404,60 +439,24 @@ fun ClosedBetaGlassHorizonScreen(
                 BetaAction("SIZE +", glyph = "+") {
                     state.updateBrush { it.copy(sizePx = (it.sizePx + 2f).coerceAtMost(240f)) }
                 },
+                BetaAction("OPACITY −") {
+                    state.updateBrush { it.copy(opacity = (it.opacity - 0.05f).coerceAtLeast(0.05f)) }
+                },
+                BetaAction("OPACITY +") {
+                    state.updateBrush { it.copy(opacity = (it.opacity + 0.05f).coerceAtMost(1f)) }
+                },
                 BetaAction("SOFT −") {
                     state.updateBrush { it.copy(smoothing = (it.smoothing - 0.1f).coerceAtLeast(0f)) }
                 },
                 BetaAction("SOFT +") {
                     state.updateBrush { it.copy(smoothing = (it.smoothing + 0.1f).coerceAtMost(1f)) }
                 },
-                BetaAction("CLEAR", glyph = "×") {
-                    state.clearCelAtCurrentFrame()
-                    canvasView?.requestRender()
-                },
             ),
-            fan = Fan.LEFT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX + 12.dp, y = nodeY1),
+            fan = Fan.RIGHT_UP,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX + 12.dp, y = 114.dp),
         )
-        ClosedBetaNode(
-            node = BetaNode.STUDIO,
-            palette = palette,
-            open = openNode == BetaNode.STUDIO,
-            onToggle = { openNode = openNode.toggle(BetaNode.STUDIO) },
-            onActionComplete = { openNode = null },
-            actions = listOf(
-                BetaAction("LAB", glyph = "∿") { onOpenBrushLab() },
-                BetaAction("PLUM", color = betaPalette(BetaTheme.PLUM).accent, selected = theme == BetaTheme.PLUM) {
-                    selectTheme(BetaTheme.PLUM)
-                },
-                BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) {
-                    selectTheme(BetaTheme.BLUE)
-                },
-                BetaAction("ABOUT", glyph = "◎") { state.statusMessage = "INKFRAME · THE GLASS HORIZON" },
-            ),
-            fan = Fan.LEFT_UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX, y = nodeY2),
-        )
-        ClosedBetaNode(
-            node = BetaNode.FRAMES,
-            palette = palette,
-            open = openNode == BetaNode.FRAMES,
-            onToggle = { openNode = openNode.toggle(BetaNode.FRAMES) },
-            onActionComplete = { openNode = null },
-            actions = listOf(
-                BetaAction("PLAY", selected = state.isPlaying, glyph = if (state.isPlaying) "Ⅱ" else "▶") {
-                    state.togglePlay()
-                },
-                BetaAction("ADD", glyph = "+") { state.insertFrame(); canvasView?.requestRender() },
-                BetaAction("DUP", glyph = "⧉") { state.duplicateCelToNextFrame(); canvasView?.requestRender() },
-                BetaAction("CUT", glyph = "✂") { state.cutCel(); canvasView?.requestRender() },
-                BetaAction("COPY", glyph = "▢") { state.copyCel() },
-                BetaAction("PASTE", selected = state.canPaste, glyph = "▣") { state.pasteCel(); canvasView?.requestRender() },
-                BetaAction("DEL", glyph = "×") { state.removeFrame(); canvasView?.requestRender() },
-                BetaAction("LOOP", selected = state.scene.loop, glyph = "↻") { state.toggleLoop() },
-            ),
-            fan = Fan.LEFT_UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = leftX + 12.dp, y = nodeY3),
-        )
+
+        // Right-side primary nodes, ordered to match the reference edge stack.
         ClosedBetaNode(
             node = BetaNode.COLOR,
             palette = palette,
@@ -470,31 +469,45 @@ fun ClosedBetaGlassHorizonScreen(
                     canvasView?.requestRender()
                 }
             },
-            fan = Fan.RIGHT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = nodeY0),
+            fan = Fan.LEFT,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = 48.dp),
         )
         ClosedBetaNode(
-            node = BetaNode.LAYERS,
+            node = BetaNode.FX,
             palette = palette,
-            open = openNode == BetaNode.LAYERS,
-            onToggle = { openNode = openNode.toggle(BetaNode.LAYERS) },
+            open = openNode == BetaNode.FX,
+            onToggle = { openNode = openNode.toggle(BetaNode.FX) },
             onActionComplete = { openNode = null },
             actions = listOf(
-                BetaAction("ADD", glyph = "+") { state.addLayer(); canvasView?.requestRender() },
-                BetaAction("NEXT", glyph = "⇄") {
-                    val layers = state.scene.layers
-                    val current = layers.indexOfFirst { it.id == state.activeLayerId }.coerceAtLeast(0)
-                    state.activeLayerId = layers[(current + 1) % layers.size].id
+                BetaAction("ONION", selected = state.onionSkin.enabled, glyph = "◉") {
+                    state.onionSkin = state.onionSkin.copy(enabled = !state.onionSkin.enabled)
                     canvasView?.requestRender()
                 },
-                BetaAction("VISIBLE", selected = state.activeLayer.visible, glyph = "◉") {
-                    state.toggleLayerVisible(state.activeLayerId)
-                    canvasView?.requestRender()
+                BetaAction("CHECKER", selected = state.showChecker, glyph = "▦") {
+                    state.showChecker = !state.showChecker
+                    canvasView?.setShowChecker(state.showChecker)
                 },
-                BetaAction("DELETE", glyph = "×") { state.deleteLayer(state.activeLayerId); canvasView?.requestRender() },
+                BetaAction("FIT", glyph = "⌗") { canvasView?.fitToScreen() },
+                BetaAction("100%", glyph = "1:1") { canvasView?.resetZoom() },
+                BetaAction("FILL", selected = state.fillActive, glyph = "◍") {
+                    state.fillActive = !state.fillActive
+                    if (state.fillActive) {
+                        state.eyedropperActive = false
+                        canvasView?.eyedropperActive = false
+                    }
+                    canvasView?.fillActive = state.fillActive
+                },
+                BetaAction("PICK", selected = state.eyedropperActive, glyph = "◌") {
+                    state.eyedropperActive = !state.eyedropperActive
+                    if (state.eyedropperActive) {
+                        state.fillActive = false
+                        canvasView?.fillActive = false
+                    }
+                    canvasView?.eyedropperActive = state.eyedropperActive
+                },
             ),
-            fan = Fan.RIGHT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX - 12.dp, y = nodeY1),
+            fan = Fan.LEFT,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX - 12.dp, y = 104.dp),
         )
         ClosedBetaNode(
             node = BetaNode.ACTIONS,
@@ -505,35 +518,48 @@ fun ClosedBetaGlassHorizonScreen(
             actions = listOf(
                 BetaAction("UNDO", selected = state.canUndo, glyph = "↶") { canvasView?.undo() },
                 BetaAction("REDO", selected = state.canRedo, glyph = "↷") { canvasView?.redo() },
-                BetaAction("FIT", glyph = "⌗") { canvasView?.fitToScreen() },
-                BetaAction("100%", glyph = "1:1") { canvasView?.resetZoom() },
-                BetaAction("CHECKER", selected = state.showChecker, glyph = "▦") {
-                    state.showChecker = !state.showChecker
-                    canvasView?.setShowChecker(state.showChecker)
-                },
-                BetaAction("ONION", selected = state.onionSkin.enabled, glyph = "◉") {
-                    state.onionSkin = state.onionSkin.copy(enabled = !state.onionSkin.enabled)
+                BetaAction("CLEAR", glyph = "×") {
+                    state.clearCelAtCurrentFrame()
                     canvasView?.requestRender()
                 },
-                BetaAction("PICK", selected = state.eyedropperActive, glyph = "◌") {
-                    state.eyedropperActive = !state.eyedropperActive
-                    if (state.eyedropperActive) {
-                        state.fillActive = false
-                        canvasView?.fillActive = false
-                    }
-                    canvasView?.eyedropperActive = state.eyedropperActive
+                BetaAction("PNG", glyph = "▧") { launchExport(ExportManager.ExportFormat.PNG_SEQUENCE) },
+                BetaAction("GIF", glyph = "▧") { launchExport(ExportManager.ExportFormat.GIF) },
+                BetaAction("VIDEO", glyph = "▶") { launchExport(ExportManager.ExportFormat.MP4) },
+                BetaAction("REPORT", glyph = "◎") { state.statusMessage = "REPORTING IS NOT CONNECTED IN THIS QA BUILD" },
+            ),
+            fan = Fan.LEFT_UP,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX - 12.dp, y = 170.dp),
+        )
+        ClosedBetaNode(
+            node = BetaNode.THEMES,
+            palette = palette,
+            open = openNode == BetaNode.THEMES,
+            onToggle = { openNode = openNode.toggle(BetaNode.THEMES) },
+            onActionComplete = { openNode = null },
+            actions = listOf(
+                BetaAction("PLUM", color = betaPalette(BetaTheme.PLUM).accent, selected = theme == BetaTheme.PLUM) {
+                    selectTheme(BetaTheme.PLUM)
                 },
-                BetaAction("FILL", selected = state.fillActive, glyph = "◍") {
-                    state.fillActive = !state.fillActive
-                    if (state.fillActive) {
-                        state.eyedropperActive = false
-                        canvasView?.eyedropperActive = false
-                    }
-                    canvasView?.fillActive = state.fillActive
+                BetaAction("BLUE", color = betaPalette(BetaTheme.BLUE).accent, selected = theme == BetaTheme.BLUE) {
+                    selectTheme(BetaTheme.BLUE)
                 },
             ),
+            fan = Fan.LEFT_UP,
+            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = 238.dp),
+        )
+
+        // Bottom-left project/studio docks and the frame/layer/select cluster.
+        ClosedBetaNode(
+            node = BetaNode.STUDIO,
+            palette = palette,
+            open = openNode == BetaNode.STUDIO,
+            onToggle = { openNode = openNode.toggle(BetaNode.STUDIO) },
+            onActionComplete = { openNode = null },
+            actions = listOf(
+                BetaAction("ABOUT", glyph = "◎") { state.statusMessage = "INKFRAME · THE GLASS HORIZON" },
+            ),
             fan = Fan.RIGHT_UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX, y = nodeY2),
+            modifier = Modifier.align(Alignment.BottomStart).offset(x = sideInset, y = 0.dp),
         )
         ClosedBetaNode(
             node = BetaNode.GALLERY,
@@ -560,7 +586,74 @@ fun ClosedBetaGlassHorizonScreen(
                 BetaAction("PNG", glyph = "▧") { launchExport(ExportManager.ExportFormat.PNG_SEQUENCE) },
             ),
             fan = Fan.RIGHT_UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = rightX - 12.dp, y = nodeY3),
+            modifier = Modifier.align(Alignment.BottomStart).offset(x = 74.dp, y = 0.dp),
+        )
+        ClosedBetaNode(
+            node = BetaNode.FRAMES,
+            palette = palette,
+            open = openNode == BetaNode.FRAMES,
+            onToggle = { openNode = openNode.toggle(BetaNode.FRAMES) },
+            onActionComplete = { openNode = null },
+            actions = listOf(
+                BetaAction("PLAY", selected = state.isPlaying, glyph = if (state.isPlaying) "Ⅱ" else "▶") {
+                    state.togglePlay()
+                },
+                BetaAction("ADD", glyph = "+") { state.insertFrame(); canvasView?.requestRender() },
+                BetaAction("DUP", glyph = "⧉") { state.duplicateCelToNextFrame(); canvasView?.requestRender() },
+                BetaAction("CUT", glyph = "✂") { state.cutCel(); canvasView?.requestRender() },
+                BetaAction("COPY", glyph = "▢") { state.copyCel() },
+                BetaAction("PASTE", selected = state.canPaste, glyph = "▣") { state.pasteCel(); canvasView?.requestRender() },
+                BetaAction("DEL", glyph = "×") { state.removeFrame(); canvasView?.requestRender() },
+                BetaAction("LOOP", selected = state.scene.loop, glyph = "↻") { state.toggleLoop() },
+            ),
+            fan = Fan.UP,
+            modifier = Modifier.align(Alignment.BottomCenter).offset(x = (-58).dp, y = 0.dp),
+        )
+        ClosedBetaNode(
+            node = BetaNode.LAYERS,
+            palette = palette,
+            open = openNode == BetaNode.LAYERS,
+            onToggle = { openNode = openNode.toggle(BetaNode.LAYERS) },
+            onActionComplete = { openNode = null },
+            actions = listOf(
+                BetaAction("ADD", glyph = "+") { state.addLayer(); canvasView?.requestRender() },
+                BetaAction("NEXT", glyph = "⇄") {
+                    val layers = state.scene.layers
+                    val current = layers.indexOfFirst { it.id == state.activeLayerId }.coerceAtLeast(0)
+                    state.activeLayerId = layers[(current + 1) % layers.size].id
+                    canvasView?.requestRender()
+                },
+                BetaAction("UP", glyph = "↑") { state.moveLayerUp(state.activeLayerId); canvasView?.requestRender() },
+                BetaAction("DOWN", glyph = "↓") { state.moveLayerDown(state.activeLayerId); canvasView?.requestRender() },
+                BetaAction("VISIBLE", selected = state.activeLayer.visible, glyph = "◉") {
+                    state.toggleLayerVisible(state.activeLayerId)
+                    canvasView?.requestRender()
+                },
+                BetaAction("DELETE", glyph = "×") { state.deleteLayer(state.activeLayerId); canvasView?.requestRender() },
+            ),
+            fan = Fan.UP,
+            modifier = Modifier.align(Alignment.BottomCenter).offset(x = 36.dp, y = 0.dp),
+        )
+        ClosedBetaNode(
+            node = BetaNode.SELECT,
+            palette = palette,
+            open = openNode == BetaNode.SELECT,
+            onToggle = {
+                openNode = openNode.toggle(BetaNode.SELECT)
+                state.statusMessage = "CANVAS SELECTION IS NOT AVAILABLE IN THE NATIVE RENDERER YET"
+            },
+            onActionComplete = { openNode = null },
+            actions = emptyList(),
+            fan = Fan.UP,
+            modifier = Modifier.align(Alignment.BottomCenter).offset(x = 114.dp, y = 0.dp),
+        )
+
+        ClosedBetaReportButton(
+            palette = palette,
+            onClick = { state.statusMessage = "REPORTING IS NOT CONNECTED IN THIS QA BUILD" },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 10.dp, bottom = 9.dp),
         )
 
         state.statusMessage?.let { message ->
@@ -570,6 +663,7 @@ fun ClosedBetaGlassHorizonScreen(
                 modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-96).dp),
             )
         }
+
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -651,14 +745,17 @@ private enum class BetaNode(val label: String) {
     TOOLS("TOOLS"),
     LINE("LINE"),
     COLOR("COLOR"),
-    LAYERS("LAYERS"),
+    FX("FX"),
     ACTIONS("ACTIONS"),
-    FRAMES("FRAMES"),
+    THEMES("THEMES"),
     STUDIO("STUDIO"),
     GALLERY("GALLERY"),
+    FRAMES("FRAMES"),
+    LAYERS("LAYERS"),
+    SELECT("SELECT"),
 }
 
-private enum class Fan { RIGHT, LEFT, LEFT_UP, LEFT_DOWN, RIGHT_UP, RIGHT_DOWN }
+private enum class Fan { RIGHT, LEFT, UP, LEFT_UP, LEFT_DOWN, RIGHT_UP, RIGHT_DOWN }
 
 private data class BetaAction(
     val label: String,
@@ -671,37 +768,6 @@ private data class BetaAction(
 private fun BetaNode?.toggle(node: BetaNode): BetaNode? = if (this == node) null else node
 
 @Composable
-private fun ClosedBetaTitle(
-    palette: BetaPalette,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.padding(top = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        androidx.compose.material3.Text(
-            text = "INKFRAME",
-            style = TextStyle(
-                brush = UiBrush.verticalGradient(listOf(Color.White, palette.rose, palette.accent)),
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 20.sp,
-                letterSpacing = 4.4.sp,
-                shadow = Shadow(Color(0xF02A001A), Offset(0f, 2.5f), blurRadius = 14f),
-            ),
-        )
-        androidx.compose.material3.Text(
-            text = "THE GLASS HORIZON",
-            color = palette.dim,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 2.8.sp,
-            style = TextStyle(shadow = Shadow(Color(0xF02A001A), Offset(0f, 1.5f), blurRadius = 9f)),
-        )
-    }
-}
-
-@Composable
 private fun ClosedBetaStage(
     state: StudioState,
     palette: BetaPalette,
@@ -709,6 +775,7 @@ private fun ClosedBetaStage(
     canvasHeight: Dp,
     frameWidth: Dp,
     frameHeight: Dp,
+    showAllRings: Boolean,
     onFrame: (Int) -> Unit,
     onAddFrame: () -> Unit,
     onCanvasReady: (CanvasView) -> Unit,
@@ -721,6 +788,7 @@ private fun ClosedBetaStage(
             palette = palette,
             width = frameWidth,
             height = frameHeight,
+            showAllRings = showAllRings,
             onFrame = onFrame,
             onAddFrame = onAddFrame,
             modifier = Modifier.align(Alignment.Center),
@@ -800,12 +868,18 @@ private fun ClosedBetaFrameBoard(
     palette: BetaPalette,
     width: Dp,
     height: Dp,
+    showAllRings: Boolean,
     onFrame: (Int) -> Unit,
     onAddFrame: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val capacity = 120
-    val slotCount = maxOf(state.scene.frameCount + 1, 24).coerceAtMost(capacity)
+    val referenceSlotCount = (((state.scene.frameCount + 12) / 12) * 12).coerceAtLeast(12).coerceAtMost(capacity)
+    val slotCount = if (showAllRings) {
+        referenceSlotCount
+    } else {
+        (state.scene.frameCount + 1).coerceAtMost(capacity)
+    }
     Box(modifier.size(width, height)) {
         repeat(slotCount) { index ->
             val point = betaPerimeterPoint(index, slotCount, width, height)
@@ -855,14 +929,14 @@ private fun ClosedBetaFrameBoard(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = 30.dp)
+                .offset(y = 16.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(Color(0xB314000E))
                 .border(1.dp, palette.stroke, RoundedCornerShape(999.dp))
                 .padding(horizontal = 12.dp, vertical = 5.dp),
         ) {
             androidx.compose.material3.Text(
-                text = "${state.currentFrame + 1} / ${state.scene.frameCount}",
+                text = "${state.scene.frameCount} / $capacity",
                 color = Color.White,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Black,
@@ -878,18 +952,18 @@ private fun betaPerimeterPoint(index: Int, count: Int, width: Dp, height: Dp): P
     val perimeter = 2f * (w + h)
     var d = ((index + 0.5f) / count.toFloat()) * perimeter
     return when {
-        d <= w -> d.dp to 0.dp
+        d <= w -> d.dp to height
         d <= w + h -> {
             d -= w
-            width to d.dp
+            width to (h - d).dp
         }
         d <= 2f * w + h -> {
             d -= w + h
-            (w - d).dp to height
+            (w - d).dp to 0.dp
         }
         else -> {
             d -= 2f * w + h
-            0.dp to (h - d).dp
+            0.dp to d.dp
         }
     }
 }
@@ -902,152 +976,87 @@ private fun ClosedBetaScrubRail(
     onAddFrame: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val railShape = RoundedCornerShape(22.dp)
-    Row(
+    val railShape = RoundedCornerShape(999.dp)
+    BoxWithConstraints(
         modifier = modifier
-            .height(52.dp)
-            .shadow(18.dp, railShape, clip = false)
+            .height(24.dp)
+            .shadow(14.dp, railShape, clip = false)
             .clip(railShape)
-            .background(UiBrush.linearGradient(listOf(palette.glassStrong, Color(0xB314000E))))
-            .border(1.dp, palette.stroke, railShape)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .background(UiBrush.linearGradient(listOf(Color(0xB314000E), Color(0x55330024))))
+            .border(1.dp, palette.stroke.copy(alpha = 0.58f), railShape)
+            .padding(horizontal = 8.dp),
     ) {
-        ClosedBetaRailButton("‹", "Previous frame", palette) {
-            onFrame((state.currentFrame - 1).coerceAtLeast(0))
-        }
-        ClosedBetaRailButton(
-            label = if (state.isPlaying) "Ⅱ" else "▶",
-            actionLabel = if (state.isPlaying) "Pause playback" else "Play animation",
-            palette = palette,
-            selected = state.isPlaying,
-        ) { state.togglePlay() }
+        val capacity = 120
+        val slotCount = (state.scene.frameCount + 1).coerceAtLeast(12).coerceAtMost(capacity)
+        val slotWidth = maxWidth / slotCount.toFloat()
+        val loopStart = state.scene.playbackRange.first.coerceIn(0, state.scene.frameCount - 1)
+        val loopEnd = state.scene.playbackRange.last.coerceIn(loopStart, state.scene.frameCount - 1)
 
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
-                .weight(1f)
-                .height(22.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color(0x6614000E))
-                .border(1.dp, palette.stroke.copy(alpha = 0.52f), RoundedCornerShape(999.dp)),
-        ) {
-            val slotCount = maxOf(state.scene.frameCount + 1, 12).coerceAtMost(120)
-            val slotWidth = maxWidth / slotCount.toFloat()
-            val loopStart = state.scene.playbackRange.first.coerceIn(0, state.scene.frameCount - 1)
-            val loopEnd = state.scene.playbackRange.last.coerceIn(loopStart, state.scene.frameCount - 1)
+                .align(Alignment.CenterStart)
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(Color.White.copy(alpha = 0.28f)),
+        )
 
-            if (state.scene.loop) {
+        if (state.scene.loop) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = slotWidth * loopStart)
+                    .width(slotWidth * (loopEnd - loopStart + 1))
+                    .height(5.dp)
+                    .background(palette.rose.copy(alpha = 0.58f)),
+            )
+        }
+
+        Row(Modifier.fillMaxSize()) {
+            repeat(slotCount) { frame ->
+                val existing = frame < state.scene.frameCount
+                val next = frame == state.scene.frameCount && state.scene.frameCount < capacity
+                val current = existing && frame == state.currentFrame
+                val filled = existing && state.activeLayer.cels.containsKey(frame)
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(x = slotWidth * loopStart)
-                        .width(slotWidth * (loopEnd - loopStart + 1))
-                        .height(4.dp)
-                        .background(palette.rose.copy(alpha = 0.72f)),
-                )
-            }
-
-            Row(Modifier.fillMaxSize()) {
-                repeat(slotCount) { frame ->
-                    val existing = frame < state.scene.frameCount
-                    val next = frame == state.scene.frameCount
-                    val current = existing && frame == state.currentFrame
-                    val filled = existing && state.activeLayer.cels.containsKey(frame)
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            enabled = existing || next,
+                            onClickLabel = if (next) "Add frame" else "Select frame ${frame + 1}",
+                            role = Role.Button,
+                        ) {
+                            if (existing) onFrame(frame) else onAddFrame()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
+                            .size(if (current) 6.dp else if (filled) 4.dp else 3.dp)
+                            .clip(CircleShape)
                             .background(
                                 when {
-                                    current -> palette.accent.copy(alpha = 0.78f)
-                                    filled -> palette.rose.copy(alpha = 0.30f)
-                                    next -> palette.rose.copy(alpha = 0.13f)
-                                    else -> Color.Transparent
+                                    current -> Color.White
+                                    filled -> palette.rose.copy(alpha = 0.92f)
+                                    next -> palette.accent.copy(alpha = 0.72f)
+                                    else -> Color.White.copy(alpha = 0.46f)
                                 },
-                            )
-                            .border(0.5.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(1.dp))
-                            .clickable(
-                                enabled = existing || next,
-                                onClickLabel = if (next) "Add frame" else "Select frame ${frame + 1}",
-                                role = Role.Button,
-                            ) {
-                                if (existing) onFrame(frame) else onAddFrame()
-                            },
+                            ),
                     )
                 }
             }
-
-            Box(
-                modifier = Modifier
-                    .offset(x = slotWidth * state.currentFrame + slotWidth / 2 - 1.dp)
-                    .width(2.dp)
-                    .fillMaxHeight()
-                    .background(Color.White.copy(alpha = 0.92f)),
-            )
         }
 
-        ClosedBetaRailButton("›", "Next frame", palette) {
-            onFrame((state.currentFrame + 1).coerceAtMost(state.scene.frameCount - 1))
-        }
-        Column(
-            modifier = Modifier.width(50.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            androidx.compose.material3.Text(
-                text = "${state.currentFrame + 1} / ${state.scene.frameCount}",
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-            )
-            androidx.compose.material3.Text(
-                text = "${state.project.canvas.fps} FPS",
-                color = palette.dim,
-                fontSize = 7.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.7.sp,
-                maxLines = 1,
-            )
-        }
-        Row(
+        Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color(0x5514000E))
-                .border(1.dp, palette.stroke.copy(alpha = 0.70f), RoundedCornerShape(999.dp))
-                .padding(horizontal = 3.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            ClosedBetaRailButton(
-                label = "−",
-                actionLabel = "Decrease frame hold",
-                palette = palette,
-                enabled = state.currentHold > 1,
-            ) { state.adjustCurrentHold(-1) }
-            androidx.compose.material3.Text(
-                text = "H${state.currentHold}",
-                modifier = Modifier.width(26.dp),
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-            )
-            ClosedBetaRailButton(
-                label = "+",
-                actionLabel = "Increase frame hold",
-                palette = palette,
-                enabled = state.currentHold < 8,
-            ) { state.adjustCurrentHold(1) }
-        }
-        ClosedBetaRailButton(
-            label = "↻",
-            actionLabel = if (state.scene.loop) "Disable loop" else "Enable loop",
-            palette = palette,
-            selected = state.scene.loop,
-        ) { state.toggleLoop() }
+                .align(Alignment.CenterStart)
+                .offset(x = slotWidth * (state.currentFrame + 0.5f) - 5.dp)
+                .size(10.dp)
+                .shadow(8.dp, CircleShape, clip = false)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, palette.accent, CircleShape),
+        )
     }
 }
 
@@ -1089,6 +1098,303 @@ private fun ClosedBetaRailButton(
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+@Composable
+private fun ClosedBetaCommandBar(
+    state: StudioState,
+    palette: BetaPalette,
+    allRings: Boolean,
+    scrubVisible: Boolean,
+    timingOpen: Boolean,
+    onEngineInfo: () -> Unit,
+    onBrushLab: () -> Unit,
+    onPlay: () -> Unit,
+    onCenter: () -> Unit,
+    onAllRings: () -> Unit,
+    onScrub: () -> Unit,
+    onTiming: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(top = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        val topShape = RoundedCornerShape(17.dp)
+        Row(
+            modifier = Modifier
+                .clip(topShape)
+                .background(Color(0xD314000E))
+                .border(1.dp, palette.stroke, topShape)
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            ClosedBetaToolbarButton(
+                label = "Engine · V2",
+                width = 82.dp,
+                palette = palette,
+                primary = true,
+                onClickLabel = "Engine version 2",
+                onClick = onEngineInfo,
+            )
+            ClosedBetaToolbarButton(
+                label = "Brush Lab",
+                width = 82.dp,
+                palette = palette,
+                onClickLabel = "Open Brush Lab",
+                onClick = onBrushLab,
+            )
+        }
+
+        val commandShape = RoundedCornerShape(999.dp)
+        Row(
+            modifier = Modifier
+                .clip(commandShape)
+                .background(Color(0xB314000E))
+                .border(1.dp, palette.stroke.copy(alpha = 0.72f), commandShape)
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            ClosedBetaModeButton("PLAY", state.isPlaying, 50.dp, palette, onPlay)
+            ClosedBetaModeButton("CENTER", false, 56.dp, palette, onCenter)
+            ClosedBetaModeButton("ALL RINGS", allRings, 68.dp, palette, onAllRings)
+            ClosedBetaModeButton("SCRUB", scrubVisible, 54.dp, palette, onScrub)
+            ClosedBetaModeButton("TIMING", timingOpen, 56.dp, palette, onTiming)
+        }
+    }
+}
+
+@Composable
+private fun ClosedBetaToolbarButton(
+    label: String,
+    width: Dp,
+    palette: BetaPalette,
+    primary: Boolean = false,
+    onClickLabel: String,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(30.dp)
+            .clip(shape)
+            .background(
+                if (primary) {
+                    UiBrush.linearGradient(listOf(palette.accent, palette.accentDeep))
+                } else {
+                    UiBrush.linearGradient(listOf(palette.accentDeep.copy(alpha = 0.94f), Color(0xFF260020)))
+                },
+            )
+            .border(1.dp, palette.rim.copy(alpha = 0.82f), shape)
+            .clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Text(
+            text = label,
+            color = Color.White,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.35.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun ClosedBetaModeButton(
+    label: String,
+    selected: Boolean,
+    width: Dp,
+    palette: BetaPalette,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(27.dp)
+            .clip(shape)
+            .background(
+                if (selected) UiBrush.linearGradient(listOf(palette.accent.copy(alpha = 0.78f), palette.accentDeep.copy(alpha = 0.70f)))
+                else UiBrush.linearGradient(listOf(Color(0x22FFF0F3), Color(0x0AFFF0F3))),
+            )
+            .border(1.dp, if (selected) palette.rim.copy(alpha = 0.82f) else palette.stroke.copy(alpha = 0.42f), shape)
+            .clickable(onClickLabel = label.lowercase().replaceFirstChar { it.uppercase() }, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Text(
+            text = label,
+            color = Color.White.copy(alpha = if (selected) 1f else 0.88f),
+            fontSize = 7.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.55.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun ClosedBetaTimingPopover(
+    state: StudioState,
+    palette: BetaPalette,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = modifier
+            .width(224.dp)
+            .shadow(18.dp, shape, clip = false)
+            .clip(shape)
+            .background(UiBrush.linearGradient(listOf(Color(0xE62A001A), Color(0xE614000E))))
+            .border(1.dp, palette.rim.copy(alpha = 0.72f), shape)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        androidx.compose.material3.Text(
+            text = "TIMING · ${state.currentFrame + 1} / ${state.scene.frameCount}",
+            color = Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.85.sp,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            androidx.compose.material3.Text(
+                text = "FPS",
+                modifier = Modifier.weight(1f),
+                color = palette.dim,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.8.sp,
+            )
+            ClosedBetaRailButton("−", "Decrease frames per second", palette) {
+                state.setFps(state.project.canvas.fps - 1)
+            }
+            androidx.compose.material3.Text(
+                text = "${state.project.canvas.fps}",
+                modifier = Modifier.width(38.dp),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+            ClosedBetaRailButton("+", "Increase frames per second", palette) {
+                state.setFps(state.project.canvas.fps + 1)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            androidx.compose.material3.Text(
+                text = "HOLD",
+                modifier = Modifier.weight(1f),
+                color = palette.dim,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.8.sp,
+            )
+            ClosedBetaRailButton("−", "Decrease current frame hold", palette, enabled = state.currentHold > 1) {
+                state.adjustCurrentHold(-1)
+            }
+            androidx.compose.material3.Text(
+                text = "H${state.currentHold}",
+                modifier = Modifier.width(38.dp),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            )
+            ClosedBetaRailButton("+", "Increase current frame hold", palette, enabled = state.currentHold < 8) {
+                state.adjustCurrentHold(1)
+            }
+        }
+        ClosedBetaModeButton(
+            label = if (state.scene.loop) "LOOP ON" else "LOOP OFF",
+            selected = state.scene.loop,
+            width = 84.dp,
+            palette = palette,
+            onClick = state::toggleLoop,
+        )
+    }
+}
+
+@Composable
+private fun ClosedBetaCanvasShapeChip(
+    palette: BetaPalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(Color(0xD6140013))
+            .border(1.dp, palette.stroke, shape)
+            .clickable(onClickLabel = "Canvas shape: square", role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        androidx.compose.material3.Text(
+            text = "□ SQUARE",
+            color = Color.White,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.65.sp,
+        )
+    }
+}
+
+@Composable
+private fun ClosedBetaReportButton(
+    palette: BetaPalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    Box(
+        modifier = modifier
+            .width(76.dp)
+            .height(30.dp)
+            .shadow(10.dp, shape, clip = false)
+            .clip(shape)
+            .background(UiBrush.linearGradient(listOf(palette.accent, palette.accentDeep)))
+            .border(1.dp, palette.rim, shape)
+            .clickable(onClickLabel = "Report an issue", role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Text(
+            text = "REPORT",
+            color = Color.White,
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 1.1.sp,
+        )
+    }
+}
+
+@Composable
+private fun ClosedBetaFrameGuides(
+    palette: BetaPalette,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier) {
+        val inset = 8.dp.toPx()
+        val arm = 16.dp.toPx()
+        val stroke = 1.15.dp.toPx()
+        val left = inset
+        val top = inset
+        val right = size.width - inset
+        val bottom = size.height - inset
+        val color = palette.rim.copy(alpha = 0.70f)
+        fun corner(x: Float, y: Float, horizontal: Float, vertical: Float) {
+            drawLine(color, Offset(x, y), Offset(x + horizontal * arm, y), strokeWidth = stroke, cap = StrokeCap.Round)
+            drawLine(color, Offset(x, y), Offset(x, y + vertical * arm), strokeWidth = stroke, cap = StrokeCap.Round)
+        }
+        corner(left, top, 1f, 1f)
+        corner(right, top, -1f, 1f)
+        corner(left, bottom, 1f, -1f)
+        corner(right, bottom, -1f, -1f)
     }
 }
 
@@ -1260,21 +1566,61 @@ private fun ClosedBetaGlyph(node: BetaNode, modifier: Modifier = Modifier) {
                 drawCircle(white, radius = w * .08f, center = Offset(w * .24f, h * .78f))
             }
             BetaNode.LINE -> {
-                line(.19f, .30f, .81f, .30f, stroke.width * .75f)
-                line(.26f, .50f, .74f, .50f, stroke.width * 1.25f)
-                line(.35f, .70f, .65f, .70f, stroke.width * 1.8f)
+                val curve = Path().apply {
+                    moveTo(w * .14f, h * .66f)
+                    cubicTo(w * .31f, h * .64f, w * .31f, h * .28f, w * .49f, h * .33f)
+                    cubicTo(w * .66f, h * .38f, w * .64f, h * .72f, w * .85f, h * .34f)
+                }
+                drawPath(curve, white, style = stroke)
             }
             BetaNode.COLOR -> {
-                val droplet = Path().apply {
-                    moveTo(w * .50f, h * .14f)
-                    cubicTo(w * .35f, h * .36f, w * .22f, h * .48f, w * .22f, h * .63f)
-                    cubicTo(w * .22f, h * .83f, w * .38f, h * .91f, w * .50f, h * .91f)
-                    cubicTo(w * .67f, h * .91f, w * .80f, h * .78f, w * .80f, h * .62f)
-                    cubicTo(w * .80f, h * .47f, w * .64f, h * .32f, w * .50f, h * .14f)
+                val palette = Path().apply {
+                    moveTo(w * .47f, h * .14f)
+                    cubicTo(w * .25f, h * .15f, w * .13f, h * .34f, w * .13f, h * .54f)
+                    cubicTo(w * .13f, h * .76f, w * .30f, h * .88f, w * .50f, h * .88f)
+                    cubicTo(w * .60f, h * .88f, w * .63f, h * .80f, w * .61f, h * .73f)
+                    cubicTo(w * .59f, h * .66f, w * .64f, h * .61f, w * .73f, h * .61f)
+                    cubicTo(w * .85f, h * .61f, w * .88f, h * .54f, w * .85f, h * .43f)
+                    cubicTo(w * .82f, h * .25f, w * .67f, h * .14f, w * .47f, h * .14f)
                     close()
                 }
-                drawPath(droplet, white, style = stroke)
-                drawCircle(white, radius = w * .06f, center = Offset(w * .44f, h * .59f))
+                drawPath(palette, white, style = stroke)
+                drawCircle(white, radius = w * .045f, center = Offset(w * .35f, h * .40f))
+                drawCircle(white, radius = w * .045f, center = Offset(w * .52f, h * .31f))
+                drawCircle(white, radius = w * .045f, center = Offset(w * .68f, h * .40f))
+                drawCircle(white, radius = w * .045f, center = Offset(w * .37f, h * .61f))
+            }
+            BetaNode.FX -> {
+                val star = Path().apply {
+                    moveTo(w * .50f, h * .12f)
+                    lineTo(w * .62f, h * .39f)
+                    lineTo(w * .90f, h * .42f)
+                    lineTo(w * .68f, h * .59f)
+                    lineTo(w * .75f, h * .88f)
+                    lineTo(w * .50f, h * .72f)
+                    lineTo(w * .25f, h * .88f)
+                    lineTo(w * .32f, h * .59f)
+                    lineTo(w * .10f, h * .42f)
+                    lineTo(w * .38f, h * .39f)
+                    close()
+                }
+                drawPath(star, white, style = stroke)
+            }
+            BetaNode.THEMES -> {
+                drawCircle(white, radius = w * .34f, center = Offset(w * .50f, h * .50f), style = stroke)
+                line(.50f, .16f, .50f, .84f, stroke.width * .75f)
+                drawCircle(white, radius = w * .10f, center = Offset(w * .50f, h * .31f), style = stroke)
+                drawCircle(white, radius = w * .10f, center = Offset(w * .50f, h * .69f))
+            }
+            BetaNode.SELECT -> {
+                line(.18f, .36f, .18f, .18f)
+                line(.18f, .18f, .36f, .18f)
+                line(.64f, .18f, .82f, .18f)
+                line(.82f, .18f, .82f, .36f)
+                line(.82f, .64f, .82f, .82f)
+                line(.82f, .82f, .64f, .82f)
+                line(.36f, .82f, .18f, .82f)
+                line(.18f, .82f, .18f, .64f)
             }
             BetaNode.LAYERS -> {
                 val diamond = Path().apply {
@@ -1291,14 +1637,12 @@ private fun ClosedBetaGlyph(node: BetaNode, modifier: Modifier = Modifier) {
                 line(.50f, .84f, .75f, .68f)
             }
             BetaNode.ACTIONS -> {
-                val undo = Path().apply {
-                    moveTo(w * .24f, h * .40f)
-                    lineTo(w * .43f, h * .21f)
-                    lineTo(w * .43f, h * .35f)
-                    cubicTo(w * .68f, h * .30f, w * .82f, h * .48f, w * .77f, h * .70f)
-                }
-                drawPath(undo, white, style = stroke)
-                line(.23f, .40f, .42f, .40f)
+                drawCircle(white, radius = w * .22f, center = Offset(w * .50f, h * .50f), style = stroke)
+                drawCircle(white, radius = w * .055f, center = Offset(w * .50f, h * .50f))
+                line(.50f, .06f, .50f, .25f)
+                line(.50f, .75f, .50f, .94f)
+                line(.06f, .50f, .25f, .50f)
+                line(.75f, .50f, .94f, .50f)
             }
             BetaNode.FRAMES -> {
                 drawRoundRect(
@@ -1341,6 +1685,7 @@ private fun betaFanOffset(index: Int, count: Int, fan: Fan): Pair<Dp, Dp> {
     val centerDegrees = when (fan) {
         Fan.RIGHT -> 0f
         Fan.LEFT -> 180f
+        Fan.UP -> 270f
         Fan.LEFT_UP -> 235f
         Fan.LEFT_DOWN -> 125f
         Fan.RIGHT_UP -> 305f
