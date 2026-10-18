@@ -70,7 +70,7 @@ The authoritative device-test artifact is the stable native QA release APK publi
 Primary workflows:
 
 - `.github/workflows/native-android-ci.yml` — no-secret native boundary, documentation, release Kotlin compile, and unit-test CI for `main`, Arena branches, and PRs;
-- `.github/workflows/android.yml` — native boundary checks, release Kotlin compile/tests, stable QA APK, conditional signed production APK;
+- `.github/workflows/android.yml` — native boundary checks, release Kotlin compile/tests, stable QA APK, conditional signed production APK; manual `qa_artifact_only: true` builds the stable QA APK from the selected branch while skipping issue updates and production packaging;
 - `.github/workflows/release.yml` — controlled signed release publication path;
 - `.github/workflows/agent-build.yml` — manually dispatched agent build entry point;
 - `.github/workflows/agent-cli.yml` — path-filtered CLI and release-helper safety checks;

@@ -4,11 +4,18 @@ name: Android Mainline
 # Every successful main build validates the native runtime and publishes a non-debuggable,
 # update-compatible QA APK for com.inkframe.studio.qa. Production signing remains separate,
 # secret, and conditional. Debug APKs are never built.
+# Manual qa_artifact_only dispatches build just the stable QA APK and skip issue writes and production packaging.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      qa_artifact_only:
+        description: Build and upload only the stable QA APK; skip issue updates and production packaging.
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: android-mainline-${{ github.ref }}
@@ -23,7 +30,7 @@ jobs:
     name: Native Glass Horizon boundary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify native application ownership
         shell: bash
         run: |
@@ -60,18 +67,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: native-boundary
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - name: Install Android API 36
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
       - name: Compile release Kotlin and run tests
         shell: bash
         run: |
@@ -80,7 +87,7 @@ jobs:
           ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee gradle-test.log
       - name: Upload compiler and test diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mainline-release-diagnostics-${{ github.sha }}
           path: |
@@ -89,7 +96,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Report compiler result to migration issue
-        if: always()
+        if: ${{ always() && !inputs.qa_artifact_only }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -125,24 +132,24 @@ jobs:
       INKFRAME_KEY_ALIAS: inkframe-qa
       INKFRAME_KEY_PASSWORD: inkframe-qa-release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install deterministic signing dependency
         run: python -m pip install --disable-pip-version-check --no-input cryptography==46.0.4
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - name: Install Android API 36
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
       - name: Generate stable public QA signing identity
         shell: bash
         run: |
@@ -195,20 +202,64 @@ jobs:
           OUT="InkFrame-native-QA-release-${SHORT_SHA}.apk"
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee "${OUT}.sha256"
+          SHA256="$(cut -d' ' -f1 "${OUT}.sha256")"
+          cat > QA-ARTIFACT-INFO.md <<EOF
+          # Stable native QA APK
+
+          - Commit: ${GITHUB_SHA}
+          - Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - APK: ${OUT}
+          - SHA-256: ${SHA256}
+          - Package: com.inkframe.studio.qa
+          - QA certificate SHA-256: ${QA_CERT_FINGERPRINT}
+          - Build type: release, non-debuggable, native-only QA artifact
+          - Production signing: separate and not used
+          EOF
           echo "apk=$OUT" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(cut -d' ' -f1 "${OUT}.sha256")" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
       - name: Upload stable QA release APK
         id: upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: inkframe-native-qa-release-${{ github.sha }}
           path: |
             ${{ steps.verify.outputs.apk }}
             ${{ steps.verify.outputs.apk }}.sha256
+            QA-ARTIFACT-INFO.md
           if-no-files-found: error
           retention-days: 30
-      - name: Publish latest stable QA artifact record
+      - name: Write stable QA artifact record to run summary
         if: always()
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          APK_NAME: ${{ steps.verify.outputs.apk }}
+          APK_SHA256: ${{ steps.verify.outputs.sha256 }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          set -euo pipefail
+          {
+            echo '# Stable native QA APK artifact'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Result: **${JOB_STATUS}**"
+            echo "- Workflow run ID: \`${GITHUB_RUN_ID}\`"
+            echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [[ "$JOB_STATUS" == "success" ]]; then
+              echo "- Artifact ID: \`${ARTIFACT_ID}\`"
+              echo "- [Download artifact](${ARTIFACT_URL})"
+              echo "- File: \`${APK_NAME}\`"
+              echo "- SHA-256: \`${APK_SHA256}\`"
+              echo "- Package: \`com.inkframe.studio.qa\`"
+              echo "- QA certificate SHA-256: \`${QA_CERT_FINGERPRINT}\`"
+              echo '- Production signing is separate and was not used.'
+            else
+              echo '- No QA APK was produced by this run.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish latest stable QA artifact record
+        if: ${{ always() && !inputs.qa_artifact_only }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -248,6 +299,7 @@ jobs:
 
   signing-readiness:
     name: Permanent signing readiness
+    if: ${{ !inputs.qa_artifact_only }}
     runs-on: ubuntu-latest
     needs: release-compile-and-tests
     outputs:
@@ -312,25 +364,25 @@ jobs:
     needs:
       - release-compile-and-tests
       - signing-readiness
-    if: needs.signing-readiness.outputs.ready == 'true'
+    if: ${{ !inputs.qa_artifact_only && needs.signing-readiness.outputs.ready == 'true' }}
     env:
       INKFRAME_KEYSTORE_BASE64: ${{ secrets.INKFRAME_KEYSTORE_BASE64 }}
       INKFRAME_KEYSTORE_PASSWORD: ${{ secrets.INKFRAME_KEYSTORE_PASSWORD }}
       INKFRAME_KEY_ALIAS: ${{ secrets.INKFRAME_KEY_ALIAS }}
       INKFRAME_KEY_PASSWORD: ${{ secrets.INKFRAME_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - name: Install Android API 36
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
       - name: Restore permanent InkFrame signing key
         shell: bash
         run: |
@@ -378,7 +430,7 @@ jobs:
           sha256sum "$OUT" | tee "${OUT}.sha256"
           echo "apk=$OUT" >> "$GITHUB_OUTPUT"
       - name: Upload signed production APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: inkframe-release-${{ github.sha }}
           path: |
