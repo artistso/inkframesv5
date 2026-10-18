@@ -61,6 +61,20 @@ jobs:
           set -o pipefail
           chmod +x ./gradlew
           ./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain 2>&1 | tee gradle-test.log
+      - name: Surface Gradle failure details in annotations
+        if: failure()
+        shell: bash
+        run: |
+          {
+            grep -E '(^FAILURE:|^e: |error:|Execution failed for task|What went wrong:|^> Task .* FAILED|Could not resolve|No matching variant|Unresolved reference)' gradle-test.log || true
+            tail -n 25 gradle-test.log
+          } | tail -n 45 | while IFS= read -r line; do
+            line="${line:0:1000}"
+            line="${line//'%'/'%25'}"
+            line="${line//$'\r'/'%0D'}"
+            line="${line//$'\n'/'%0A'}"
+            printf '::error title=Gradle failure detail::%s\n' "$line"
+          done
       - name: Upload test and compiler diagnostics
         if: always()
         uses: actions/upload-artifact@v7
