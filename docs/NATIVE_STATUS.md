@@ -1,7 +1,7 @@
 # InkFrame native Android status
 
 Status: **binding current repository status**  
-Last reviewed: 2026-07-19
+Last reviewed: 2026-10-17
 
 InkFrame Android development is now a **native Kotlin / Jetpack Compose / OpenGL ES** application.
 
@@ -33,10 +33,13 @@ The active Kotlin runtime currently includes these bounded parity slices:
 - blank-project CanvasView recreation isolated from archive open/recovery so loaded GPU cel surfaces are retained;
 - a five-layer native Glass Horizon theme world: horizon, rays, fine grain, vignette, and transient glint;
 - the exact binding rose/plum horizon progression plus a complete blue counterpart with persistent native theme selection;
+- the native InkFrame display-serif title, canonical eight optical command nodes with vector glyphs, and spring-open radial child menus;
+- a dedicated glass scrub rail with frame stepping, playback, loop state, current-frame timing, and integrated hold controls;
+- Gallery and Studio radial entry points for project creation and Brush Lab, avoiding a second command cluster over the drawing stage;
 - landscape corner-derived gradient geometry and draw-time ray feathering that remain consistent across API 26 through API 36;
 - crash-safe local project recovery and native archive save/open.
 
-Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, final title typography, approved frame-glass optics, eight-node drag persistence, spring radial animation, and the complete live stylus lens are not yet native parity claims.
+Brush Lab named-preset persistence, `.inkbrush` import/export, Ghost Trail, advanced diagnostic controls, multi-project gallery persistence, thumbnails, duplicate/rename/delete management, durable custom-template storage, final title typography, approved frame-glass optics, eight-node drag persistence and the complete live stylus lens are not yet native parity claims.
 
 ## Web reference boundary
 
