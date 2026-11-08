@@ -344,8 +344,12 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
 
         val leftX = 54.dp
         val rightX = maxWidth - 56.dp
-        val bottomY = maxHeight - 54.dp
+        // Keep the command nodes above the scrub rail and distribute them by available
+        // width. The old hand-tuned offsets put the labels and touch targets on top of
+        // the rail (and on top of each other on smaller tablets).
+        val bottomY = maxHeight - 120.dp
         val centerX = maxWidth / 2
+        fun bottomNodeX(slot: Int): Dp = maxWidth * ((slot + 0.5f) / 6f) - 29.dp
 
         ClosedBetaNode(
             node = BetaNode.TOOLS,
@@ -437,7 +441,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
             onToggle = { openNode = openNode.toggle(BetaNode.STUDIO) },
             actions = listOf(BetaAction("ABOUT") { state.statusMessage = "INKFRAME · THE GLASS HORIZON" }),
             fan = Fan.UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = 54.dp, y = bottomY),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = bottomNodeX(0), y = bottomY),
         )
         ClosedBetaNode(
             node = BetaNode.GALLERY,
@@ -457,7 +461,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("PNG") { launchExport(ExportManager.ExportFormat.PNG_SEQUENCE) },
             ),
             fan = Fan.UP_RIGHT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = 124.dp, y = bottomY),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = bottomNodeX(1), y = bottomY),
         )
         ClosedBetaNode(
             node = BetaNode.FRAMES,
@@ -475,7 +479,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("LOOP", selected = state.scene.loop) { state.toggleLoop() },
             ),
             fan = Fan.UP_RIGHT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = centerX - 150.dp, y = bottomY),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = bottomNodeX(2), y = bottomY),
         )
         ClosedBetaNode(
             node = BetaNode.LAYERS,
@@ -494,7 +498,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("DELETE") { state.deleteLayer(state.activeLayerId); canvasView?.requestRender() },
             ),
             fan = Fan.UP,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = centerX, y = bottomY),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = bottomNodeX(3), y = bottomY),
         )
         ClosedBetaNode(
             node = BetaNode.SELECT,
@@ -507,7 +511,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("CENTER") { canvasView?.fitToScreen() },
             ),
             fan = Fan.UP_LEFT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = centerX + 96.dp, y = bottomY),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = bottomNodeX(4), y = bottomY),
         )
         ClosedBetaNode(
             node = BetaNode.REPORT,
@@ -519,7 +523,7 @@ fun ClosedBetaGlassHorizonScreen(state: StudioState = viewModel()) {
                 BetaAction("SAVE") { saveLauncher.launch(MediaTypes.suggestedFileName(state.project.name, MediaTypes.DocumentKind.PROJECT)) },
             ),
             fan = Fan.UP_LEFT,
-            modifier = Modifier.align(Alignment.TopStart).offset(x = maxWidth - 58.dp, y = bottomY),
+            modifier = Modifier.align(Alignment.TopStart).offset(x = bottomNodeX(5), y = bottomY),
         )
 
         state.statusMessage?.let { message ->
