@@ -69,7 +69,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Install Android API 36
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME is not set}}"
+          sdkmanager --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Compile release Kotlin and run tests
@@ -104,12 +108,16 @@ jobs:
             echo "- Result: **${JOB_STATUS}**"
             echo "- Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
-            if [[ "$JOB_STATUS" != "success" && -s gradle-test.log ]]; then
-              echo '```text'
-              grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:)' gradle-test.log | tail -n 80 || tail -n 80 gradle-test.log
-              echo '```'
+            if [[ -s gradle-test.log ]]; then
+              if [[ "$JOB_STATUS" != "success" ]]; then
+                echo '```text'
+                grep -E '(^e: |FAILURE:|Execution failed|Unresolved reference|error:)' gradle-test.log | tail -n 80 || tail -n 80 gradle-test.log
+                echo '```'
+              else
+                echo 'Release Kotlin compilation and the native unit-test suite passed.'
+              fi
             else
-              echo 'Release Kotlin compilation and the native unit-test suite passed.'
+              echo '**Gradle compile and tests did not run:** an earlier setup step failed. See the workflow run for the failed step.'
             fi
           } > compiler-report.md
           gh issue comment 136 --repo "$GITHUB_REPOSITORY" --body-file compiler-report.md
@@ -140,7 +148,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Install Android API 36
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME is not set}}"
+          sdkmanager --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Generate stable public QA signing identity
@@ -328,7 +340,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Install Android API 36
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME is not set}}"
+          sdkmanager --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Restore permanent InkFrame signing key
