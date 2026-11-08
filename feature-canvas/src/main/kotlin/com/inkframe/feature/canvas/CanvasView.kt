@@ -453,8 +453,11 @@ class CanvasView(
             MotionEvent.ACTION_POINTER_DOWN -> {
                 // A second finger arrived: abandon any wet stroke and start navigating.
                 if (mode == Mode.DRAW) {
-                    renderer.post(CanvasRenderer.EngineEvent.End)
-                    onArtworkChanged?.invoke()
+                    renderer.post(
+                        CanvasRenderer.EngineEvent.End { committed ->
+                            if (committed) post { onArtworkChanged?.invoke() }
+                        },
+                    )
                     physicalEraserStroke = false
                 }
                 if (event.pointerCount >= 2) beginNavigation(event)
@@ -485,15 +488,22 @@ class CanvasView(
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (mode == Mode.DRAW) {
-                    renderer.post(CanvasRenderer.EngineEvent.End)
-                    onStrokeInput?.invoke(
-                        if (physicalEraserStroke) {
-                            "ERASER COMMITTED · CEL ${cfg.targetSurfaceId}"
-                        } else {
-                            "INK COMMITTED · CEL ${cfg.targetSurfaceId}"
+                    val wasEraser = physicalEraserStroke
+                    renderer.post(
+                        CanvasRenderer.EngineEvent.End { committed ->
+                            post {
+                                onStrokeInput?.invoke(
+                                    when {
+                                        committed && wasEraser -> "ERASER DRAWN · CEL ${cfg.targetSurfaceId}"
+                                        committed -> "INK DRAWN · CEL ${cfg.targetSurfaceId}"
+                                        wasEraser -> "ERASER · NO PIXELS COMMITTED"
+                                        else -> "INK · NO PIXELS COMMITTED"
+                                    },
+                                )
+                                if (committed) onArtworkChanged?.invoke()
+                            }
                         },
                     )
-                    onArtworkChanged?.invoke()
                 }
                 physicalEraserStroke = false
                 mode = Mode.IDLE
