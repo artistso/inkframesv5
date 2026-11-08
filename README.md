@@ -2,146 +2,73 @@
 
 # InkFrame Studio
 
-### The Glass Horizon · Native Android drawing and frame-by-frame animation studio
+### The Glass Horizon
 
-<img src="media/The_Glass_Horizon_Project_Philosophy.png" alt="InkFrame Studio — the Glass Horizon interface, floating rose-quartz orbs around a paper-white canvas" width="100%" />
+**A native Android studio for drawing and frame-by-frame animation.**
 
-<br/>
+<img src="media/The_Glass_Horizon_Project_Philosophy.png" alt="InkFrame Studio's Glass Horizon visual direction: rose-quartz light around a paper canvas" width="100%" />
 
-<img src="media/demo.gif" alt="An animated GIF of a leaping cat drawn frame-by-frame in InkFrame" width="320" />
+**Kotlin · Jetpack Compose · OpenGL ES · offline-first**
 
-<br/>
-
-**Native Kotlin · Jetpack Compose · OpenGL ES · offline-first · stylus-first.**
+[**Releases and APKs**](https://github.com/artistso/inkframesv5/releases) · [Visual contract](docs/GLASS_HORIZON_VISUAL_CONTRACT.md) · [Native status](docs/NATIVE_STATUS.md)
 
 </div>
 
 ---
 
-InkFrame Studio is a **2D drawing and frame-by-frame animation app** with the Glass Horizon interface: glowing rose-quartz command orbs around a centered paper canvas, a perimeter frame board, a glass scrub rail, and a stylus-first native drawing surface.
+InkFrame is being built around its original **Glass Horizon** workspace: a luminous rose-and-plum atmosphere, a paper drawing stage, a perimeter frame board, a glass scrub rail, and optical command nodes. The Android application is native Kotlin, Compose, and OpenGL ES; the historical web app is retained as a design reference and is not packaged or run by Android.
 
-The current Android product is **not** a WebView wrapper. Android startup is owned by Kotlin, Jetpack Compose, and OpenGL ES. The historical web implementation remains in the repository only as a visual and interaction reference for the native port.
+## Build status
 
-Canonical status: [`docs/NATIVE_STATUS.md`](docs/NATIVE_STATUS.md)
+The native project and automated Android build are active. A green compile or QA APK build confirms that the code builds and package checks pass; it does **not** replace S Pen/touch acceptance or visual review on a physical tablet. QA APKs are test artifacts, not production releases. Use the Releases page for published artifacts and check each release's notes and validation status before installing.
 
-## Current product boundary
+## Product boundary
 
-- **Android runtime:** native Kotlin / Jetpack Compose / OpenGL ES.
-- **Artwork path:** native `CanvasView`, `feature-canvas`, and `engine-gl`.
-- **Launch path:** `SplashActivity -> MainActivity -> ClosedBetaGlassHorizonScreen`.
-- **Offline by design:** no account, no advertising, no analytics, no automatic upload path.
-- **No Android WebView:** no `WebView`, no JavaScript bridge, no packaged browser runtime, no `INTERNET` permission.
-- **Web reference only:** `web/index.html` remains the historical Glass Horizon design reference, not the Android runtime.
+- **Native Android runtime:** Kotlin, Jetpack Compose, and OpenGL ES.
+- **Offline artwork path:** no account, ads, analytics, or automatic artwork upload.
+- **No browser runtime:** no WebView, JavaScript bridge, packaged web app, or Android INTERNET permission.
+- **Reference material:** `web/` is historical design and interaction reference only.
 
-## Quick start
+## Current areas of work
+
+- Stylus and touch drawing, pressure response, brushes, undo/redo, and canvas navigation.
+- Frame-by-frame animation, held-frame timing, playback, layers, and a perimeter frame board.
+- `.inkframe` project files, local recovery, and GIF, MP4, and PNG-sequence export.
+- Glass Horizon visual and interaction parity, including original node placement, timeline behavior, and responsive touch controls.
+
+These are active development areas; automated tests do not imply every interaction has passed physical-device acceptance. See [`docs/NATIVE_STATUS.md`](docs/NATIVE_STATUS.md) for the current implementation boundary and known parity gaps.
+
+## Development
+
+Requirements: JDK 17, Android SDK API 36, and Android Build Tools 35.0.0.
 
 ```bash
-# Clone
-gh repo clone artistso/inkframesv5
-cd inkframesv5
+# JVM/unit tests
+./gradlew test --stacktrace --console=plain
 
-# Run all JVM/unit tests
-./inkframe-cli test
+# Release Kotlin compile and tests
+./gradlew :app:compileReleaseKotlin test --stacktrace --console=plain
 
-# Build a local developer APK when an Android SDK is available
+# Local developer APK (requires the Android SDK)
 ./inkframe-cli build-apk
 ```
 
-For CI-built QA artifacts, use GitHub Actions. The current native QA release lane publishes a non-debuggable `com.inkframe.studio.qa` APK tied to an exact commit and SHA-256 record.
+Native app metadata lives in `gradle/inkframe-app.properties`. Production APK/AAB packaging is fail-closed and requires the permanent production signing identity; QA signing is separate and cannot publish to Google Play.
 
-## Native build requirements
-
-| Requirement | Version / notes |
-|---|---|
-| JDK | 17 |
-| Android SDK | API 36 platform, Build Tools 35.x |
-| Minimum Android | API 26 |
-| Target device | Samsung Galaxy Tab S10+ with S Pen |
-| Build system | Gradle wrapper, Android Gradle Plugin, Kotlin |
-
-Native Android metadata is stored in `gradle/inkframe-app.properties`.
-
-## Features under the native line
-
-**Drawing**
-
-- Native OpenGL ES canvas.
-- S Pen, finger, pressure, hover/lens, pan, and zoom pathways.
-- Brush selection, size controls, color swatches, eyedropper/fill hooks, undo/redo routing.
-
-**Animation**
-
-- Frame board around the drawing stage.
-- Bottom scrub rail.
-- Frame add, duplicate, delete, copy/paste, loop, and playback controls.
-- Layer operations routed through the native model.
-
-**Files and export**
-
-- `.inkframe` project save/open path through Android document pickers.
-- GIF, MP4, and PNG sequence export pathways through native Android file destinations.
-- Offline project recovery.
-
-**Interface**
-
-- Glass Horizon atmosphere.
-- Rose/plum optical nodes.
-- Perimeter frame board.
-- Stylus lens overlay.
-- Tablet-first landscape layout.
-
-## Repository layout
+## Repository map
 
 ```text
-app/                    Native Android application shell, Compose host, signing/package config
-core-common/            Pure utilities and math
-core-model/             Document model, package codec, defaults, export planning
-engine-gl/              OpenGL ES paint/compositor engine
-feature-canvas/         Native canvas, Glass Horizon Compose surface, export/recovery bridge
-feature-layers/         Layer feature code
-web/                    Historical Glass Horizon reference and web prototype, not Android runtime
-docs/
-  NATIVE_STATUS.md      Current source of truth for Android runtime status
-  MAINLINE_KOTLIN_MIGRATION.md
-  GLASS_HORIZON_VISUAL_CONTRACT.md
-gradle/
-  inkframe-app.properties
-.github/workflows/      Native CI, QA APK, signing, and release checks
-inkframe-cli            Local and agent command entry point
+app/                    Native Android application and packaging
+core-common/            Platform-free math and utilities
+core-model/              Document model, project archives, export planning
+engine-gl/               OpenGL ES paint and compositor engine
+feature-canvas/          Glass Horizon workspace, canvas, recovery and export
+feature-layers/          Layer support
+web/                     Historical design reference only
+docs/                    Native status, architecture and visual contract
+.github/workflows/       Android CI, QA packaging and release policy
 ```
 
-## Development rules
+## Privacy and license
 
-1. Keep Android native: no WebView, JavaScript bridge, packaged web runtime, or browser storage dependency.
-2. Keep the artwork path offline and private.
-3. Treat `gradle/inkframe-app.properties` as the native Android metadata source.
-4. Treat `docs/NATIVE_STATUS.md` and `docs/GLASS_HORIZON_VISUAL_CONTRACT.md` as binding documentation.
-5. Preserve the historical web app only as a design reference until the native port no longer needs it.
-6. Never commit keystores, service-account JSON, passwords, signing secrets, or generated private credentials.
-7. Add tests or package-inspection gates for behavior, persistence, signing, Android storage, and network-boundary changes.
-
-## Release boundary
-
-A QA APK is a test artifact, not a public release. It must be recorded with its exact commit, artifact name, package name, certificate, and SHA-256.
-
-A production release requires:
-
-- native tests passing;
-- package inspection proving no WebView, no packaged web assets, and no `INTERNET` permission;
-- Galaxy Tab S10+ physical acceptance;
-- owner approval of the Glass Horizon visual result;
-- permanent production signing credentials for `com.inkframe.studio`.
-
-## License
-
-MIT — free to use, modify, and redistribute. See [`LICENSE`](LICENSE).
-
-Privacy: InkFrame is offline-first, with no account requirement, advertising, analytics, or automatic uploads. See [`PRIVACY.md`](PRIVACY.md).
-
----
-
-<div align="center">
-
-*Built with the Glass Horizon design system · native Android first · stylus, finger, and S Pen focused.*
-
-</div>
+InkFrame is offline-first. See [`PRIVACY.md`](PRIVACY.md). The source is MIT licensed; see [`LICENSE`](LICENSE).
