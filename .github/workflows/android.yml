@@ -68,6 +68,9 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # setup-android@v3 defaults to the retired SDK package "tools".
+          packages: platform-tools
       - name: Install Android API 36
         shell: bash
         run: |
@@ -147,6 +150,9 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # setup-android@v3 defaults to the retired SDK package "tools".
+          packages: platform-tools
       - name: Install Android API 36
         shell: bash
         run: |
@@ -339,6 +345,9 @@ jobs:
           java-version: '17'
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # setup-android@v3 defaults to the retired SDK package "tools".
+          packages: platform-tools
       - name: Install Android API 36
         shell: bash
         run: |
