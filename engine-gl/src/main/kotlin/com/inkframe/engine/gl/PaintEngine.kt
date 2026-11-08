@@ -110,8 +110,9 @@ class PaintEngine(
         addDabs(proc.add(sample))
     }
 
-    fun endStroke() {
-        val proc = activeStroke ?: return
+    fun endStroke(): Boolean {
+        val proc = activeStroke ?: return false
+        var didCommit = false
         val cel = strokeCel
         val brush = strokeBrush
         val celId = strokeCelId
@@ -152,6 +153,7 @@ class PaintEngine(
                     StrokeCommand(snapshot, restore = ::restorePixels),
                 )
                 onHistoryChanged?.invoke()
+                didCommit = true
             }
         }
         activeStroke = null
@@ -159,6 +161,7 @@ class PaintEngine(
         strokeCelId = -1L
         strokeBrush = null
         strokeDabs.clear()
+        return didCommit
     }
 
     /**

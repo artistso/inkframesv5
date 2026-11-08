@@ -24,15 +24,15 @@ import com.inkframe.feature.canvas.StudioState
  * Kotlin, Compose and OpenGL own the complete application surface. No WebView, JavaScript bridge,
  * browser storage, or packaged web application participates in startup.
  *
- * [HoldAwareGlassHorizonScreen] is the artist-facing workspace. Canvas contact is routed directly
- * to the native drawing surface so Compose overlays cannot swallow S Pen or finger strokes.
+ * [HoldAwareGlassHorizonScreen] is the artist-facing workspace. Android's normal view hit-testing
+ * routes input either to Compose controls or to the embedded native drawing surface; do not
+ * globally reroute touches, which would steal taps from controls overlapping the canvas.
  */
 class MainActivity : ComponentActivity() {
 
     private val studioState by viewModels<StudioState>()
     private lateinit var stylusLens: StylusLensOverlayView
     private var nativeCanvas: CanvasView? = null
-    private var routingCanvasGesture = false
 
     private val decorLayoutListener = View.OnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
         if (::stylusLens.isInitialized) stylusLens.layout(0, 0, view.width, view.height)
@@ -57,22 +57,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Observe stylus motion globally for the hover lens, but preserve Android's normal
+        // hit-testing. Force-routing touches to CanvasView here bypasses Compose clickable
+        // targets and makes controls over the stage impossible to activate.
         observeStylus(event)
-        val canvas = currentNativeCanvas()
-        if (canvas != null) {
-            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                routingCanvasGesture = canvas.containsWindowPoint(event.x, event.y)
-            }
-            if (routingCanvasGesture) {
-                val routed = event.copyFor(canvas)
-                val handled = canvas.dispatchTouchEvent(routed)
-                routed.recycle()
-                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                    routingCanvasGesture = false
-                }
-                if (handled) return true
-            }
-        }
         return super.dispatchTouchEvent(event)
     }
 
@@ -148,19 +136,6 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
         }
     }
-}
-
-private fun MotionEvent.copyFor(canvas: CanvasView): MotionEvent {
-    val copy = MotionEvent.obtain(this)
-    val canvasLocation = IntArray(2)
-    val rootLocation = IntArray(2)
-    canvas.getLocationOnScreen(canvasLocation)
-    canvas.rootView.getLocationOnScreen(rootLocation)
-    copy.offsetLocation(
-        (rootLocation[0] - canvasLocation[0]).toFloat(),
-        (rootLocation[1] - canvasLocation[1]).toFloat(),
-    )
-    return copy
 }
 
 private fun MotionEvent.firstStylusPointerIndex(): Int {
